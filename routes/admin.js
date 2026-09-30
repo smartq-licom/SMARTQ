@@ -128,7 +128,7 @@ router.post('/users/:id/active', async (req, res, next) => {
 // Booking calendar, either office
 router.get('/calendar', async (req, res, next) => {
   try {
-    const office = req.query.office === 'Registrar' ? 'Registrar' : 'Cashier';
+    const office = ['Cashier', 'Registrar'].includes(req.query.office) ? req.query.office : 'Both';
     const now = new Date();
     const year  = parseInt(req.query.y, 10) || now.getFullYear();
     const month = parseInt(req.query.m, 10) || (now.getMonth() + 1);
@@ -143,7 +143,7 @@ router.get('/calendar', async (req, res, next) => {
       // Busy-hour profile for the weekday of the selected date, so whoever is
       // deciding whether to cap or close the day can see what that weekday
       // normally looks like before they set a limit.
-      peakDay: pick
+      peakDay: pick && office !== 'Both'
         ? await db.peak.hourlyProfile(office, {
             ...db.peak.optsFromSettings(await db.getSettings()),
             weekday: new Date(pick + 'T00:00:00').getDay(),
@@ -260,10 +260,6 @@ router.get('/reports', async (req, res, next) => {
       title: 'Reports', reports: await db.getReports(from, to),
       estimation: await db.getEstimationTable(), from, to,
       accuracy: await db.predict.getAccuracy(from, to),
-      liveWait: {
-        Cashier:   await db.predict.arrivalWait('Cashier'),
-        Registrar: await db.predict.arrivalWait('Registrar'),
-      },
       peakHours, peakWeekday: wd, dayNames: db.peak.DAY_NAMES,
     });
   } catch (e) { next(e); }
@@ -271,7 +267,8 @@ router.get('/reports', async (req, res, next) => {
 
 router.get('/settings', async (req, res, next) => {
   try {
-    res.render('pages/admin/settings', { title: 'System Settings', settings: await db.getSettings() });
+    const [settings, load] = await Promise.all([db.getSettings(), db.getLoad()]);
+    res.render('pages/admin/settings', { title: 'System Settings', settings, load });
   } catch (e) { next(e); }
 });
 

@@ -109,7 +109,7 @@ CREATE TABLE windows (
 -- the documents requested live in transaction_documents.
 CREATE TABLE transactions (
   id              INT AUTO_INCREMENT PRIMARY KEY,
-  ticket_no       VARCHAR(12) NOT NULL,             -- C-001 / R-001
+  ticket_no       VARCHAR(12) NOT NULL,             -- C-001 / R-001, priority CP-001 / RP-001
   department      ENUM('Cashier','Registrar') NOT NULL,
   queue_category  ENUM('priority','regular') NOT NULL DEFAULT 'regular',
   priority_type   ENUM('none','pwd','senior','pregnant') NOT NULL DEFAULT 'none',
@@ -421,23 +421,7 @@ INSERT INTO role_permissions (role,permission) VALUES
   ('guest','receipt.own'),('guest','account.manage'),('guest','display.view'),
   ('guest','priority.request');
 
--- Accounts (plain-text passwords for capstone demo)
--- Demo accounts. Passwords are bcrypt hashes of the values shown in README.md.
--- All are 'active' and email_verified so the system is usable straight away.
-INSERT INTO users (first_name,middle_name,last_name,username,email,password,role,
-                   contact_no,student_no,course,year_level,academic_year,window_id,
-                   auth_provider,email_verified,status,priority_status) VALUES
-  ('System','','Administrator','admin',NULL,'$2b$10$Ea7246s1sVZgUbnvC9sWNup0m2dUXgbLDWPr6qo7VVf4dLeRTpH.a','admin',
-     NULL,NULL,NULL,NULL,NULL,NULL,'local',1,'active','none'),
-  ('Maria','L','Santos','cashier1',NULL,'$2b$10$MyZOkJHEy7EmssLTqm6pZeZPIcsxoM0NFquYEAujXFgpJ5AnjeMWa','cashier',
-     '09171234567',NULL,NULL,NULL,NULL,1,'local',1,'active','none'),
-  ('Pedro','M','Cruz','registrar1',NULL,'$2b$10$X2qZkLGeYhVF0pVI7fqzM.yObBUZDySbEJkgWtBWGSPD7ncgzlpTG','registrar',
-     '09171234569',NULL,NULL,NULL,NULL,2,'local',1,'active','none'),
-  ('Ana','R','Bautista','registrar2',NULL,'$2b$10$04t8ndCE1J6BQcU1jZkcHuj86PW/VjOjihQVT0SrrLa/EL/vH93aK','registrar',
-     '09171234568',NULL,NULL,NULL,NULL,3,'local',1,'active','none'),
-  ('Juan','Dela','Cruz','juan123','juan@student.lcc.edu.ph','$2b$10$gLRy.kIIoYJtEhUIRV.2kO92pqwJS5V9q4d5VJCYw9CzN0BBNDQoy','student',
-     '09181112222','2021-0001','BEED',3,'2025-2026',NULL,'local',1,'active','none'),
-  ('Liza','P','Flores','liza123','liza@student.lcc.edu.ph','$2b$10$H/J4xK6p9BHvDQ5LrS8tuOhi3Z82Ilqh6vs6FxarFa66/e.T9elDK','student',
-     '09181113333',NULL,'BSED - Values Education',2,'2025-2026',NULL,'local',1,'active','senior'),
-  ('Ramon','','Alonzo','ramon123','visitor@mail.com','$2b$10$t6uyfOtq4ugtCn7UuUh2culzXQrv5liVjsRV4v601qlz9vOvirCA2','guest',
-     '09181114444',NULL,NULL,NULL,NULL,NULL,'local',1,'active','none');
+-- No user accounts are seeded. After importing this file, create the first
+-- admin with:  node database/create-admin.js
+-- Staff accounts are then added from Admin > Staff Accounts, and students
+-- register themselves at /register.

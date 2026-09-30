@@ -2,13 +2,25 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const MySQLStore = require('express-mysql-session')(session);
 const path    = require('path');
 const morgan  = require('morgan');
 const rateLimit = require('express-rate-limit');
 const db      = require('./data/db');
 
 const app  = express();
-const PORT = process.env.APP_PORT || 3000;
+// Render (and most hosts) say which port to use through PORT.
+const PORT = process.env.PORT || process.env.APP_PORT || 3000;
+const PROD = process.env.NODE_ENV === 'production';
+
+if (PROD && !process.env.SESSION_SECRET) {
+  console.error('  SESSION_SECRET must be set in production. Refusing to start.');
+  process.exit(1);
+}
+
+// Behind Render's HTTPS proxy: trust it so secure cookies are sent and
+// req.ip is the visitor's address (the login rate limit depends on it).
+if (PROD) app.set('trust proxy', 1);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(morgan('dev'));
@@ -17,6 +29,8 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   name: 'smartq.sid',
+  // Kept in MySQL so logins survive restarts, deploys and Render's idle sleep.
+  store: new MySQLStore({ clearExpired: true }, require('./database/connection')),
   secret: process.env.SESSION_SECRET || 'smartq-dev-secret',
   resave: false,
   saveUninitialized: false,

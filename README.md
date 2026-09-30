@@ -13,13 +13,14 @@ Libon Community College
 
 2. Create your .env file.
    Copy .env.example, rename the copy to exactly `.env` (not .env.txt),
-   then fill in your MySQL password.
+   then fill in your MySQL password and the other values it describes.
 
 3. Open a command prompt INSIDE this folder.
    In File Explorer, click the address bar, type: cmd  then press Enter.
 
-4. Install and run:
+4. Install, create the first admin (see "First accounts" below), and run:
        npm install
+       node database/create-admin.js
        npm start
 
 5. Open http://localhost:3000
@@ -28,16 +29,17 @@ Libon Community College
    http://localhost:3000/display/cashier
    http://localhost:3000/display/registrar
 
-## Demo accounts
-| Role       | Login                      | Password      |
-|------------|----------------------------|---------------|
-| Admin      | admin                      | admin123      |
-| Cashier    | cashier1                   | cashier123    |
-| Registrar 1| registrar1                 | registrar123  |
-| Registrar 2| registrar2                 | registrar123  |
-| Student    | juan123 or juan@student.lcc.edu.ph | student123 |
-| Student    | liza123 or liza@student.lcc.edu.ph | student123 |
-| Guest      | ramon123 or visitor@mail.com | guest123    |
+## First accounts
+No accounts are included. After importing schema.sql, create the admin:
+
+    node database/create-admin.js
+
+It asks for a username and a strong password (8+ characters with upper and
+lower case, a number and a symbol). Run it again with the same username to
+reset a forgotten admin password.
+
+Then log in as admin and create the cashier and registrar accounts under
+Admin > Staff Accounts, posting each one to a service window.
 
 Windows: ONE Cashier window, TWO Registrar windows.
 Change them any time under Admin > Service Windows (rename, open/close,
@@ -47,17 +49,77 @@ Students and guests register themselves at /register.
 Admin > Student Accounts lists them (view, search, enable/disable).
 Admin > Staff Accounts is where cashier/registrar/admin accounts are created.
 
+## Deploy online (Render + free MySQL)
+Render runs the app. Render has no MySQL, so the database lives on a free
+MySQL host. Nothing in the code has to change between local and online:
+only the environment values differ.
+
+### 1. Create the MySQL database (Aiven, free)
+1. Sign up at https://aiven.io > Create service > MySQL > Free plan.
+2. When it is Running, open it and note Host, Port, User (avnadmin) and
+   Password. Click "Download CA cert" and keep the file.
+   (TiDB Cloud Serverless also works: same steps, no CA file needed.)
+
+### 2. Load the tables from your own computer
+Temporarily point your local .env at the cloud database:
+
+    DB_HOST=<aiven host>
+    DB_PORT=<aiven port>
+    DB_USER=avnadmin
+    DB_PASSWORD=<aiven password>
+    DB_NAME=smartq_db
+    DB_SSL=true
+    DB_SSL_CA=<contents of ca.pem, line breaks written as 
+>
+
+Then run, in this folder:
+
+    npm run db:import      (type smartq_db to confirm; it creates 17 tables)
+    npm run db:admin       (creates the admin you will log in with)
+
+Put your local values back in .env afterwards.
+
+### 3. Put the code on GitHub
+Push this folder to a GitHub repository. .env is ignored, so no password is
+uploaded. Only commit .env.example.
+
+### 4. Create the Render web service
+1. https://dashboard.render.com > New > Blueprint > pick the repository.
+   render.yaml creates the "smartq" web service and asks for each secret.
+2. Fill in the same DB_* values as step 2, plus the SMTP_* and GOOGLE_*
+   values from your .env. SESSION_SECRET is generated for you.
+3. GOOGLE_CALLBACK_URL = https://<service-name>.onrender.com/auth/google/callback
+   and add that exact URL in Google Cloud Console > Credentials > your OAuth
+   client > Authorised redirect URIs.
+4. Deploy. Open https://<service-name>.onrender.com and log in as admin,
+   then create the cashier and registrar accounts.
+
+### Things to know on Render's free plan
+- The app sleeps after 15 minutes without visitors; the next visit takes
+  about a minute. Open it a few minutes before a demo.
+- Logins are stored in MySQL, so sleeping or redeploying does not log
+  anyone out.
+- Uploaded priority-lane proof files are stored on the server's disk, which
+  Render wipes on every deploy and restart. Re-upload after a deploy, or
+  add a paid persistent disk mounted at /opt/render/project/src/uploads.
+- Free web services may not be allowed to send email over SMTP. If codes do
+  not arrive online, students can still use Continue with Google, or move
+  the service to a paid instance.
+- Google sign-in: while the OAuth consent screen is in "Testing", only the
+  Gmail accounts listed as Test users can sign in. Add your testers there,
+  or click "Publish app" for everyone.
+
 ## Test flow to demo
 1. Log in as a student, click Issue Ticket, pick Request Now.
 2. Choose "Official Transcript of Records" — the amount shows PHP 110 automatically.
 3. Pick a purpose, choose Regular or Priority, submit. You get C-001.
-4. Log in as cashier1 in another browser. Click Call Next (a chime sounds at the
+4. Log in as a cashier in another browser. Click Call Next (a chime sounds at the
    counter), then Accept Ticket. Call Again re-announces the same number.
 5. Click Record Payment & Issue Receipt. The cashier transaction ends there.
 6. The Cashier and the Registrar are NOT linked in one transaction. If the
    student also needs the Registrar, they request a separate Registrar ticket
    themselves from their own dashboard.
-7. Log in as registrar1. Call Next, Accept, Complete.
+7. Log in as a registrar. Call Next, Accept, Complete.
 8. Back on the student account: status is Completed, and the receipt is viewable.
 
 ## Documents that are picked up later
@@ -74,20 +136,24 @@ Cashier and Registrar staff maintain their own office's document list under
 Documents. Only the admin can change a price.
 
 ## Authentication
-Three ways to sign in, all ending at the same OTP step:
+Three ways to sign in:
 
   Username + password  ─┐
-  Gmail + password     ─┼─→ 6-digit code by email ─→ Dashboard
+  Gmail + password     ─┼─→ Dashboard
   Continue with Google ─┘
+
+- The emailed 6-digit code is used ONCE, when a student registers, to prove the
+  Gmail is theirs. After that, the right password signs them straight in.
+- Continue with Google never asks for a code: Google has already proven the
+  address. First-time Google users fill in their profile before the dashboard.
 
 - Passwords are bcrypt hashed. Nothing is stored or logged in plain text.
 - OTP codes are ALSO bcrypt hashed. The code exists only in the email.
 - Codes expire in 5 minutes, are single use, allow 5 attempts, and have a
   60-second resend cooldown (max 6 per hour).
-- Each code carries a purpose (registration / login / password_reset /
+- Each code carries a purpose (registration / password_reset /
   account_recovery / email_change) so a reset code cannot complete a login.
 - 5 failed passwords locks the account for 15 minutes.
-- Staff accounts have no email address, so they sign in without the OTP step.
 
 Pages: /register, /forgot-password, /recover, /verify, /reset-password.
 Account settings can change the email address (confirmed by OTP on the NEW

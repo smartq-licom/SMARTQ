@@ -39,14 +39,40 @@
     <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Capacity</h3></div>
     <div class="<%= UI.body %> space-y-3">
       <div><label class="<%= UI.lbl %>">Capacity mode</label>
-        <select name="capacityMode" class="<%= UI.input %>">
+        <select name="capacityMode" id="capMode" class="<%= UI.input %>">
           <option value="auto" <%= settings.capacityMode === 'auto' ? 'selected' : '' %>>Auto (from office hours)</option>
           <option value="manual" <%= settings.capacityMode === 'manual' ? 'selected' : '' %>>Manual</option>
         </select></div>
+      <%# The hidden inputs always carry the saved manual numbers; the visible boxes show
+          today's computed capacity in Auto mode so they match the dashboard. %>
+      <% const isAuto = settings.capacityMode === 'auto'; %>
+      <input type="hidden" name="cashierCapacity" value="<%= settings.cashierCapacity %>">
+      <input type="hidden" name="registrarCapacity" value="<%= settings.registrarCapacity %>">
       <div class="grid grid-cols-2 gap-3">
-        <div><label class="<%= UI.lbl %>">Cashier capacity</label><input name="cashierCapacity" type="number" min="1" value="<%= settings.cashierCapacity %>" class="<%= UI.input %>"></div>
-        <div><label class="<%= UI.lbl %>">Registrar capacity</label><input name="registrarCapacity" type="number" min="1" value="<%= settings.registrarCapacity %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Cashier capacity</label><input data-cap="cashierCapacity" data-auto="<%= load.Cashier.capacity %>" type="number" min="1" value="<%= isAuto ? load.Cashier.capacity : settings.cashierCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-slate-100 read-only:text-slate-500"></div>
+        <div><label class="<%= UI.lbl %>">Registrar capacity</label><input data-cap="registrarCapacity" data-auto="<%= load.Registrar.capacity %>" type="number" min="1" value="<%= isAuto ? load.Registrar.capacity : settings.registrarCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-slate-100 read-only:text-slate-500"></div>
       </div>
+      <p id="capAutoNote" class="text-[11.5px] text-slate-500" <%= isAuto ? '' : 'hidden' %>>Auto mode: today's capacity is worked out from the saved office hours ÷ avg service minutes × open windows, so it changes when you open or close windows. Switch to Manual to set your own numbers.</p>
+      <script>
+        (function () {
+          var mode = document.getElementById('capMode');
+          var note = document.getElementById('capAutoNote');
+          var boxes = document.querySelectorAll('[data-cap]');
+          function hidden(box) { return document.querySelector('input[type=hidden][name="' + box.dataset.cap + '"]'); }
+          function apply() {
+            var auto = mode.value === 'auto';
+            note.hidden = !auto;
+            boxes.forEach(function (box) {
+              box.readOnly = auto;
+              box.value = auto ? box.dataset.auto : hidden(box).value;
+            });
+          }
+          boxes.forEach(function (box) {
+            box.addEventListener('input', function () { if (!box.readOnly) hidden(box).value = box.value; });
+          });
+          mode.addEventListener('change', apply);
+        })();
+      </script>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="<%= UI.lbl %>">Avg service minutes</label><input name="avgServiceMinutes" type="number" min="1" value="<%= settings.avgServiceMinutes %>" class="<%= UI.input %>"></div>
         <div><label class="<%= UI.lbl %>">Max items per request</label><input name="maxBatchDocuments" type="number" min="1" max="8" value="<%= settings.maxBatchDocuments %>" class="<%= UI.input %>"></div>

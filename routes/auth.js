@@ -12,8 +12,11 @@ function home(role) {
   return '/student/dashboard';
 }
 
+/** Only follow ?next= to a page on this site, never to another domain. */
+const safeNext = n => (typeof n === 'string' && /^\/(?![\/\\])/.test(n) ? n : '');
+
 /**
- * Create the real session. Only called AFTER an OTP has been verified.
+ * Create the real session, after the password, Google or an OTP has checked out.
  * The session id is regenerated so a pre-login id cannot be replayed.
  */
 function startSession(req, user, perms) {
@@ -73,18 +76,12 @@ router.post('/login', async (req, res, next) => {
       return res.redirect('/verify');
     }
 
+    // The email was proven with a code at registration, so a verified account
+    // with the right password signs straight in.
     const user = result.user;
-    if (!user.email) {
-      // staff accounts with no address cannot receive a code
-      await auth.clearFailedLogins(user.id);
-      const to = await startSession(req, user, await db.getPermissions(user.role));
-      return res.redirect(req.body.next || to);
-    }
-
-    setPending(req, user, 'login', { next: req.body.next || '' });
-    const otp = await sendCode(user, 'login', { force: true });
-    if (otp.error) { req.session.error = otp.error; return res.redirect('/'); }
-    res.redirect('/verify');
+    await auth.clearFailedLogins(user.id);
+    const to = await startSession(req, user, await db.getPermissions(user.role));
+    res.redirect(safeNext(req.body.next) || to);
   } catch (e) { next(e); }
 });
 
@@ -156,7 +153,7 @@ router.post('/verify', async (req, res, next) => {
     delete req.session.pending;
     req.session.flash = 'Signed in.';
     const to = await startSession(req, user, await db.getPermissions(user.role));
-    res.redirect(nextUrl || to);
+    res.redirect(safeNext(nextUrl) || to);
   } catch (e) { next(e); }
 });
 
@@ -257,11 +254,12 @@ router.get('/auth/google/callback', (req, res, next) => {
         req.session.error = (info && info.message) || 'Google authentication could not be completed.';
         return res.redirect('/');
       }
-      // Google proves the address, but the configured OTP step still applies.
-      setPending(req, user, 'login', { viaGoogle: true });
-      const otp = await sendCode(user, 'login', { force: true });
-      if (otp.error) { req.session.error = otp.error; return res.redirect('/'); }
-      res.redirect('/verify');
+      // Google has already proven the user owns this Gmail, so no emailed code.
+      // Disabled and locked accounts were refused in findOrCreateGoogleUser.
+      await auth.clearFailedLogins(user.id);
+      req.session.flash = 'Signed in.';
+      const to = await startSession(req, user, await db.getPermissions(user.role));
+      res.redirect(to);
     } catch (e) { next(e); }
   })(req, res, next);
 });

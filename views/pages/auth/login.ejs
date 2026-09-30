@@ -38,26 +38,5 @@
     Locked out for another reason? <a href="/recover">Recover your account</a>
   </p>
 
-  <details style="margin-top:22px">
-    <summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">Accounts for testing</summary>
-    <div style="margin-top:8px;padding:14px;background:#fff;border:1px solid var(--line-light);border-radius:var(--r-sm)">
-      <table style="width:100%;font-size:12.5px;border-collapse:collapse">
-        <tbody>
-          <% [['admin','admin123','Admin'],['cashier1','cashier123','Cashier'],
-              ['registrar1','registrar123','Registrar 1'],['registrar2','registrar123','Registrar 2'],
-              ['juan123','student123','Student'],['liza123','student123','Student, priority']].forEach(function(r){ %>
-          <tr>
-            <td style="padding:3px 0;font-weight:600"><%= r[0] %></td>
-            <td style="padding:3px 0;color:var(--muted)"><%= r[1] %></td>
-            <td style="padding:3px 0;color:var(--faint);text-align:right"><%= r[2] %></td>
-          </tr>
-          <% }) %>
-        </tbody>
-      </table>
-      <p class="hint" style="margin-top:10px">
-        Students also sign in with their Gmail. Staff have no email on file, so they skip the code step.
-      </p>
-    </div>
-  </details>
 
 <%- include('../../partials/auth-bottom') %>

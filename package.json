@@ -4,13 +4,16 @@
   "description": "SmartQ - Cashier & Registrar Transaction Queue System",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "db:import": "node database/import-schema.js",
+    "db:admin": "node database/create-admin.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.18.2",
+    "express-mysql-session": "^3.0.3",
     "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "morgan": "^1.10.0",
@@ -19,5 +22,8 @@
     "nodemailer": "^9.1.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

@@ -103,39 +103,6 @@
   <%- include('../../partials/peak-hours', { p: peakHours.Registrar, compact: false }) %>
 </div>
 
-<!-- live queueing model -->
-<div class="<%= UI.card %> mb-4">
-  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Live queue model (Erlang C)</h3></div>
-  <div class="<%= UI.body %> grid sm:grid-cols-2 gap-4">
-    <% ['Cashier','Registrar'].forEach(function(d){ var w = liveWait[d]; %>
-    <div class="rounded-lg border border-hair p-4">
-      <div class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2"><%= d %></div>
-      <% if (w.closed) { %>
-      <p class="text-[13px] text-slateSoft/80">No window open.</p>
-      <% } else { %>
-      <div class="flex items-baseline gap-2">
-        <span class="text-3xl font-extrabold"><%= w.minutes %></span>
-        <span class="text-[12px] text-slateSoft/80">min expected wait if you arrive now</span>
-      </div>
-      <dl class="mt-3 space-y-1 text-[12px] text-slateSoft">
-        <div class="flex justify-between"><dt>Arrivals per hour</dt><dd class="font-mono"><%= w.arrivalsPerHour || 0 %></dd></div>
-        <div class="flex justify-between"><dt>Service time used</dt><dd class="font-mono"><%= w.serviceMin %> min</dd></div>
-        <div class="flex justify-between"><dt>Windows open</dt><dd class="font-mono"><%= w.servers %></dd></div>
-        <div class="flex justify-between"><dt>Utilisation</dt><dd class="font-mono"><%= Math.round((w.utilisation||0)*100) %>%</dd></div>
-        <% if (w.probabilityOfWaiting != null) { %>
-        <div class="flex justify-between"><dt>Chance of queueing</dt><dd class="font-mono"><%= w.probabilityOfWaiting %>%</dd></div>
-        <% } %>
-        <div class="flex justify-between"><dt>Method</dt><dd class="font-mono"><%= w.method %></dd></div>
-      </dl>
-      <% if (w.overloaded) { %>
-      <p class="mt-2 text-[11.5px] text-red-700">Arrivals exceed capacity, so the figure is a backlog drain time.</p>
-      <% } %>
-      <% } %>
-    </div>
-    <% }) %>
-  </div>
-</div>
-
 <div class="grid lg:grid-cols-2 gap-4">
   <div class="<%= UI.card %>">
     <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Most requested documents</h3></div>

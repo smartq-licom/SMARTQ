@@ -49,10 +49,11 @@
       <div><label for="sfn" class="<%= UI.lbl %>">First name</label><input id="sfn" name="firstName" class="<%= UI.input %>" required></div>
       <div><label for="sln" class="<%= UI.lbl %>">Last name</label><input id="sln" name="lastName" class="<%= UI.input %>" required></div>
       <div><label for="sun" class="<%= UI.lbl %>">Username</label><input id="sun" name="username" class="<%= UI.input %>" required></div>
-      <div><label for="spw" class="<%= UI.lbl %>">Password</label><input id="spw" name="password" class="<%= UI.input %>" required></div>
+      <div><label for="spw" class="<%= UI.lbl %>">Password</label><input id="spw" name="password" type="password" autocomplete="new-password" minlength="8" class="<%= UI.input %>" required>
+        <span class="<%= UI.hint %>">8+ characters with upper and lower case, a number and a symbol.</span></div>
       <div><label for="srl" class="<%= UI.lbl %>">Role</label>
         <select id="srl" name="role" class="<%= UI.input %>" required>
-          <option value="cashier">Cashier</option><option value="registrar">Registrar</option><option value="admin">Admin</option>
+          <option value="cashier">Cashier</option><option value="registrar">Registrar</option>
         </select></div>
       <div><label for="swn" class="<%= UI.lbl %>">Window</label>
         <select id="swn" name="windowId" class="<%= UI.input %>">

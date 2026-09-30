@@ -13,3 +13,4 @@ uploads/priority/*
 .DS_Store
 Thumbs.db
 .vscode/
+.claude/

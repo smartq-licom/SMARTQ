@@ -406,10 +406,15 @@ async function getDayOverrides(department, from, to) {
 }
 
 /**
- * One month of booking counts for an office.
- * Only scheduled bookings are counted - walk-ins are not known in advance.
+ * One month of ticket counts for an office, or for 'Both' offices side by side.
+ * Every ticket counts on its service date, whether it was booked ahead or taken
+ * the same day - the same rule slotsUsed() applies when enforcing a day's cap.
  */
 async function getCalendarMonth(department, year, month) {
+  if (department === 'Both') return mergeCalendars(
+    await getCalendarMonth('Cashier', year, month),
+    await getCalendarMonth('Registrar', year, month));
+
   const first = new Date(Date.UTC(year, month - 1, 1));
   const last  = new Date(Date.UTC(year, month, 0));
   const from  = ymd(first), to = ymd(last);
@@ -417,17 +422,19 @@ async function getCalendarMonth(department, year, month) {
   const rows = await q(
     `SELECT service_date AS d,
             COUNT(*) AS booked,
+            SUM(is_scheduled=0) AS same_day,
             SUM(queue_category='priority') AS priority,
             SUM(overall_status='completed') AS done,
             SUM(overall_status='cancelled') AS cancelled
      FROM transactions
-     WHERE department=? AND is_scheduled=1 AND service_date BETWEEN ? AND ?
+     WHERE department=? AND service_date BETWEEN ? AND ?
      GROUP BY service_date`, [department, from, to]);
 
   const counts = {};
   rows.forEach(r => {
     counts[ymd(new Date(r.d))] = {
       booked: Number(r.booked) || 0,
+      sameDay: Number(r.same_day) || 0,
       priority: Number(r.priority) || 0,
       done: Number(r.done) || 0,
       cancelled: Number(r.cancelled) || 0,
@@ -448,7 +455,7 @@ async function getCalendarMonth(department, year, month) {
     const date = ymd(new Date(Date.UTC(year, month - 1, d)));
     const dow  = (new Date(date + 'T00:00:00').getDay()) || 7;
     const ov   = overrides[date] || {};
-    const c    = counts[date] || { booked: 0, priority: 0, done: 0, cancelled: 0 };
+    const c    = counts[date] || { booked: 0, sameDay: 0, priority: 0, done: 0, cancelled: 0 };
 
     const cap       = ov.slotLimit != null ? ov.slotLimit : s.dailySlotLimit;  // 0 = no cap
     const active    = c.booked - c.cancelled;
@@ -464,7 +471,7 @@ async function getCalendarMonth(department, year, month) {
 
     days.push({
       date, dayNum: d, dow,
-      booked: active, priority: c.priority, done: c.done, cancelled: c.cancelled,
+      booked: active, sameDay: c.sameDay, priority: c.priority, done: c.done, cancelled: c.cancelled,
       cap, closed, closedByOffice: !officeDay, load,
       note: ov.note || '', setterName: ov.setterName || '',
       hasOverride: !!overrides[date],
@@ -490,13 +497,49 @@ async function getCalendarMonth(department, year, month) {
   };
 }
 
-/** Everyone booked into one date at one office. */
+/**
+ * Put the Cashier and Registrar months side by side. Each day keeps both
+ * offices' figures (d.cashier, d.registrar); the top-level numbers are totals.
+ * A day counts as closed only when both offices are closed, and takes the
+ * busier office's load colour.
+ */
+function mergeCalendars(c, r) {
+  const rank = { none: 0, free: 1, open: 2, busy: 3, full: 4, closed: -1 };
+  const days = c.days.map((dc, i) => {
+    const dr = r.days[i];
+    if (!dc) return null;
+    const closed = dc.closed && dr.closed;
+    const load = closed ? 'closed'
+      : [dc.load, dr.load].filter(l => l !== 'closed').sort((a, b) => rank[b] - rank[a])[0];
+    return {
+      date: dc.date, dayNum: dc.dayNum, dow: dc.dow,
+      isToday: dc.isToday, isPast: dc.isPast,
+      booked: dc.booked + dr.booked, sameDay: dc.sameDay + dr.sameDay,
+      priority: dc.priority + dr.priority,
+      closed, closedByOffice: dc.closedByOffice && dr.closedByOffice, load,
+      hasOverride: dc.hasOverride || dr.hasOverride,
+      cashier: dc, registrar: dr,
+    };
+  });
+  return {
+    ...c, department: 'Both', days,
+    totals: {
+      booked: c.totals.booked + r.totals.booked,
+      priority: c.totals.priority + r.totals.priority,
+      closedDays: c.totals.closedDays + r.totals.closedDays,
+    },
+  };
+}
+
+/** Everyone with a ticket on one date, at one office or at 'Both'. */
 async function getDayBookings(department, date) {
+  const offices = department === 'Both' ? ['Cashier', 'Registrar'] : [department];
   const rows = await q(
     `SELECT * FROM transactions
-     WHERE department=? AND service_date=? AND is_scheduled=1
-     ORDER BY FIELD(queue_category,'priority','regular'), requested_at, id`,
-    [department, date]);
+     WHERE department IN (${offices.map(() => '?').join(',')}) AND service_date=?
+     ORDER BY FIELD(department,'Cashier','Registrar'),
+              FIELD(queue_category,'priority','regular'), requested_at, id`,
+    [...offices, date]);
   const list = rows.map(mapTx);
   await attachDocuments(list);
   return list;
@@ -915,15 +958,19 @@ async function updateWindow(id, b) {
   return { ok: true };
 }
 
-// ── TICKET NUMBERING (daily reset, per department) ───────────────────────────
-async function nextTicketNo(conn, department, serviceDate) {
-  const key = department === 'Cashier' ? 'cashier' : 'registrar';
+// ── TICKET NUMBERING (daily reset, one counter per lane) ─────────────────────
+// Priority and regular each count from 1 every day. The two counters are
+// shared by both offices, so an office's numbers can skip (C-001, then C-003
+// after R-002 went to the Registrar). Priority tickets carry a P: CP-001, RP-001.
+async function nextTicketNo(conn, department, serviceDate, category) {
+  const lane = category === 'priority' ? 'priority' : 'regular';
+  const key  = 'ticket-' + lane;
   await conn.execute(
     `INSERT INTO counters (name,ref_date,value) VALUES (?,?,1)
      ON DUPLICATE KEY UPDATE value = value + 1`, [key, serviceDate]);
   const [r] = await conn.execute(
     'SELECT value FROM counters WHERE name=? AND ref_date=?', [key, serviceDate]);
-  const prefix = department === 'Cashier' ? 'C' : 'R';
+  const prefix = (department === 'Cashier' ? 'C' : 'R') + (lane === 'priority' ? 'P' : '');
   return `${prefix}-${String(r[0].value).padStart(3, '0')}`;
 }
 
@@ -1145,7 +1192,7 @@ async function createRequest(user, b) {
       return await getTransaction(dupe[0].id);      // same ticket, not a new one
     }
 
-    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate);
+    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate, category);
 
     const [ins] = await conn.execute(
       `INSERT INTO transactions
@@ -1811,13 +1858,18 @@ async function setUserActive(id, active) {
 async function createStaff(b) {
   if (!b.username || !b.password || !b.firstName || !b.lastName)
     return { error: 'Username, password, first name and last name are required.' };
-  if (!['cashier','registrar','admin'].includes(b.role)) return { error: 'Invalid role.' };
+  // Admin accounts are not created here; use database/create-admin.js.
+  if (!['cashier','registrar'].includes(b.role)) return { error: 'Invalid role.' };
+  const pwError = auth.checkPassword(b.password);
+  if (pwError) return { error: pwError };
   const dupe = await q('SELECT id FROM users WHERE username=?', [b.username.trim()]);
   if (dupe.length) return { error: 'That username is already taken.' };
+  // Staff have no email on file, so they are active and verified at once.
   await run(
-    `INSERT INTO users (username,password,role,first_name,middle_name,last_name,contact_no,window_id)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [b.username.trim(), b.password, b.role, b.firstName.trim(),
+    `INSERT INTO users (username,password,role,first_name,middle_name,last_name,contact_no,window_id,
+                        auth_provider,email_verified,status)
+     VALUES (?,?,?,?,?,?,?,?,'local',1,'active')`,
+    [b.username.trim(), await auth.hashPassword(b.password), b.role, b.firstName.trim(),
      (b.middleName || '').trim() || null, b.lastName.trim(),
      (b.contactNo || '').trim() || null, b.windowId ? +b.windowId : null]);
   return { ok: true };
