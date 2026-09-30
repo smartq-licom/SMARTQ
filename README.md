@@ -61,23 +61,24 @@ only the environment values differ.
    (TiDB Cloud Serverless also works: same steps, no CA file needed.)
 
 ### 2. Load the tables from your own computer
-Temporarily point your local .env at the cloud database:
+1. Save Aiven's CA certificate as `ca.pem` in this folder.
+2. Create a file named `.env.cloud` in this folder with the Aiven values
+   (it is git-ignored, like ca.pem, so it is never uploaded):
 
-    DB_HOST=<aiven host>
-    DB_PORT=<aiven port>
-    DB_USER=avnadmin
-    DB_PASSWORD=<aiven password>
-    DB_NAME=smartq_db
-    DB_SSL=true
-    DB_SSL_CA=<contents of ca.pem, line breaks written as 
->
+       DB_HOST=<aiven host>
+       DB_PORT=<aiven port>
+       DB_USER=avnadmin
+       DB_PASSWORD=<aiven password>
+       DB_NAME=smartq_db
+       DB_SSL=true
+       DB_SSL_CA=ca.pem
 
-Then run, in this folder:
+3. Run, in this folder:
 
-    npm run db:import      (type smartq_db to confirm; it creates 17 tables)
-    npm run db:admin       (creates the admin you will log in with)
+       npm run cloud:import    (type smartq_db to confirm; creates 17 tables)
+       npm run cloud:admin     (creates the admin you will log in with)
 
-Put your local values back in .env afterwards.
+Your normal .env is not touched, so the local copy keeps working.
 
 ### 3. Put the code on GitHub
 Push this folder to a GitHub repository. .env is ignored, so no password is
@@ -86,7 +87,8 @@ uploaded. Only commit .env.example.
 ### 4. Create the Render web service
 1. https://dashboard.render.com > New > Blueprint > pick the repository.
    render.yaml creates the "smartq" web service and asks for each secret.
-2. Fill in the same DB_* values as step 2, plus the SMTP_* and GOOGLE_*
+2. Fill in the same DB_* values as .env.cloud, except DB_SSL_CA: paste the
+   whole text of ca.pem there instead of the file name. Also fill in the SMTP_* and GOOGLE_*
    values from your .env. SESSION_SECRET is generated for you.
 3. GOOGLE_CALLBACK_URL = https://<service-name>.onrender.com/auth/google/callback
    and add that exact URL in Google Cloud Console > Credentials > your OAuth

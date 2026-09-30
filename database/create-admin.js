@@ -4,12 +4,25 @@
  * Creates the first admin account, or resets an existing admin's password.
  * schema.sql ships with no user accounts, so run this once after importing it:
  *
- *   node database/create-admin.js
+ *   node database/create-admin.js                    (database in .env)
+ *   node database/create-admin.js --env .env.cloud   (online database)
  *
  * It asks for a username, name and password. The password must pass the same
  * rules as the rest of the system and is stored only as a bcrypt hash.
  * Cashier and registrar accounts are then created from Admin > Staff Accounts.
  */
+// --env <file>: load that file before connection.js reads .env. dotenv never
+// overwrites a value that is already set, so the file's values win.
+const envArg = process.argv.indexOf('--env');
+if (envArg > -1) {
+  const file = process.argv[envArg + 1];
+  if (!file || !require('fs').existsSync(file)) {
+    console.error(`\n  Settings file not found: ${file || '(none given)'}\n`);
+    process.exit(1);
+  }
+  require('dotenv').config({ path: file });
+}
+
 const readline = require('readline');
 const db       = require('./connection');
 const auth     = require('../data/auth');

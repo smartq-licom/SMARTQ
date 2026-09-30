@@ -14,3 +14,7 @@ uploads/priority/*
 Thumbs.db
 .vscode/
 .claude/
+
+# Online database settings and certificate - never upload
+.env.cloud
+*.pem
