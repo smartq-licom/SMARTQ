@@ -11,7 +11,18 @@ const fs    = require('fs');
 function readCa() {
   const v = (process.env.DB_SSL_CA || '').trim();
   if (v && !v.includes('BEGIN') && fs.existsSync(v)) return fs.readFileSync(v, 'utf8');
-  return v.replace(/\\n/g, '\n');
+  return normalisePem(v.replace(/\\n/g, '\n'));
+}
+
+// A certificate pasted into a one-line box (such as a hosting dashboard) loses
+// its line breaks. Rebuild the standard PEM layout so it still loads.
+function normalisePem(text) {
+  const blocks = text.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+  if (!blocks) return text;
+  return blocks.map(b => {
+    const body = b.replace(/-----(BEGIN|END) CERTIFICATE-----/g, '').replace(/\s+/g, '');
+    return '-----BEGIN CERTIFICATE-----\n' + body.match(/.{1,64}/g).join('\n') + '\n-----END CERTIFICATE-----';
+  }).join('\n') + '\n';
 }
 
 function sslOptions() {
