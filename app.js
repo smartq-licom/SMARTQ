@@ -1,5 +1,7 @@
 'use strict';
 require('dotenv').config();
+// Philippine time before anything creates a Date (see database/connection.js).
+process.env.TZ = process.env.APP_TZ || 'Asia/Manila';
 const express = require('express');
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);

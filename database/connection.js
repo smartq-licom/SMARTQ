@@ -1,5 +1,12 @@
 'use strict';
 require('dotenv').config();
+
+// SmartQ runs on Philippine time wherever it is hosted. Cloud servers (Render,
+// Aiven) default to UTC, which put every ticket 8 hours early: peak hours came
+// out empty and "today" rolled over at 8 AM. APP_TZ / DB_TZ can override.
+process.env.TZ = process.env.APP_TZ || 'Asia/Manila';
+const DB_TZ = process.env.DB_TZ || '+08:00';
+
 const mysql = require('mysql2/promise');
 const fs    = require('fs');
 
@@ -46,7 +53,12 @@ const pool = mysql.createPool({
   queueLimit:         0,
   dateStrings:        ['DATE'],
   charset:            'utf8mb4',
+  timezone:           DB_TZ,
 });
+
+// Every new connection reads and writes times in Philippine time, so NOW(),
+// CURDATE() and HOUR() agree with the app. Stored TIMESTAMPs convert on read.
+pool.pool.on('connection', c => c.query(`SET time_zone = '${DB_TZ.replace(/'/g, '')}'`));
 
 pool.getConnection()
   .then(c => { console.log('  MySQL connected -> ' + (process.env.DB_NAME || 'smartq_db')); c.release(); })
