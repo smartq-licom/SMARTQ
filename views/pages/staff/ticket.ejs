@@ -14,6 +14,15 @@
         <div><dt class="text-slateSoft/80 text-[11.5px]">Amount</dt><dd class="font-mono font-bold"><%= peso(t.amountDue) %></dd></div>
         <div class="col-span-2"><dt class="text-slateSoft/80 text-[11.5px]">Documents</dt>
           <dd class="font-semibold"><%= t.items.map(function(i){return i.name}).join(', ') %></dd></div>
+        <% if (t.claimItems && t.claimItems.length) { %>
+        <div class="col-span-2"><dt class="text-slateSoft/80 text-[11.5px]">Claiming (paid at the Cashier)</dt>
+          <dd><ul class="space-y-0.5">
+            <% t.claimItems.forEach(function(c){ %>
+            <li><span class="font-semibold"><%= c.copies > 1 ? c.name + ' x' + c.copies : c.name %></span>
+                <span class="text-slateSoft/75 text-[12px]">&middot; <%= c.receiptNo || c.paidTicket %></span></li>
+            <% }) %>
+          </ul></dd></div>
+        <% } %>
       </dl>
       <h4 class="text-[11.5px] font-bold uppercase tracking-wider text-slateSoft/80 mt-5 mb-2">Audit trail</h4>
       <ol class="space-y-2">

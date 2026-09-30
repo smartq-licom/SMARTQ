@@ -134,6 +134,18 @@ Cashier and Registrar transactions are independent: the cashier never issues a
 Registrar ticket on the student's behalf. A student who needs both offices takes
 one ticket per office, and may hold at most one open ticket per office at a time.
 
+Claiming is tied to payment. "Claim Released Document" (any Registrar document
+with "To claim" on) can only be requested for documents the Cashier has already
+recorded as paid: the student ticks which paid documents they are collecting,
+today or on a booked date. While their Cashier ticket is unpaid the option is
+locked with "Finish your payment at the Cashier first". A completed claim marks
+those documents claimed, so they cannot be claimed twice; a cancelled or no-show
+claim ticket frees them again. Payments made outside SmartQ (paper receipts)
+are handled by the Registrar at the window. Records Inquiry stays open to all.
+
+Existing databases need the claim_items table:  npm run db:migrate
+(online: npm run cloud:migrate). It is safe to run more than once.
+
 Cashier and Registrar staff maintain their own office's document list under
 Documents. Only the admin can change a price.
 

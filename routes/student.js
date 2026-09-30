@@ -69,9 +69,10 @@ router.get('/request', async (req, res, next) => {
   try {
     const me = req.session.user;
 
-    const [documents, settings, activeBy, requirements] = await Promise.all([
+    const [documents, settings, activeBy, requirements, claimable] = await Promise.all([
       db.getDocuments({ guestOnly: me.role === 'guest' }), db.getSettings(),
       db.getActiveByDepartment(me.id), db.getRequirementsByDocument(),
+      db.getClaimableLines(me.id),
     ]);
 
     // both offices already have an open ticket: nothing left to request
@@ -86,7 +87,7 @@ router.get('/request', async (req, res, next) => {
       title: 'Request a Ticket', documents, settings,
       purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, courses: db.COURSES,
       today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
-      activeBy, requirements,
+      activeBy, requirements, claimable,
       peakAdvice: await peakAdvice(settings),
       submitToken: crypto.randomUUID(), form: {}, formError: null,
     });
@@ -98,15 +99,16 @@ router.post('/request', async (req, res, next) => {
     const me = req.session.user;
     const result = await db.createRequest(me, req.body);
     if (result.error) {
-      const [documents, settings, activeBy, requirements] = await Promise.all([
+      const [documents, settings, activeBy, requirements, claimable] = await Promise.all([
         db.getDocuments({ guestOnly: me.role === 'guest' }), db.getSettings(),
         db.getActiveByDepartment(me.id), db.getRequirementsByDocument(),
+        db.getClaimableLines(me.id),
       ]);
       return res.status(400).render('pages/student/request', {
         title: 'Request a Ticket', documents, settings,
         purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, courses: db.COURSES,
         today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
-        activeBy, requirements,
+        activeBy, requirements, claimable,
         peakAdvice: await peakAdvice(settings),
         submitToken: req.body.submitToken || crypto.randomUUID(),
         form: req.body, formError: result.error,

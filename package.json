@@ -8,7 +8,9 @@
     "db:import": "node database/import-schema.js",
     "db:admin": "node database/create-admin.js",
     "cloud:import": "node database/import-schema.js --env .env.cloud",
-    "cloud:admin": "node database/create-admin.js --env .env.cloud"
+    "cloud:admin": "node database/create-admin.js --env .env.cloud",
+    "db:migrate": "node database/migrate.js",
+    "cloud:migrate": "node database/migrate.js --env .env.cloud"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

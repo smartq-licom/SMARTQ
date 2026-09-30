@@ -221,12 +221,17 @@
           <legend class="sr-only">Requested documents</legend>
           <div class="grid gap-2" id="docList" data-max="<%= settings.maxBatchDocuments %>">
             <% documents.forEach(function(sv){ %>
+            <%# A Registrar document that collects something paid for at the Cashier.
+                It is locked until there is a paid, unclaimed document to collect. %>
+            <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
+               const claimLocked = isClaim && !claimable.length; %>
             <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
                  data-office="<%= sv.office %>" hidden>
-              <label class="flex items-start gap-3 cursor-pointer">
+              <label class="flex items-start gap-3 <%= claimLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer' %>">
                 <input type="checkbox" name="documentIds" value="<%= sv.id %>"
                        data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
                        data-purpose="<%= sv.needsPurpose ? 1 : 0 %>"
+                       <%= isClaim ? 'data-claim=1' : '' %> <%= claimLocked ? 'data-locked=1 disabled' : '' %>
                        class="mt-0.5 rounded border-hair" onchange="recalc()">
                 <span class="min-w-0 flex-1">
                   <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
@@ -242,6 +247,30 @@
                          onchange="recalc()" oninput="recalc()">
                 </span>
               </label>
+              <% if (isClaim && claimable.length) { %>
+              <% const ticked = [].concat(form.claimLines || []).map(String); %>
+              <fieldset class="mt-2.5 ml-7" data-claim-panel="<%= sv.id %>" hidden>
+                <legend class="text-[12px] font-semibold text-ink mb-1">What are you claiming?</legend>
+                <% claimable.forEach(function(c){ %>
+                <label class="flex items-start gap-2.5 py-1 cursor-pointer">
+                  <input type="checkbox" name="claimLines" value="<%= c.id %>" disabled
+                         <%= ticked.includes(String(c.id)) ? 'checked' : '' %> class="mt-0.5 rounded border-hair">
+                  <span>
+                    <span class="block text-[13px] font-semibold leading-tight"><%= c.copies > 1 ? c.name + ' x' + c.copies : c.name %></span>
+                    <span class="block text-[11px] text-slateSoft/75"><%= c.receiptNo || c.paidTicket %><% if (c.paidAt) { %> &middot; paid <%= c.paidAt %><% } %></span>
+                  </span>
+                </label>
+                <% }) %>
+              </fieldset>
+              <% } else if (claimLocked) { %>
+              <p class="mt-2 ml-7 text-[12px] text-amber-800">
+                <% if (activeBy.Cashier && activeBy.Cashier.paymentStatus !== 'paid') { %>
+                Finish your payment at the Cashier first (<%= activeBy.Cashier.ticketNo %>). You can queue here to claim it right after.
+                <% } else { %>
+                Nothing to claim yet. Pay for the document at the Cashier first.
+                <% } %>
+              </p>
+              <% } %>
               <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
               <details class="mt-2 ml-7">
                 <summary class="cursor-pointer text-[11.5px] font-semibold text-brand">What you need to bring</summary>
@@ -410,7 +439,7 @@ function pickOffice(){
     row.hidden = !match;
     if (match) shown++;
     if (!match) {
-      var cb = row.querySelector('input[type=checkbox]');
+      var cb = row.querySelector('input[name=documentIds]');
       if (cb) cb.checked = false;
     }
   });
@@ -422,7 +451,7 @@ function recalc(){
   var list  = document.getElementById('docList');
   var max   = parseInt(list.dataset.max, 10);
   var chosen = document.querySelector('input[name=office]:checked');
-  var boxes = list.querySelectorAll('input[type=checkbox]');
+  var boxes = list.querySelectorAll('input[name=documentIds]');
   var picked = [], total = 0;
 
   boxes.forEach(function(b){
@@ -432,6 +461,12 @@ function recalc(){
     if (qty) qty.hidden = !(b.checked && visible);
     // an unticked box must not submit a copies value, or the arrays misalign
     if (copies) copies.disabled = !(b.checked && visible);
+    // the list of paid documents to claim shows only while claiming is ticked
+    var panel = document.querySelector('[data-claim-panel="' + b.dataset.row + '"]');
+    if (panel) {
+      panel.hidden = !(b.checked && visible);
+      panel.querySelectorAll('input').forEach(function (c) { c.disabled = panel.hidden; });
+    }
     if (!b.checked || !visible) return;
     picked.push(b);
     var n = copies ? Math.max(1, parseInt(copies.value || '1', 10)) : 1;
@@ -439,7 +474,7 @@ function recalc(){
   });
 
   boxes.forEach(function(b){
-    b.disabled = !b.checked && picked.length >= max;
+    b.disabled = b.dataset.locked === '1' || (!b.checked && picked.length >= max);
   });
 
   document.getElementById('pickCount').textContent = picked.length + ' of ' + max + ' selected';

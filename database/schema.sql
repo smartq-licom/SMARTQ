@@ -217,6 +217,20 @@ CREATE TABLE receipts (
   CONSTRAINT fk_rc_pay FOREIGN KEY (payment_id)     REFERENCES payments(id)     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- ── CLAIM ITEMS ──────────────────────────────────────────────────────────────
+-- Links a Registrar "Claim Released Document" ticket to the paid Cashier
+-- document lines it is collecting. A line is claimed once its claim ticket is
+-- completed; a cancelled or no-show claim ticket frees the line again.
+CREATE TABLE claim_items (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  claim_tx_id  INT NOT NULL,   -- the Registrar claim ticket
+  line_id      INT NOT NULL,   -- transaction_documents.id of the paid Cashier line
+  UNIQUE KEY uq_claim_line (claim_tx_id, line_id),
+  INDEX idx_line (line_id),
+  CONSTRAINT fk_ci_tx   FOREIGN KEY (claim_tx_id) REFERENCES transactions(id)          ON DELETE CASCADE,
+  CONSTRAINT fk_ci_line FOREIGN KEY (line_id)     REFERENCES transaction_documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ── QUEUE HISTORY (audit trail) ──────────────────────────────────────────────
 CREATE TABLE queue_history (
   id             INT AUTO_INCREMENT PRIMARY KEY,

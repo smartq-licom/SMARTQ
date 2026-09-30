@@ -1164,6 +1164,30 @@ async function createRequest(user, b) {
       blockedBy: open,
     };
   }
+
+  // ---- claiming a released document ------------------------------------------
+  // Only documents already paid at the Cashier can be claimed, and each paid
+  // document only once. The student ticks which ones this ticket collects.
+  let claimLineIds = [];
+  if (items.some(isClaimDocument)) {
+    const available = await getClaimableLines(user.id);
+    if (!available.length) {
+      const cashierOpen = await getBlockingTransaction(user.id, 'Cashier');
+      return { error: cashierOpen && cashierOpen.paymentStatus !== 'paid'
+        ? `Finish your payment at the Cashier first (${cashierOpen.ticketNo}). ` +
+          'You can queue at the Registrar to claim it right after.'
+        : 'You have no paid documents waiting to be claimed. Pay for the document at the Cashier first.' };
+    }
+    let picked = b.claimLines;
+    if (!Array.isArray(picked)) picked = picked ? [picked] : [];
+    picked = [...new Set(picked.map(Number).filter(Boolean))];
+    if (!picked.length) return { error: 'Tick which paid document(s) you are claiming.' };
+    const ok = new Set(available.map(a => a.id));
+    if (picked.some(id => !ok.has(id)))
+      return { error: 'One of the documents you ticked is not paid for, or is already being claimed.' };
+    claimLineIds = picked;
+  }
+
   const amount     = items.reduce((t, i) => t + i.lineTotal, 0);
   const rawToken = String(b.submitToken || '').trim();
   const token = /^[A-Za-z0-9_-]{8,36}$/.test(rawToken) ? rawToken : crypto.randomUUID();
@@ -1240,6 +1264,9 @@ async function createRequest(user, b) {
           `INSERT INTO transaction_requirements (transaction_id,requirement_id,label,is_required)
            VALUES (?,?,?,?)`, [txId, rq.id, rq.label, rq.is_required]);
       }
+    }
+    for (const lineId of claimLineIds) {
+      await conn.execute('INSERT INTO claim_items (claim_tx_id,line_id) VALUES (?,?)', [txId, lineId]);
     }
     await conn.execute(
       `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note)
@@ -1349,8 +1376,59 @@ async function attachDocuments(list) {
     });
   });
   list.forEach(t => { t.documents = by[t.id] || []; t.items = t.documents; });
+
+  // Registrar claim tickets: which paid documents they collect. The claim
+  // line's label names them, so every screen that lists documents shows it.
+  const claims = await q(
+    `SELECT ci.claim_tx_id, td.document_name, td.copies, pt.ticket_no AS paid_ticket, r.receipt_no
+     FROM claim_items ci
+     JOIN transaction_documents td ON td.id = ci.line_id
+     JOIN transactions pt ON pt.id = td.transaction_id
+     LEFT JOIN receipts r ON r.transaction_id = pt.id
+     WHERE ci.claim_tx_id IN (${ids.map(() => '?').join(',')})
+     ORDER BY ci.id`, ids);
+  const cl = {};
+  claims.forEach(c => (cl[c.claim_tx_id] = cl[c.claim_tx_id] || []).push({
+    name: c.document_name, copies: Number(c.copies) || 1,
+    paidTicket: c.paid_ticket, receiptNo: c.receipt_no || '',
+  }));
+  list.forEach(t => {
+    t.claimItems = cl[t.id] || [];
+    if (!t.claimItems.length) return;
+    const what = t.claimItems.map(c => c.copies > 1 ? `${c.name} x${c.copies}` : c.name).join(', ');
+    t.documents.forEach(d => { d.label = `${d.name}: ${what}`; });
+  });
   return list;
 }
+
+/**
+ * Paid Cashier document lines this user can still claim at the Registrar:
+ * the document is one you pick up, the Cashier recorded the payment, and no
+ * claim ticket that is still valid (waiting, serving or completed) covers it.
+ */
+async function getClaimableLines(userId) {
+  const rows = await q(
+    `SELECT td.id, td.document_name, td.copies, t.ticket_no, r.receipt_no, p.paid_at
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d    ON d.id = td.document_id
+     LEFT JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     LEFT JOIN receipts r ON r.transaction_id = t.id
+     WHERE t.user_id = ? AND t.department = 'Cashier' AND t.payment_status = 'paid'
+       AND d.requires_claim = 1
+       AND NOT EXISTS (
+         SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
+         WHERE ci.line_id = td.id AND c.ticket_status NOT IN ('cancelled','no-show'))
+     ORDER BY p.paid_at DESC, td.id`, [userId]);
+  return rows.map(r => ({
+    id: r.id, name: r.document_name, copies: Number(r.copies) || 1,
+    paidTicket: r.ticket_no, receiptNo: r.receipt_no || '',
+    paidAt: r.paid_at ? ymd(new Date(r.paid_at)) : null,
+  }));
+}
+
+/** A Registrar document that collects something paid for at the Cashier. */
+const isClaimDocument = d => d.office === 'Registrar' && d.requiresClaim;
 
 /** Every unfinished transaction for this user, keyed by office. */
 async function getActiveByDepartment(userId) {
@@ -1979,7 +2057,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad,
+  processAutoCancel, getTimeLeft, getLoad, getClaimableLines,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,
