@@ -16,7 +16,10 @@ function readCa() {
 
 // A certificate pasted into a one-line box (such as a hosting dashboard) loses
 // its line breaks. Rebuild the standard PEM layout so it still loads.
+// A copy that left out the BEGIN/END lines (only the base64 body) is wrapped.
 function normalisePem(text) {
+  if (/^[A-Za-z0-9+/=\s]{200,}$/.test(text))
+    text = '-----BEGIN CERTIFICATE-----\n' + text + '\n-----END CERTIFICATE-----';
   const blocks = text.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
   if (!blocks) return text;
   return blocks.map(b => {
