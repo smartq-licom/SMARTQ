@@ -43,6 +43,17 @@ router.get('/dashboard', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/**
+ * Can a same-day ("Request now") ticket be taken at this moment? The server
+ * checks this again in db.validateSchedule; this only shapes the form.
+ */
+function sameDayStatus(s) {
+  if (!s.allowSameDay) return { open: false, why: 'Same-day requests are closed at the moment, so please pick a date.' };
+  if (!s.openDays.includes(new Date().getDay() || 7)) return { open: false, why: 'The offices are closed today, so please pick a working day.' };
+  if (db.isPastClosing(s)) return { open: false, why: 'Office hours are over for today (closed at ' + db.clock12(s.closeTime) + '), so please pick a date.' };
+  return { open: true, why: '' };
+}
+
 /** "8:00 AM – 5:00 PM", shown next to a visit date (bookings are per day). */
 function officeHours(s) {
   return db.clock12(s.openTime) + ' – ' + db.clock12(s.closeTime);
@@ -93,7 +104,8 @@ router.get('/request', async (req, res, next) => {
       title: 'Request a Ticket', documents, settings,
       purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, courses: db.COURSES,
       today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
-      activeBy, requirements, claimable,
+      activeBy, requirements, claimable, sameDay: sameDayStatus(settings),
+      firstBookable: db.addDays(db.today(), 1),
       peakAdvice: await peakAdvice(settings),
       submitToken: crypto.randomUUID(), form: {}, formError: null,
     });
@@ -114,7 +126,8 @@ router.post('/request', async (req, res, next) => {
         title: 'Request a Ticket', documents, settings,
         purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, courses: db.COURSES,
         today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
-        activeBy, requirements, claimable,
+        activeBy, requirements, claimable, sameDay: sameDayStatus(settings),
+      firstBookable: db.addDays(db.today(), 1),
         peakAdvice: await peakAdvice(settings),
         submitToken: req.body.submitToken || crypto.randomUUID(),
         form: req.body, formError: result.error,

@@ -1004,6 +1004,8 @@ async function validateSchedule(mode, dateStr, department = null) {
     const dow = (new Date().getDay()) || 7;
     if (!s.openDays.includes(dow))
       return { error: 'The offices are closed today. Please schedule for a working day.' };
+    if (isPastClosing(s))
+      return { error: `Office hours are over for today (closed at ${clock12(s.closeTime)}). Please schedule for a later date.` };
     return { ok: true, serviceDate: today(), isScheduled: 0 };
   }
 
@@ -1019,6 +1021,8 @@ async function validateSchedule(mode, dateStr, department = null) {
   if (days < 0)  return { error: 'That date has already passed.' };
   if (days === 0 && !s.allowSameDay)
     return { error: 'Same-day requests are closed. Please choose a later date.' };
+  if (days === 0 && isPastClosing(s))
+    return { error: `Office hours are over for today (closed at ${clock12(s.closeTime)}). Please choose a later date.` };
   if (days > s.scheduleMaxDays)
     return { error: `You can book up to ${s.scheduleMaxDays} days ahead. ` +
                     `The latest date available is ${addDays(today(), s.scheduleMaxDays)}.` };
@@ -1367,6 +1371,13 @@ function longDate(dateStr) {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-PH',
     { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
+/** True once today's closing time (Philippine time) has passed. */
+function isPastClosing(s) {
+  const [h, m] = String(s.closeTime || '17:00').split(':').map(Number);
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes() >= h * 60 + (m || 0);
+}
+
 /** '08:00' -> '8:00 AM' */
 function clock12(hhmmStr) {
   const [h, m] = String(hhmmStr || '').split(':').map(Number);
@@ -2108,7 +2119,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent,
+  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,
