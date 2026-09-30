@@ -38,9 +38,15 @@ router.get('/dashboard', async (req, res, next) => {
     }
     res.render('pages/student/dashboard', {
       title: 'My Dashboard', active, recent: all.slice(0, 5), load, settings,
+      officeHours: officeHours(settings),
     });
   } catch (e) { next(e); }
 });
+
+/** "8:00 AM – 5:00 PM", shown next to a visit date (bookings are per day). */
+function officeHours(s) {
+  return db.clock12(s.openTime) + ' – ' + db.clock12(s.closeTime);
+}
 
 // ── Request wizard ───────────────────────────────────────────────────────────
 /**
@@ -134,6 +140,7 @@ router.get('/ticket/:id', async (req, res, next) => {
     const eta = await predict.ticketEta(t);
     res.render('pages/student/ticket', {
       title: 'Ticket ' + t.ticketNo, t, ahead, timeLeft, eta,
+      officeHours: officeHours(await db.getSettings()),
       requirements: await db.getTransactionRequirements(t.id),
       announcement: await db.latestAnnouncementFor(t.id),
     });

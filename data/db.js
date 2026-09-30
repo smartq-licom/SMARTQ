@@ -1350,7 +1350,28 @@ function mapTx(t) {
     receiptNo: t.receipt_no || null,
     paidAmount: Number(t.amount_due),
     timeIn: t.requested_at ? `${pad(new Date(t.requested_at).getHours())}:${pad(new Date(t.requested_at).getMinutes())}` : '',
+    // For people: the day to come (a booking is for the whole day, not a time
+    // slot) and, separately, when the request was made.
+    visitDateText: t.service_date ? visitDateText(ymd(new Date(t.service_date))) : '',
+    requestedOnText: t.requested_at ? new Date(t.requested_at).toLocaleString('en-PH', {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '',
   };
+}
+
+function visitDateText(dateStr) {
+  if (dateStr === today()) return 'Today';
+  if (dateStr === addDays(today(), 1)) return 'Tomorrow, ' + longDate(dateStr);
+  return longDate(dateStr);
+}
+function longDate(dateStr) {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-PH',
+    { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+/** '08:00' -> '8:00 AM' */
+function clock12(hhmmStr) {
+  const [h, m] = String(hhmmStr || '').split(':').map(Number);
+  if (isNaN(h)) return '';
+  return `${h % 12 || 12}:${pad(m || 0)} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 const TX_SELECT = `
@@ -2057,7 +2078,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, getClaimableLines,
+  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

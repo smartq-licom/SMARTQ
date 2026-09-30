@@ -18,11 +18,13 @@
       <% if (t.purposeText) { %><div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Purpose</dt><dd class="font-semibold text-right"><%= t.purposeText %></dd></div><% } %>
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Amount</dt>
         <dd class="font-extrabold font-mono"><%= t.amountDue > 0 ? peso(t.amountDue) : 'No payment' %></dd></div>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Date</dt>
-        <dd class="font-mono text-[12px]"><%= t.serviceDate %> <%= t.timeIn %></dd></div>
-      <% if (t.isScheduled) { %>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Scheduled</dt><dd class="font-mono text-[12px] font-bold"><%= t.scheduledDate %></dd></div>
-      <% } %>
+      <%# A booking is for the whole day, not a time slot: show the day to come
+          with the office hours, and separately when the request was made. %>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Visit date</dt>
+        <dd class="text-right"><span class="font-bold"><%= t.visitDateText %></span>
+          <span class="block text-[11.5px] text-slateSoft/75">Any time <%= officeHours %></span></dd></div>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80"><%= t.isScheduled ? 'Booked on' : 'Requested at' %></dt>
+        <dd class="text-[12.5px] text-right"><%= t.requestedOnText %></dd></div>
       <% if (t.parentTicket) { %>
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Cashier ticket</dt><dd class="font-mono text-[12px]"><%= t.parentTicket %></dd></div>
       <% } %>

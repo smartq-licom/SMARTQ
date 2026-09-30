@@ -66,12 +66,11 @@
           <dd><span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span></dd></div>
         <div><dt class="text-slateSoft/80 text-[11.5px]">Payment</dt>
           <dd><span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span></dd></div>
-        <div><dt class="text-slateSoft/80 text-[11.5px]">Requested</dt>
-          <dd class="font-mono text-[12px]"><%= t.serviceDate %> <%= t.timeIn %></dd></div>
-        <% if (t.isScheduled) { %>
-        <div><dt class="text-slateSoft/80 text-[11.5px]">Scheduled for</dt>
-          <dd class="font-mono text-[12px] font-semibold"><%= t.scheduledDate %></dd></div>
-        <% } %>
+        <div><dt class="text-slateSoft/80 text-[11.5px]">Visit date</dt>
+          <dd class="text-[12.5px] font-semibold"><%= t.visitDateText %>
+            <span class="block font-normal text-[11px] text-slateSoft/75">Any time <%= officeHours %></span></dd></div>
+        <div><dt class="text-slateSoft/80 text-[11.5px]"><%= t.isScheduled ? 'Booked on' : 'Requested at' %></dt>
+          <dd class="text-[12.5px]"><%= t.requestedOnText %></dd></div>
         <% if (t.parentTicket) { %>
         <div><dt class="text-slateSoft/80 text-[11.5px]">From cashier</dt>
           <dd class="font-mono text-[12px]"><%= t.parentTicket %></dd></div>
