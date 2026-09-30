@@ -121,6 +121,29 @@
   var a0 = audio();
   if (a0 && a0.state === 'suspended') a0.resume().catch(function () {});
 
+  // Fast check (pages that pass pulseUrl): ask the server every 1.5 s whether a
+  // new number was called. Ring at once, then reload to show it. The id is
+  // stored first so the reloaded page does not ring a second time.
+  var PULSE = '<%= (typeof pulseUrl !== "undefined" && pulseUrl) || "" %>';
+  if (PULSE) {
+    var busy = false, reloading = false;
+    setInterval(function () {
+      if (busy || reloading || document.hidden) return;
+      busy = true;
+      fetch(PULSE, { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || d.id == null || String(d.id) === String(now)) return;
+          reloading = true;
+          try { sessionStorage.setItem(KEY, String(d.id)); } catch (e) {}
+          ring();
+          setTimeout(function () { location.reload(); }, 1400);   // after the ~1.2 s alert
+        })
+        .catch(function () {})
+        .then(function () { busy = false; });
+    }, 1500);
+  }
+
   if (!now) return;
   var last = null;
   try { last = sessionStorage.getItem(KEY); } catch (e) {}

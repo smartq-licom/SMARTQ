@@ -25,4 +25,15 @@ async function board(dept, res, next) {
 router.get('/cashier',   (req, res, next) => board('Cashier', res, next));
 router.get('/registrar', (req, res, next) => board('Registrar', res, next));
 
+// Polled every ~1.5 s by the board: the newest call's id, so the alert can
+// sound as soon as staff press Call Next.
+async function pulse(dept, res, next) {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ id: await db.announcementPulse(dept) });
+  } catch (e) { next(e); }
+}
+router.get('/cashier/pulse',   (req, res, next) => pulse('Cashier', res, next));
+router.get('/registrar/pulse', (req, res, next) => pulse('Registrar', res, next));
+
 module.exports = router;

@@ -107,6 +107,7 @@
 <%- include('../../partials/foot') %>
 <%- include('../../partials/chime', {
       chimeScope: 'ticket' + t.id,
-      chimeId: announcement ? announcement.id : ''
+      chimeId: announcement ? announcement.id : '',
+      pulseUrl: ['waiting','called','serving'].includes(t.ticketStatus) ? '/student/ticket/' + t.id + '/pulse' : ''
     }) %>
 <%- include('../../partials/scripts') %>

@@ -137,6 +137,14 @@ router.post('/request', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Polled every ~1.5 s by the ticket page: the newest call for this ticket.
+router.get('/ticket/:id/pulse', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ id: await db.announcementPulseFor(Number(req.params.id), req.session.user.id) });
+  } catch (e) { next(e); }
+});
+
 // The student cancels their own waiting, unpaid ticket (see db.cancelByStudent).
 router.post('/ticket/:id/cancel', async (req, res, next) => {
   try {

@@ -1783,6 +1783,22 @@ async function latestAnnouncement(department) {
   };
 }
 
+/**
+ * Cheap "has anything been called?" checks, polled every ~1.5 s by the boards
+ * and the student's ticket page so the alert sounds right after Call Next
+ * instead of waiting for the next full page refresh.
+ */
+async function announcementPulse(department) {
+  const r = await q('SELECT MAX(id) AS id FROM announcements WHERE department=?', [department]);
+  return r[0].id || null;
+}
+async function announcementPulseFor(txId, userId) {
+  const r = await q(
+    `SELECT MAX(a.id) AS id FROM announcements a JOIN transactions t ON t.id = a.transaction_id
+     WHERE a.transaction_id=? AND t.user_id=?`, [txId, userId]);
+  return r[0].id || null;
+}
+
 /** The newest announcement for one ticket, for the student's own page. */
 async function latestAnnouncementFor(txId) {
   const r = await q(
@@ -2120,6 +2136,7 @@ module.exports = {
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
   processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
+  announcementPulse, announcementPulseFor,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

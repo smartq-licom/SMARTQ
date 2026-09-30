@@ -135,7 +135,8 @@ tick(); setInterval(tick, 1000);
 </script>
 <%- include('../../partials/chime', {
       chimeScope: dept.toLowerCase(),
-      chimeId: announcement ? announcement.id : ''
+      chimeId: announcement ? announcement.id : '',
+      pulseUrl: '/display/' + dept.toLowerCase() + '/pulse'
     }) %>
 </body>
 </html>

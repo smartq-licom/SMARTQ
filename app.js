@@ -25,7 +25,8 @@ if (PROD && !process.env.SESSION_SECRET) {
 if (PROD) app.set('trust proxy', 1);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
-app.use(morgan('dev'));
+// The boards and ticket pages poll /pulse every ~1.5 s; keep that out of the log.
+app.use(morgan('dev', { skip: req => req.path.endsWith('/pulse') }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
