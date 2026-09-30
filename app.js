@@ -148,7 +148,7 @@ app.locals.tone = s => ({
   registrar_processing:'bg-brand-wash text-brand-deep',
   admin:'bg-ink text-white', cashier:'bg-brand text-white', registrar:'bg-brand text-white',
 }[s] || 'bg-mist text-slateSoft');
-app.locals.peso  = n => 'PHP ' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+app.locals.peso  = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 app.locals.chip  = 'font-mono font-bold text-[12.5px] bg-brand-wash border border-brand-line rounded px-2 py-0.5 text-brand-deep';
 app.locals.label = s => String(s || '').replace(/_/g, ' ');
 

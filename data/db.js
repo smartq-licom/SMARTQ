@@ -1625,7 +1625,7 @@ async function processPayment(staff, txId) {
       `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,window_label,note)
        VALUES (?,?,'payment',?,?,?,?,?)`,
       [txId, t.ticketNo, staff.id, staff.fullName, 'Cashier', t.windowLabel,
-       `Paid PHP ${t.amountDue.toFixed(2)} — ${receiptNo}`]);
+       `Paid ₱${t.amountDue.toFixed(2)} — ${receiptNo}`]);
 
     await conn.commit();
     return await getTransaction(txId);

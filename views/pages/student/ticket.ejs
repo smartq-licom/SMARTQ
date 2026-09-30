@@ -55,7 +55,7 @@
           <% requirements.forEach(function(r){ %>
           <li class="flex items-start gap-2.5 text-[13px]">
             <span class="<%= r.submitted ? 'text-emerald-600' : 'text-slateSoft/40' %> mt-0.5">
-              <%= r.submitted ? '&#10003;' : '&#9633;' %>
+              <%= r.submitted ? '✓' : '☐' %>
             </span>
             <span class="<%= r.submitted ? 'text-slateSoft/60 line-through' : '' %>">
               <%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %>

@@ -145,7 +145,7 @@
               <div class="text-[11px] uppercase tracking-wider text-white/55">Amount due</div>
               <div class="text-[11.5px] text-white/70" id="destLabel">Select a document to continue</div>
             </div>
-            <div class="text-2xl font-extrabold font-mono" id="amountDue">PHP 0.00</div>
+            <div class="text-2xl font-extrabold font-mono" id="amountDue">₱0.00</div>
           </div>
         </div>
       </section>
@@ -537,7 +537,7 @@ function recalc(){
 
   document.getElementById('pickCount').textContent = picked.length + ' of ' + max + ' selected';
   document.getElementById('amountDue').textContent =
-    'PHP ' + total.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    '₱' + total.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
 
   // Purpose is only asked for documents flagged as needing one.
   var wantsPurpose = picked.some(function (b) { return b.dataset.purpose === '1'; });
