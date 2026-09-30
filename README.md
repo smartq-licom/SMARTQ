@@ -90,10 +90,10 @@ uploaded. Only commit .env.example.
 2. Fill in the same DB_* values as .env.cloud, except DB_SSL_CA: paste the
    whole text of ca.pem there instead of the file name. Also fill in the SMTP_* and GOOGLE_*
    values from your .env. SESSION_SECRET is generated for you.
-3. GOOGLE_CALLBACK_URL = https://<service-name>.onrender.com/auth/google/callback
+3. GOOGLE_CALLBACK_URL = https://smartq-licom.onrender.com/auth/google/callback
    and add that exact URL in Google Cloud Console > Credentials > your OAuth
    client > Authorised redirect URIs.
-4. Deploy. Open https://<service-name>.onrender.com and log in as admin,
+4. Deploy. Open https://smartq-licom.onrender.com and log in as admin,
    then create the cashier and registrar accounts.
 
 ### Things to know on Render's free plan
