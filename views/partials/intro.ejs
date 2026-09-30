@@ -1,0 +1,105 @@
+<%#
+  Opening animation for the landing (login) page, about two seconds long.
+  SMARTQ pops up letter by letter like numbers being called, then the blue
+  screen lifts to reveal the page. Shown once per browser session, skipped by
+  any click, tap or key, and never shown to people who ask for reduced motion.
+  The overlay starts hidden, so without JavaScript nothing ever covers the page.
+%>
+<div id="intro" class="intro" hidden aria-hidden="true">
+  <div class="intro-seal"></div>
+  <div class="intro-word">
+    <% 'SMARTQ'.split('').forEach(function (ch, i) { %><span style="--i:<%= i %>"><%= ch %></span><% }) %>
+  </div>
+  <div class="intro-tag">Cashier &amp; Registrar Queue</div>
+  <div class="intro-bar"><span></span></div>
+</div>
+<style>
+  .intro{
+    position:fixed; inset:0; z-index:1000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:var(--blue); color:#fff; cursor:pointer;
+    transition:transform .65s cubic-bezier(.7,0,.25,1);
+  }
+  .intro::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(135deg,rgba(255,255,255,.12) 0%,transparent 45%,transparent 60%,rgba(255,255,255,.08) 100%);
+  }
+  .intro.is-leaving{ transform:translateY(-100%) }
+
+  .intro-seal{
+    width:84px; height:84px; border-radius:50%;
+    background:#fff url('/img/lcc-seal.jpg') center/cover;
+    box-shadow:0 0 0 6px rgba(255,255,255,.18);
+    animation:intro-seal .5s cubic-bezier(.34,1.56,.64,1) .05s both;
+  }
+  .intro-word{
+    display:flex; font-weight:800; line-height:1;
+    font-size:clamp(3rem, 14vw, 6.5rem); letter-spacing:.04em;
+  }
+  .intro-word span{
+    display:inline-block;
+    animation:intro-pop .55s cubic-bezier(.34,1.56,.64,1) both;
+    animation-delay:calc(.35s + var(--i) * .09s);
+  }
+  /* the Q lands last, with a little extra flourish */
+  .intro-word span:last-child{
+    animation-name:intro-pop-q; animation-duration:.7s;
+    text-shadow:0 0 24px rgba(255,255,255,.45);
+  }
+  .intro-tag{
+    font-size:clamp(.8rem, 3.4vw, 1rem); font-weight:600;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--on-blue);
+    animation:intro-rise .5s ease-out 1.05s both;
+  }
+  .intro-bar{
+    width:min(220px, 56vw); height:3px; border-radius:3px;
+    background:rgba(255,255,255,.22); overflow:hidden;
+    animation:intro-rise .4s ease-out 1.1s both;
+  }
+  .intro-bar span{
+    display:block; height:100%; background:#fff; transform-origin:left;
+    animation:intro-fill .7s ease-in-out 1.2s both;
+  }
+
+  @keyframes intro-seal{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
+  @keyframes intro-pop{
+    0%  { opacity:0; transform:translateY(60%) scale(.3) }
+    70% { opacity:1; transform:translateY(-10%) scale(1.12) }
+    100%{ opacity:1; transform:translateY(0) scale(1) }
+  }
+  @keyframes intro-pop-q{
+    0%  { opacity:0; transform:translateY(60%) scale(.3) rotate(-40deg) }
+    60% { opacity:1; transform:translateY(-14%) scale(1.25) rotate(12deg) }
+    100%{ opacity:1; transform:translateY(0) scale(1) rotate(0) }
+  }
+  @keyframes intro-rise{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
+  @keyframes intro-fill{ from{transform:scaleX(0)} to{transform:scaleX(1)} }
+</style>
+<script>
+(function () {
+  var el = document.getElementById('intro');
+  var seen = false;
+  try { seen = sessionStorage.getItem('smartq.intro') === '1'; } catch (e) {}
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!el || seen || calm) { if (el) el.remove(); return; }
+
+  try { sessionStorage.setItem('smartq.intro', '1'); } catch (e) {}
+  el.hidden = false;
+  document.documentElement.style.overflow = 'hidden';
+
+  var done = false;
+  function leave() {
+    if (done) return;
+    done = true;
+    el.classList.add('is-leaving');
+    setTimeout(function () {
+      el.remove();
+      document.documentElement.style.overflow = '';
+    }, 700);
+  }
+  var timer = setTimeout(leave, 2100);
+  function skip() { clearTimeout(timer); leave(); }
+  el.addEventListener('click', skip);
+  document.addEventListener('keydown', skip, { once: true });
+})();
+</script>
