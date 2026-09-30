@@ -14,394 +14,452 @@
   <form method="POST" action="/student/request" data-once class="space-y-4">
     <input type="hidden" name="submitToken" value="<%= submitToken %>">
 
-    <!-- STEP 1 - when -->
-    <section class="<%= UI.card %> step">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; When do you need this?</h3></div>
-      <div class="<%= UI.body %>">
-        <fieldset>
-          <legend class="sr-only">Choose when</legend>
-          <div class="grid sm:grid-cols-2 gap-2.5">
-            <% if (settings.allowSameDay) { %>
-            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
-              <input type="radio" name="mode" value="now" class="sr-only" <%= form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
-              <div class="text-[14px] font-bold">Request now</div>
-              <div class="text-[12px] text-slateSoft/80 mt-0.5">Join today's queue immediately</div>
-            </label>
-            <% } %>
-            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
-              <input type="radio" name="mode" value="schedule" class="sr-only"
-                     <%= (!settings.allowSameDay || form.mode === 'schedule') ? 'checked' : '' %> onchange="toggleMode()">
-              <div class="text-[14px] font-bold">Schedule for a later date</div>
-              <div class="text-[12px] text-slateSoft/80 mt-0.5">Book up to <%= settings.scheduleMaxDays %> days ahead</div>
-            </label>
-          </div>
-        </fieldset>
-        <div id="scheduleBox" class="hidden mt-3.5">
-          <label for="scheduledDate" class="<%= UI.lbl %>">Date of your visit</label>
-          <input id="scheduledDate" name="scheduledDate" type="date" class="<%= UI.input %> max-w-xs"
-                 value="<%= form.scheduledDate || '' %>" min="<%= today %>" max="<%= maxDate %>">
-          <span class="<%= UI.hint %>">
-            Any open day from <%= today %> up to <%= maxDate %>.
-          </span>
-        </div>
-        <% if (!settings.allowSameDay) { %>
-        <p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
-          Same-day requests are closed at the moment, so please pick a date.
-        </p>
-        <% } %>
+    <%# Stepper: one step shown at a time. Finished steps can be revisited;
+        later steps unlock only after the current one passes its checks. %>
+    <nav aria-label="Request steps" class="mb-5">
+      <ol class="wiz-bar flex items-start">
+        <% [['1','Office & Docs'],['2','When'],['3','Your details'],['4','Review']].forEach(function (st, i) { %>
+        <li class="wiz-item flex-1 flex flex-col items-center relative" data-step-item="<%= st[0] %>">
+          <% if (i > 0) { %><span class="wiz-line" aria-hidden="true"></span><% } %>
+          <button type="button" class="wiz-dot" data-goto="<%= st[0] %>" aria-label="Step <%= st[0] %>: <%= st[1] %>">
+            <span class="wiz-num"><%= st[0] %></span>
+            <svg class="wiz-tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="wiz-label">Step <%= st[0] %><br><b><%= st[1] %></b></span>
+        </li>
+        <% }) %>
+      </ol>
+    </nav>
 
-        <%# Quiet-hour advice. Informational only — the student may still come
-            whenever they like; this only says when the line is usually shorter.
-            All seven weekdays are embedded so the text follows the date they
-            pick without another request to the server. %>
-        <% var advWeek = { Cashier: peakAdvice.Cashier, Registrar: peakAdvice.Registrar };
-           var anyAdvice = advWeek.Cashier.some(Boolean) || advWeek.Registrar.some(Boolean); %>
-        <% if (anyAdvice) { %>
-        <div id="peakAdvice" class="mt-3.5 rounded-lg bg-brand-wash border border-brand-line px-3.5 py-3"
-             <%# The escaping output tag already makes the quotes attribute-safe.
-                 Escaping them by hand first would double-escape the string and
-                 break JSON.parse in the browser. %>
-             data-advice="<%= JSON.stringify(advWeek) %>"
-             data-today="<%= new Date().getDay() %>">
-          <div class="text-[12px] font-bold text-brand-deep mb-1.5">
-            Best time to come <span data-peak-day></span>
-          </div>
-          <ul data-peak-list class="space-y-1"></ul>
-          <span class="<%= UI.hint %>" data-peak-note></span>
-        </div>
-        <script>
-        (function () {
-          var box = document.getElementById('peakAdvice');
-          if (!box) return;
-          var week  = JSON.parse(box.dataset.advice);
-          var today = parseInt(box.dataset.today, 10);
-          var days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-          var dayEl  = box.querySelector('[data-peak-day]');
-          var listEl = box.querySelector('[data-peak-list]');
-          var noteEl = box.querySelector('[data-peak-note]');
-
-          function paint(dow, isFuture) {
-            var rows = [];
-            ['Cashier', 'Registrar'].forEach(function (office) {
-              var a = week[office] && week[office][dow];
-              if (a) rows.push({ office: office, a: a });
-            });
-            if (!rows.length) { box.classList.add('hidden'); return; }
-            box.classList.remove('hidden');
-
-            dayEl.textContent = isFuture ? 'on ' + days[dow] : 'today (' + days[dow] + ')';
-
-            listEl.innerHTML = '';
-            var provisional = false;
-            rows.forEach(function (r) {
-              if (r.a.provisional) provisional = true;
-              var li = document.createElement('li');
-              li.className = 'text-[12.5px] text-slateSoft';
-              var quiet = r.a.quietest
-                ? ', usually shorter around <strong>' + r.a.quietest.label + '</strong>'
-                : '';
-              li.innerHTML = '<strong>' + r.office + ':</strong> busiest around <strong>'
-                           + r.a.busiest.label + '</strong>' + quiet + '.';
-              listEl.appendChild(li);
-            });
-
-            noteEl.textContent = provisional
-              ? 'There are not many ' + days[dow] + 's on record yet, so this is a rough guide '
-                + 'from all days combined. You may come at any open hour.'
-              : 'Based on past ' + days[dow] + 's. You are free to come at any open hour — '
-                + 'this is only a guide.';
-          }
-
-          // Which day is the student actually asking about?
-          function currentDow() {
-            var sched = document.querySelector('input[name=mode][value=schedule]');
-            var date  = document.getElementById('scheduledDate');
-            if (sched && sched.checked && date && date.value) {
-              var d = new Date(date.value + 'T00:00:00');
-              if (!isNaN(d)) return { dow: d.getDay(), future: true };
-            }
-            return { dow: today, future: false };
-          }
-
-          function refresh() { var c = currentDow(); paint(c.dow, c.future); }
-
-          document.querySelectorAll('input[name=mode]').forEach(function (r) {
-            r.addEventListener('change', refresh);
-          });
-          var dateInput = document.getElementById('scheduledDate');
-          if (dateInput) dateInput.addEventListener('change', refresh);
-          refresh();
-        })();
-        </script>
-        <% } %>
-      </div>
-    </section>
-
-    <!-- STEP 2 — student info -->
-    <section class="<%= UI.card %> step">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Your information</h3></div>
-      <div class="<%= UI.body %>">
-        <%- include('../../partials/name-fields', { nf: {
-              firstName: form.firstName || me.firstName, middleName: form.middleName || me.middleName,
-              lastName: form.lastName || me.lastName,
-              lblClass: UI.lbl, inputClass: UI.input
-            } }) %>
-        <% if (me.role !== 'guest') { %>
-        <div class="grid sm:grid-cols-4 gap-3 mt-3">
-          <div>
-            <label for="course" class="<%= UI.lbl %>">Course *</label>
-            <select id="course" name="course" class="<%= UI.input %>" required>
-              <% var pickedCourse = form.course || me.course || ''; %>
-              <option value="">Select</option>
-              <% courses.forEach(function(c){ %>
-              <option value="<%= c %>" <%= pickedCourse === c ? 'selected' : '' %>><%= c %></option>
-              <% }) %>
-              <% if (pickedCourse && courses.indexOf(pickedCourse) === -1) { %>
-              <option value="" selected disabled><%= pickedCourse %> — no longer offered, please re-select</option>
-              <% } %>
-            </select>
-          </div>
-          <div>
-            <label for="yearLevel" class="<%= UI.lbl %>">Year level *</label>
-            <select id="yearLevel" name="yearLevel" class="<%= UI.input %>" required>
-              <option value="">Select</option>
-              <% [1,2,3,4,5].forEach(function(y){ %>
-              <option value="<%= y %>" <%= String(form.yearLevel || me.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
-              <% }) %>
-            </select>
-          </div>
-          <div>
-            <label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
-            <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= form.academicYear || me.academicYear || settings.academicYear %>">
-          </div>
-          <div>
-            <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
-            <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= form.studentNo || me.studentNo %>" placeholder="Optional">
-            <span class="<%= UI.hint %>">Optional</span>
-          </div>
-        </div>
-        <% } %>
-      </div>
-    </section>
-
-    <!-- STEP 3 - which office -->
-    <section class="<%= UI.card %> step">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Which office?</h3></div>
-      <div class="<%= UI.body %>">
-        <fieldset>
-          <legend class="sr-only">Office</legend>
-          <div class="grid sm:grid-cols-2 gap-2.5">
-            <% ['Cashier','Registrar'].forEach(function(off){ %>
-            <% const busy = !!activeBy[off]; %>
-            <label class="rounded-lg border-2 px-4 py-3.5 <%= busy ? 'border-hair bg-mist/60 opacity-60 cursor-not-allowed' : 'cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash' %>">
-              <input type="radio" name="office" value="<%= off %>" class="sr-only"
-                     <%= busy ? 'disabled' : '' %>
-                     <%= form.office === off ? 'checked' : '' %> onchange="pickOffice()">
-              <div class="text-[14px] font-bold"><%= off %></div>
-              <div class="text-[12px] text-slateSoft/80 mt-0.5">
-                <% if (busy) { %>You already have <%= activeBy[off].ticketNo %> here
-                <% } else { %><%= off === 'Cashier' ? 'Documents you pay for' : 'Free requests and claiming' %><% } %>
-              </div>
-            </label>
-            <% }) %>
-          </div>
-        </fieldset>
-        <p class="<%= UI.hint %>">One ticket covers one office. Choose the office first, then the documents.</p>
-      </div>
-    </section>
-
-    <!-- STEP 4 - documents -->
-    <section class="<%= UI.card %> step" id="docSection" hidden>
-      <div class="<%= UI.cardHd %>">
-        <h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Which documents?</h3>
-        <span id="pickCount" class="text-[11.5px] font-semibold text-slateSoft/80">0 of <%= settings.maxBatchDocuments %> selected</span>
-      </div>
-      <div class="<%= UI.body %>">
-        <fieldset>
-          <legend class="sr-only">Requested documents</legend>
-          <div class="grid gap-2" id="docList" data-max="<%= settings.maxBatchDocuments %>">
-            <% documents.forEach(function(sv){ %>
-            <%# A Registrar document that collects something paid for at the Cashier.
-                It is locked until there is a paid, unclaimed document to collect. %>
-            <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
-               const claimLocked = isClaim && !claimable.length; %>
-            <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
-                 data-office="<%= sv.office %>" hidden>
-              <label class="flex items-start gap-3 <%= claimLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer' %>">
-                <input type="checkbox" name="documentIds" value="<%= sv.id %>"
-                       data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
-                       data-purpose="<%= sv.needsPurpose ? 1 : 0 %>"
-                       <%= isClaim ? 'data-claim=1' : '' %> <%= claimLocked ? 'data-locked=1 disabled' : '' %>
-                       class="mt-0.5 rounded border-hair" onchange="recalc()">
-                <span class="min-w-0 flex-1">
-                  <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
-                  <span class="block text-[11.5px] text-slateSoft/80 mt-0.5">
-                    <%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %>
-                  </span>
-                </span>
-                <span class="shrink-0 flex items-center gap-1.5" id="qty-<%= sv.id %>" hidden>
-                  <label for="copies-<%= sv.id %>" class="text-[11.5px] text-slateSoft/80">Copies</label>
-                  <input id="copies-<%= sv.id %>" type="number" name="copies" value="1" min="1"
-                         max="<%= settings.maxCopies %>" data-copies="<%= sv.id %>" disabled
-                         class="w-16 rounded border border-hair px-2 py-1 text-[13px] text-center"
-                         onchange="recalc()" oninput="recalc()">
-                </span>
+    <!-- STEP 1 of 4: office and documents -->
+    <div class="wiz-pane space-y-4" data-pane="1">
+      <!-- which office -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Which office?</h3></div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="sr-only">Office</legend>
+            <div class="grid sm:grid-cols-2 gap-2.5">
+              <% ['Cashier','Registrar'].forEach(function(off){ %>
+              <% const busy = !!activeBy[off]; %>
+              <label class="rounded-lg border-2 px-4 py-3.5 <%= busy ? 'border-hair bg-mist/60 opacity-60 cursor-not-allowed' : 'cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash' %>">
+                <input type="radio" name="office" value="<%= off %>" class="sr-only"
+                       <%= busy ? 'disabled' : '' %>
+                       <%= form.office === off ? 'checked' : '' %> onchange="pickOffice()">
+                <div class="text-[14px] font-bold"><%= off %></div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">
+                  <% if (busy) { %>You already have <%= activeBy[off].ticketNo %> here
+                  <% } else { %><%= off === 'Cashier' ? 'Documents you pay for' : 'Free requests and claiming' %><% } %>
+                </div>
               </label>
-              <% if (isClaim && claimable.length) { %>
-              <% const ticked = [].concat(form.claimLines || []).map(String); %>
-              <fieldset class="mt-2.5 ml-7" data-claim-panel="<%= sv.id %>" hidden>
-                <legend class="text-[12px] font-semibold text-ink mb-1">What are you claiming?</legend>
-                <% claimable.forEach(function(c){ %>
-                <label class="flex items-start gap-2.5 py-1 cursor-pointer">
-                  <input type="checkbox" name="claimLines" value="<%= c.id %>" disabled
-                         <%= ticked.includes(String(c.id)) ? 'checked' : '' %> class="mt-0.5 rounded border-hair">
-                  <span>
-                    <span class="block text-[13px] font-semibold leading-tight"><%= c.copies > 1 ? c.name + ' x' + c.copies : c.name %></span>
-                    <span class="block text-[11px] text-slateSoft/75"><%= c.receiptNo || c.paidTicket %><% if (c.paidAt) { %> &middot; paid <%= c.paidAt %><% } %></span>
+              <% }) %>
+            </div>
+          </fieldset>
+          <p class="<%= UI.hint %>">One ticket covers one office. Choose the office first, then the documents.</p>
+        </div>
+      </section>
+
+      <!-- documents -->
+      <section class="<%= UI.card %> step" id="docSection" hidden>
+        <div class="<%= UI.cardHd %>">
+          <h3 class="<%= UI.cardTtl %>">Which documents?</h3>
+          <span id="pickCount" class="text-[11.5px] font-semibold text-slateSoft/80">0 of <%= settings.maxBatchDocuments %> selected</span>
+        </div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="sr-only">Requested documents</legend>
+            <div class="grid gap-2" id="docList" data-max="<%= settings.maxBatchDocuments %>">
+              <% documents.forEach(function(sv){ %>
+              <%# A Registrar document that collects something paid for at the Cashier.
+                  It is locked until there is a paid, unclaimed document to collect. %>
+              <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
+                 const claimLocked = isClaim && !claimable.length; %>
+              <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
+                   data-office="<%= sv.office %>" hidden>
+                <label class="flex items-start gap-3 <%= claimLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer' %>">
+                  <input type="checkbox" name="documentIds" value="<%= sv.id %>"
+                         data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
+                         data-purpose="<%= sv.needsPurpose ? 1 : 0 %>"
+                         <%= isClaim ? 'data-claim=1' : '' %> <%= claimLocked ? 'data-locked=1 disabled' : '' %>
+                         class="mt-0.5 rounded border-hair" onchange="recalc()">
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
+                    <span class="block text-[11.5px] text-slateSoft/80 mt-0.5">
+                      <%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %>
+                    </span>
+                  </span>
+                  <span class="shrink-0 flex items-center gap-1.5" id="qty-<%= sv.id %>" hidden>
+                    <label for="copies-<%= sv.id %>" class="text-[11.5px] text-slateSoft/80">Copies</label>
+                    <input id="copies-<%= sv.id %>" type="number" name="copies" value="1" min="1"
+                           max="<%= settings.maxCopies %>" data-copies="<%= sv.id %>" disabled
+                           class="w-16 rounded border border-hair px-2 py-1 text-[13px] text-center"
+                           onchange="recalc()" oninput="recalc()">
                   </span>
                 </label>
-                <% }) %>
-              </fieldset>
-              <% } else if (claimLocked) { %>
-              <p class="mt-2 ml-7 text-[12px] text-amber-800">
-                <% if (activeBy.Cashier && activeBy.Cashier.paymentStatus !== 'paid') { %>
-                Finish your payment at the Cashier first (<%= activeBy.Cashier.ticketNo %>). You can queue here to claim it right after.
-                <% } else { %>
-                Nothing to claim yet. Pay for the document at the Cashier first.
-                <% } %>
-              </p>
-              <% } %>
-              <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
-              <details class="mt-2 ml-7">
-                <summary class="cursor-pointer text-[11.5px] font-semibold text-brand">What you need to bring</summary>
-                <ul class="mt-1.5 space-y-1">
-                  <% requirements[sv.id].forEach(function(r){ %>
-                  <li class="text-[11.5px] text-slateSoft/85 flex gap-2">
-                    <span class="text-brand">&bull;</span>
-                    <span><%= r.label %><% if (r.note) { %> <span class="text-slateSoft/60">&mdash; <%= r.note %></span><% } %>
-                    <% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
-                  </li>
+                <% if (isClaim && claimable.length) { %>
+                <% const ticked = [].concat(form.claimLines || []).map(String); %>
+                <fieldset class="mt-2.5 ml-7" data-claim-panel="<%= sv.id %>" hidden>
+                  <legend class="text-[12px] font-semibold text-ink mb-1">What are you claiming?</legend>
+                  <% claimable.forEach(function(c){ %>
+                  <label class="flex items-start gap-2.5 py-1 cursor-pointer">
+                    <input type="checkbox" name="claimLines" value="<%= c.id %>" disabled
+                           <%= ticked.includes(String(c.id)) ? 'checked' : '' %> class="mt-0.5 rounded border-hair">
+                    <span>
+                      <span class="block text-[13px] font-semibold leading-tight"><%= c.copies > 1 ? c.name + ' x' + c.copies : c.name %></span>
+                      <span class="block text-[11px] text-slateSoft/75"><%= c.receiptNo || c.paidTicket %><% if (c.paidAt) { %> &middot; paid <%= c.paidAt %><% } %></span>
+                    </span>
+                  </label>
                   <% }) %>
-                </ul>
-              </details>
-              <% } %>
+                </fieldset>
+                <% } else if (claimLocked) { %>
+                <p class="mt-2 ml-7 text-[12px] text-amber-800">
+                  <% if (activeBy.Cashier && activeBy.Cashier.paymentStatus !== 'paid') { %>
+                  Finish your payment at the Cashier first (<%= activeBy.Cashier.ticketNo %>). You can queue here to claim it right after.
+                  <% } else { %>
+                  Nothing to claim yet. Pay for the document at the Cashier first.
+                  <% } %>
+                </p>
+                <% } %>
+                <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
+                <details class="mt-2 ml-7">
+                  <summary class="cursor-pointer text-[11.5px] font-semibold text-brand">What you need to bring</summary>
+                  <ul class="mt-1.5 space-y-1">
+                    <% requirements[sv.id].forEach(function(r){ %>
+                    <li class="text-[11.5px] text-slateSoft/85 flex gap-2">
+                      <span class="text-brand">&bull;</span>
+                      <span><%= r.label %><% if (r.note) { %> <span class="text-slateSoft/60">&mdash; <%= r.note %></span><% } %>
+                      <% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
+                    </li>
+                    <% }) %>
+                  </ul>
+                </details>
+                <% } %>
+              </div>
+              <% }) %>
             </div>
+            <p id="noDocs" class="text-[13px] text-slateSoft/70" hidden>No documents are available for this office.</p>
+          </fieldset>
+
+          <div class="mt-4 rounded-lg bg-ink text-white px-4 py-3.5 flex items-center justify-between">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-white/55">Amount due</div>
+              <div class="text-[11.5px] text-white/70" id="destLabel">Select a document to continue</div>
+            </div>
+            <div class="text-2xl font-extrabold font-mono" id="amountDue">PHP 0.00</div>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- purpose, only for documents that ask for one -->
+      <section class="<%= UI.card %> step" id="purposeSection" hidden>
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Purpose of request</h3></div>
+        <div class="<%= UI.body %>">
+          <label for="purpose" class="<%= UI.lbl %>">Purpose *</label>
+          <select id="purpose" name="purpose" class="<%= UI.input %> max-w-sm" required onchange="toggleOther()">
+            <option value="">Select purpose</option>
+            <% purposes.forEach(function(p){ %>
+            <option value="<%= p %>" <%= form.purpose === p ? 'selected' : '' %>><%= p %></option>
             <% }) %>
+          </select>
+          <div id="otherBox" class="hidden mt-3">
+            <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
+            <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %> max-w-lg" value="<%= form.otherPurpose || '' %>">
           </div>
-          <p id="noDocs" class="text-[13px] text-slateSoft/70" hidden>No documents are available for this office.</p>
-        </fieldset>
-
-        <div class="mt-4 rounded-lg bg-ink text-white px-4 py-3.5 flex items-center justify-between">
-          <div>
-            <div class="text-[11px] uppercase tracking-wider text-white/55">Amount due</div>
-            <div class="text-[11.5px] text-white/70" id="destLabel">Select a document to continue</div>
-          </div>
-          <div class="text-2xl font-extrabold font-mono" id="amountDue">PHP 0.00</div>
         </div>
+      </section>
+
+      <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
+        <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> px-6 ml-auto" data-next>Next &rarr;</button>
       </div>
-    </section>
-
-
-    <!-- STEP 5 - purpose, only for documents that ask for one -->
-    <section class="<%= UI.card %> step" id="purposeSection" hidden>
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Purpose of request</h3></div>
-      <div class="<%= UI.body %>">
-        <label for="purpose" class="<%= UI.lbl %>">Purpose *</label>
-        <select id="purpose" name="purpose" class="<%= UI.input %> max-w-sm" required onchange="toggleOther()">
-          <option value="">Select purpose</option>
-          <% purposes.forEach(function(p){ %>
-          <option value="<%= p %>" <%= form.purpose === p ? 'selected' : '' %>><%= p %></option>
-          <% }) %>
-        </select>
-        <div id="otherBox" class="hidden mt-3">
-          <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
-          <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %> max-w-lg" value="<%= form.otherPurpose || '' %>">
-        </div>
-      </div>
-    </section>
-
-    <!-- STEP 5 - queue category (granted by the admin, not chosen here) -->
-    <section class="<%= UI.card %> step">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Queue lane</h3></div>
-      <div class="<%= UI.body %>">
-        <% if (me.priorityStatus && me.priorityStatus !== 'none') { %>
-          <input type="hidden" name="queueCategory" value="priority">
-          <div class="rounded-lg bg-violet-50 border border-violet-200 px-4 py-3.5">
-            <div class="flex items-center gap-2">
-              <span class="<%= pill %> <%= tone(me.priorityStatus) %>">
-                <%= me.priorityStatus === 'pwd' ? 'PWD' : me.priorityStatus.charAt(0).toUpperCase() + me.priorityStatus.slice(1) %>
-              </span>
-              <span class="text-[13.5px] font-bold text-violet-900">Priority lane</span>
-            </div>
-            <p class="text-[12.5px] text-violet-800 mt-1.5">
-              Your account is approved for the priority lane, so this ticket is flagged automatically.
-            </p>
-          </div>
-        <% } else { %>
-          <input type="hidden" name="queueCategory" value="regular">
-          <div class="rounded-lg bg-mist border border-hair px-4 py-3.5">
-            <div class="text-[13.5px] font-bold">Regular lane</div>
-            <p class="text-[12.5px] text-slateSoft mt-1.5">
-              PWD, Senior Citizen and Pregnant clients are called ahead of the regular lane.
-              To join it, upload your ID or medical certificate for approval.
-            </p>
-            <a href="/student/priority" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-3">Request priority status</a>
-          </div>
-        <% } %>
-      </div>
-    </section>
-
-    <!-- STEP 7 - who will claim it -->
-    <section class="<%= UI.card %> step">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Who will claim this?</h3></div>
-      <div class="<%= UI.body %>">
-        <fieldset>
-          <legend class="sr-only">Claimant</legend>
-          <div class="grid sm:grid-cols-2 gap-2.5">
-            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
-              <input type="radio" name="claimant" value="self" class="sr-only"
-                     <%= form.claimant !== 'representative' ? 'checked' : '' %> onchange="toggleRep()">
-              <div class="text-[14px] font-bold">I will claim it myself</div>
-              <div class="text-[12px] text-slateSoft/80 mt-0.5">Bring a valid ID to the window</div>
-            </label>
-            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
-              <input type="radio" name="claimant" value="representative" class="sr-only"
-                     <%= form.claimant === 'representative' ? 'checked' : '' %> onchange="toggleRep()">
-              <div class="text-[14px] font-bold">Someone will claim it for me</div>
-              <div class="text-[12px] text-slateSoft/80 mt-0.5">A parent, relative or friend</div>
-            </label>
-          </div>
-        </fieldset>
-
-        <div id="repBox" class="hidden mt-4 space-y-3">
-          <div class="grid sm:grid-cols-3 gap-3">
-            <div>
-              <label for="repName" class="<%= UI.lbl %>">Representative's full name *</label>
-              <input id="repName" name="repName" class="<%= UI.input %>" value="<%= form.repName || '' %>">
-            </div>
-            <div>
-              <label for="repRelationship" class="<%= UI.lbl %>">Relationship to you *</label>
-              <input id="repRelationship" name="repRelationship" class="<%= UI.input %>"
-                     value="<%= form.repRelationship || '' %>" placeholder="Mother, sibling, friend">
-            </div>
-            <div>
-              <label for="repContact" class="<%= UI.lbl %>">Contact number</label>
-              <input id="repContact" name="repContact" class="<%= UI.input %>"
-                     value="<%= form.repContact || '' %>" placeholder="09XXXXXXXXX">
-            </div>
-          </div>
-          <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
-            Your representative must bring a signed authorisation letter, their own valid ID,
-            and a copy of yours. Staff will check these before releasing anything.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <div class="flex flex-wrap gap-2.5">
-      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px]">Submit request</button>
-      <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
     </div>
+
+    <!-- STEP 2 of 4: when -->
+    <div class="wiz-pane space-y-4" data-pane="2" hidden>
+      <!-- when -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">When do you need this?</h3></div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="sr-only">Choose when</legend>
+            <div class="grid sm:grid-cols-2 gap-2.5">
+              <% if (settings.allowSameDay) { %>
+              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="mode" value="now" class="sr-only" <%= form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
+                <div class="text-[14px] font-bold">Request now</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Join today's queue immediately</div>
+              </label>
+              <% } %>
+              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="mode" value="schedule" class="sr-only"
+                       <%= (!settings.allowSameDay || form.mode === 'schedule') ? 'checked' : '' %> onchange="toggleMode()">
+                <div class="text-[14px] font-bold">Schedule for a later date</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Book up to <%= settings.scheduleMaxDays %> days ahead</div>
+              </label>
+            </div>
+          </fieldset>
+          <div id="scheduleBox" class="hidden mt-3.5">
+            <label for="scheduledDate" class="<%= UI.lbl %>">Date of your visit</label>
+            <input id="scheduledDate" name="scheduledDate" type="date" class="<%= UI.input %> max-w-xs"
+                   value="<%= form.scheduledDate || '' %>" min="<%= today %>" max="<%= maxDate %>">
+            <span class="<%= UI.hint %>">
+              Any open day from <%= today %> up to <%= maxDate %>.
+            </span>
+          </div>
+          <% if (!settings.allowSameDay) { %>
+          <p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
+            Same-day requests are closed at the moment, so please pick a date.
+          </p>
+          <% } %>
+
+          <%# Quiet-hour advice. Informational only — the student may still come
+              whenever they like; this only says when the line is usually shorter.
+              All seven weekdays are embedded so the text follows the date they
+              pick without another request to the server. %>
+          <% var advWeek = { Cashier: peakAdvice.Cashier, Registrar: peakAdvice.Registrar };
+             var anyAdvice = advWeek.Cashier.some(Boolean) || advWeek.Registrar.some(Boolean); %>
+          <% if (anyAdvice) { %>
+          <div id="peakAdvice" class="mt-3.5 rounded-lg bg-brand-wash border border-brand-line px-3.5 py-3"
+               <%# The escaping output tag already makes the quotes attribute-safe.
+                   Escaping them by hand first would double-escape the string and
+                   break JSON.parse in the browser. %>
+               data-advice="<%= JSON.stringify(advWeek) %>"
+               data-today="<%= new Date().getDay() %>">
+            <div class="text-[12px] font-bold text-brand-deep mb-1.5">
+              Best time to come <span data-peak-day></span>
+            </div>
+            <ul data-peak-list class="space-y-1"></ul>
+            <span class="<%= UI.hint %>" data-peak-note></span>
+          </div>
+          <script>
+          (function () {
+            var box = document.getElementById('peakAdvice');
+            if (!box) return;
+            var week  = JSON.parse(box.dataset.advice);
+            var today = parseInt(box.dataset.today, 10);
+            var days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            var dayEl  = box.querySelector('[data-peak-day]');
+            var listEl = box.querySelector('[data-peak-list]');
+            var noteEl = box.querySelector('[data-peak-note]');
+
+            function paint(dow, isFuture) {
+              var rows = [];
+              ['Cashier', 'Registrar'].forEach(function (office) {
+                var a = week[office] && week[office][dow];
+                if (a) rows.push({ office: office, a: a });
+              });
+              if (!rows.length) { box.classList.add('hidden'); return; }
+              box.classList.remove('hidden');
+
+              dayEl.textContent = isFuture ? 'on ' + days[dow] : 'today (' + days[dow] + ')';
+
+              listEl.innerHTML = '';
+              var provisional = false;
+              rows.forEach(function (r) {
+                if (r.a.provisional) provisional = true;
+                var li = document.createElement('li');
+                li.className = 'text-[12.5px] text-slateSoft';
+                var quiet = r.a.quietest
+                  ? ', usually shorter around <strong>' + r.a.quietest.label + '</strong>'
+                  : '';
+                li.innerHTML = '<strong>' + r.office + ':</strong> busiest around <strong>'
+                             + r.a.busiest.label + '</strong>' + quiet + '.';
+                listEl.appendChild(li);
+              });
+
+              noteEl.textContent = provisional
+                ? 'There are not many ' + days[dow] + 's on record yet, so this is a rough guide '
+                  + 'from all days combined. You may come at any open hour.'
+                : 'Based on past ' + days[dow] + 's. You are free to come at any open hour — '
+                  + 'this is only a guide.';
+            }
+
+            // Which day is the student actually asking about?
+            function currentDow() {
+              var sched = document.querySelector('input[name=mode][value=schedule]');
+              var date  = document.getElementById('scheduledDate');
+              if (sched && sched.checked && date && date.value) {
+                var d = new Date(date.value + 'T00:00:00');
+                if (!isNaN(d)) return { dow: d.getDay(), future: true };
+              }
+              return { dow: today, future: false };
+            }
+
+            function refresh() { var c = currentDow(); paint(c.dow, c.future); }
+
+            document.querySelectorAll('input[name=mode]').forEach(function (r) {
+              r.addEventListener('change', refresh);
+            });
+            var dateInput = document.getElementById('scheduledDate');
+            if (dateInput) dateInput.addEventListener('change', refresh);
+            refresh();
+          })();
+          </script>
+          <% } %>
+        </div>
+      </section>
+
+      <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %>" data-back>&larr; Back</button>
+        <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> px-6 ml-auto" data-next>Next &rarr;</button>
+      </div>
+    </div>
+
+    <!-- STEP 3 of 4: your details -->
+    <div class="wiz-pane space-y-4" data-pane="3" hidden>
+      <!-- student info -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Your information</h3></div>
+        <div class="<%= UI.body %>">
+          <%- include('../../partials/name-fields', { nf: {
+                firstName: form.firstName || me.firstName, middleName: form.middleName || me.middleName,
+                lastName: form.lastName || me.lastName,
+                lblClass: UI.lbl, inputClass: UI.input
+              } }) %>
+          <% if (me.role !== 'guest') { %>
+          <div class="grid sm:grid-cols-4 gap-3 mt-3">
+            <div>
+              <label for="course" class="<%= UI.lbl %>">Course *</label>
+              <select id="course" name="course" class="<%= UI.input %>" required>
+                <% var pickedCourse = form.course || me.course || ''; %>
+                <option value="">Select</option>
+                <% courses.forEach(function(c){ %>
+                <option value="<%= c %>" <%= pickedCourse === c ? 'selected' : '' %>><%= c %></option>
+                <% }) %>
+                <% if (pickedCourse && courses.indexOf(pickedCourse) === -1) { %>
+                <option value="" selected disabled><%= pickedCourse %> — no longer offered, please re-select</option>
+                <% } %>
+              </select>
+            </div>
+            <div>
+              <label for="yearLevel" class="<%= UI.lbl %>">Year level *</label>
+              <select id="yearLevel" name="yearLevel" class="<%= UI.input %>" required>
+                <option value="">Select</option>
+                <% [1,2,3,4,5].forEach(function(y){ %>
+                <option value="<%= y %>" <%= String(form.yearLevel || me.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div>
+              <label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
+              <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= form.academicYear || me.academicYear || settings.academicYear %>">
+            </div>
+            <div>
+              <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
+              <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= form.studentNo || me.studentNo %>" placeholder="Optional">
+              <span class="<%= UI.hint %>">Optional</span>
+            </div>
+          </div>
+          <% } %>
+        </div>
+      </section>
+
+      <!-- who will claim it -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Who will claim this?</h3></div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="sr-only">Claimant</legend>
+            <div class="grid sm:grid-cols-2 gap-2.5">
+              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="claimant" value="self" class="sr-only"
+                       <%= form.claimant !== 'representative' ? 'checked' : '' %> onchange="toggleRep()">
+                <div class="text-[14px] font-bold">I will claim it myself</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Bring a valid ID to the window</div>
+              </label>
+              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="claimant" value="representative" class="sr-only"
+                       <%= form.claimant === 'representative' ? 'checked' : '' %> onchange="toggleRep()">
+                <div class="text-[14px] font-bold">Someone will claim it for me</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">A parent, relative or friend</div>
+              </label>
+            </div>
+          </fieldset>
+
+          <div id="repBox" class="hidden mt-4 space-y-3">
+            <div class="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label for="repName" class="<%= UI.lbl %>">Representative's full name *</label>
+                <input id="repName" name="repName" class="<%= UI.input %>" value="<%= form.repName || '' %>">
+              </div>
+              <div>
+                <label for="repRelationship" class="<%= UI.lbl %>">Relationship to you *</label>
+                <input id="repRelationship" name="repRelationship" class="<%= UI.input %>"
+                       value="<%= form.repRelationship || '' %>" placeholder="Mother, sibling, friend">
+              </div>
+              <div>
+                <label for="repContact" class="<%= UI.lbl %>">Contact number</label>
+                <input id="repContact" name="repContact" class="<%= UI.input %>"
+                       value="<%= form.repContact || '' %>" placeholder="09XXXXXXXXX">
+              </div>
+            </div>
+            <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
+              Your representative must bring a signed authorisation letter, their own valid ID,
+              and a copy of yours. Staff will check these before releasing anything.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %>" data-back>&larr; Back</button>
+        <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> px-6 ml-auto" data-next>Review &rarr;</button>
+      </div>
+    </div>
+
+    <!-- STEP 4 of 4: review and submit -->
+    <div class="wiz-pane space-y-4" data-pane="4" hidden>
+        <!-- review -->
+        <section class="<%= UI.card %>">
+          <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Review your request</h3></div>
+          <div class="<%= UI.body %>">
+            <dl id="reviewList" class="divide-y divide-hair text-[13px]"></dl>
+            <p class="<%= UI.hint %> mt-3">Something wrong? Click a step above or use Back to change it.</p>
+          </div>
+        </section>
+
+        <!-- queue category (granted by the admin, not chosen here) -->
+        <section class="<%= UI.card %> step">
+          <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Queue lane</h3></div>
+          <div class="<%= UI.body %>">
+            <% if (me.priorityStatus && me.priorityStatus !== 'none') { %>
+              <input type="hidden" name="queueCategory" value="priority">
+              <div class="rounded-lg bg-violet-50 border border-violet-200 px-4 py-3.5">
+                <div class="flex items-center gap-2">
+                  <span class="<%= pill %> <%= tone(me.priorityStatus) %>">
+                    <%= me.priorityStatus === 'pwd' ? 'PWD' : me.priorityStatus.charAt(0).toUpperCase() + me.priorityStatus.slice(1) %>
+                  </span>
+                  <span class="text-[13.5px] font-bold text-violet-900">Priority lane</span>
+                </div>
+                <p class="text-[12.5px] text-violet-800 mt-1.5">
+                  Your account is approved for the priority lane, so this ticket is flagged automatically.
+                </p>
+              </div>
+            <% } else { %>
+              <input type="hidden" name="queueCategory" value="regular">
+              <div class="rounded-lg bg-mist border border-hair px-4 py-3.5">
+                <div class="text-[13.5px] font-bold">Regular lane</div>
+                <p class="text-[12.5px] text-slateSoft mt-1.5">
+                  PWD, Senior Citizen and Pregnant clients are called ahead of the regular lane.
+                  To join it, upload your ID or medical certificate for approval.
+                </p>
+                <a href="/student/priority" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-3">Request priority status</a>
+              </div>
+            <% } %>
+          </div>
+        </section>
+
+      <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %>" data-back>&larr; Back</button>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px] ml-auto">Submit request</button>
+      </div>
+    </div>
+
   </form>
 </div>
 
@@ -512,6 +570,215 @@ function renumber(){
 }
 
 toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
+</script>
+
+<style>
+  /* "hidden" must win over layout classes such as flex (the Copies box). */
+  form [hidden]{ display:none !important }
+  .wiz-line{ position:absolute; top:22px; right:50%; width:100%; height:4px; border-radius:4px;
+             background:#DFE2E6; transition:background .35s }
+  .wiz-dot{ position:relative; z-index:1; width:46px; height:46px; border-radius:50%;
+            display:grid; place-items:center; font-weight:800; font-size:17px;
+            background:#fff; color:#9AA3AB; border:3px solid #DFE2E6;
+            transition:background .3s, color .3s, border-color .3s, transform .3s, box-shadow .3s }
+  .wiz-dot:disabled{ cursor:not-allowed }
+  .wiz-tick{ width:22px; height:22px; display:none }
+  .wiz-label{ margin-top:6px; text-align:center; font-size:11px; line-height:1.25; color:#9AA3AB }
+  .wiz-label b{ font-weight:700 }
+
+  /* finished: filled blue with a tick, clickable */
+  .wiz-item.is-done .wiz-dot{ background:#2185D5; border-color:#2185D5; color:#fff; cursor:pointer }
+  .wiz-item.is-done .wiz-dot:hover{ transform:scale(1.07) }
+  .wiz-item.is-done .wiz-num{ display:none }
+  .wiz-item.is-done .wiz-tick{ display:block }
+  .wiz-item.is-done .wiz-label{ color:#303841 }
+  .wiz-item.is-done .wiz-line,
+  .wiz-item.is-current .wiz-line{ background:#2185D5 }
+
+  /* current: larger, glowing */
+  .wiz-item.is-current .wiz-dot{ background:#2185D5; border-color:#fff; color:#fff; transform:scale(1.18);
+                                 box-shadow:0 0 0 4px rgba(33,133,213,.25), 0 6px 18px rgba(33,133,213,.45);
+                                 animation:wiz-glow 2s ease-in-out infinite }
+  .wiz-item.is-current .wiz-label{ color:#2185D5 }
+  @keyframes wiz-glow{
+    0%,100%{ box-shadow:0 0 0 4px rgba(33,133,213,.25), 0 6px 18px rgba(33,133,213,.45) }
+    50%    { box-shadow:0 0 0 9px rgba(33,133,213,.12), 0 6px 22px rgba(33,133,213,.55) }
+  }
+  .wiz-pane{ animation:wiz-in .3s ease-out }
+  @keyframes wiz-in{ from{ opacity:0; transform:translateY(8px) } to{ opacity:1; transform:none } }
+  @media (min-width:640px){ .wiz-label{ font-size:12px } .wiz-dot{ width:50px; height:50px } .wiz-line{ top:24px } }
+  @media (prefers-reduced-motion:reduce){ .wiz-item.is-current .wiz-dot, .wiz-pane{ animation:none } }
+</style>
+<script>
+(function () {
+  var form  = document.querySelector('form[action="/student/request"]');
+  var panes = [].slice.call(form.querySelectorAll('.wiz-pane'));
+  var items = [].slice.call(document.querySelectorAll('[data-step-item]'));
+  var LAST  = panes.length;
+  var current = 1;
+  var reached = 1;   // furthest step opened so far; those stay clickable
+
+  function pane(n) { return panes[n - 1]; }
+  // Visible within its step, ignoring whether the step itself is on screen.
+  function shown(el) {
+    for (var n = el; n && !(n.classList && n.classList.contains('wiz-pane')); n = n.parentElement) {
+      if (n.hidden || (n.classList && n.classList.contains('hidden'))) return false;
+    }
+    return true;
+  }
+  // The steps do the checking, so the browser's all-at-once check (which
+  // cannot point at a field on a hidden step) is switched off.
+  form.noValidate = true;
+
+  function showError(n, msg) {
+    var box = pane(n).querySelector('.wiz-error');
+    box.textContent = msg || '';
+    box.classList.toggle('hidden', !msg);
+  }
+
+  /** The step's own rules first, then the browser's checks on its visible fields. */
+  function check(n, quiet) {
+    var p = pane(n), msg = '';
+    if (n === 1) {
+      var office = form.querySelector('input[name=office]:checked');
+      var docs = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown);
+      var claim = docs.filter(function (d) { return d.dataset.claim === '1'; })[0];
+      if (!office) msg = 'Choose an office first.';
+      else if (!docs.length) msg = 'Select at least one document.';
+      else if (claim && !form.querySelector('input[name=claimLines]:checked'))
+        msg = 'Tick which paid document(s) you are claiming.';
+    }
+    if (!msg) {
+      var fields = [].filter.call(p.querySelectorAll('input, select, textarea'),
+        function (f) { return !f.disabled && f.type !== 'hidden' && shown(f); });
+      for (var i = 0; i < fields.length; i++) {
+        if (!fields[i].checkValidity()) {
+          if (!quiet) { showError(n, ''); fields[i].reportValidity(); }
+          return false;
+        }
+      }
+    }
+    if (!quiet) showError(n, msg);
+    return !msg;
+  }
+
+  function paintBar() {
+    items.forEach(function (li, i) {
+      var n = i + 1, btn = li.querySelector('.wiz-dot');
+      li.classList.toggle('is-done', n !== current && n <= reached);
+      li.classList.toggle('is-current', n === current);
+      btn.disabled = n > reached;
+      if (n === current) btn.setAttribute('aria-current', 'step'); else btn.removeAttribute('aria-current');
+    });
+  }
+
+  function go(n) {
+    // moving forward re-checks every step in between
+    for (var k = current; k < n; k++) {
+      if (!check(k, k !== current)) { if (k !== current) { show(k); check(k); } return; }
+    }
+    show(n);
+  }
+
+  function show(n, stay) {
+    current = n;
+    if (n > reached) reached = n;
+    panes.forEach(function (p, i) { p.hidden = i + 1 !== n; });
+    if (n === LAST) buildReview();
+    paintBar();
+    var top = document.querySelector('nav[aria-label="Request steps"]');
+    if (top && !stay) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function text(el) { return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; }
+  function row(dt, dd) {
+    return '<div class="flex flex-wrap justify-between gap-x-4 gap-y-0.5 py-2">' +
+           '<dt class="text-slateSoft/80">' + dt + '</dt><dd class="font-semibold text-right">' + dd + '</dd></div>';
+  }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  function buildReview() {
+    var out = [];
+    var office = form.querySelector('input[name=office]:checked');
+    if (office) out.push(row('Office', esc(office.value)));
+    var docs = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown).map(function (b) {
+      var name = text(b.closest('label').querySelector('.block'));
+      var c = form.querySelector('[data-copies="' + b.dataset.row + '"]');
+      var n = c && !c.disabled ? parseInt(c.value || '1', 10) : 1;
+      return esc(name) + (n > 1 ? ' &times;' + n : '');
+    });
+    out.push(row('Documents', docs.join('<br>') || '&mdash;'));
+    var claims = [].map.call(form.querySelectorAll('input[name=claimLines]:checked'), function (c) {
+      return esc(text(c.closest('label').querySelector('.block')));
+    });
+    if (claims.length) out.push(row('Claiming', claims.join('<br>')));
+    var purpose = document.getElementById('purpose');
+    if (purpose && shown(purpose) && purpose.value) {
+      var other = document.getElementById('otherPurpose');
+      out.push(row('Purpose', esc(purpose.value === 'Others' && other.value ? other.value : purpose.value)));
+    }
+    var sched = form.querySelector('input[name=mode][value=schedule]');
+    var date = document.getElementById('scheduledDate');
+    out.push(row('When', sched && sched.checked && date.value
+      ? esc(new Date(date.value + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))
+      : 'Today, join the queue now'));
+    var name = ['firstName', 'middleName', 'lastName'].map(function (id) {
+      var f = form.querySelector('[name=' + id + ']'); return f ? f.value.trim() : '';
+    }).filter(Boolean).join(' ');
+    out.push(row('Name', esc(name)));
+    var course = document.getElementById('course'), year = document.getElementById('yearLevel');
+    if (course && course.value) out.push(row('Course', esc(course.value + (year && year.value ? ', Year ' + year.value : ''))));
+    var rep = form.querySelector('input[name=claimant][value=representative]');
+    out.push(row('Claimed by', rep && rep.checked
+      ? esc((document.getElementById('repName').value || 'Representative') + ' (' + (document.getElementById('repRelationship').value || '') + ')')
+      : 'Myself'));
+    out.push(row('Amount due', '<span class="font-mono text-[15px]">' + esc(text(document.getElementById('amountDue'))) + '</span>'));
+    document.getElementById('reviewList').innerHTML = out.join('');
+  }
+
+  form.addEventListener('click', function (e) {
+    if (e.target.closest('[data-next]')) { e.preventDefault(); go(current + 1); }
+    if (e.target.closest('[data-back]')) { e.preventDefault(); show(current - 1); }
+  });
+  items.forEach(function (li, i) {
+    li.querySelector('.wiz-dot').addEventListener('click', function () {
+      var n = i + 1;
+      if (n < current) show(n); else if (n > current) go(n);
+    });
+  });
+  // Enter in a text box moves to the next step instead of submitting early
+  form.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && current < LAST && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && e.target.type !== 'radio') {
+      e.preventDefault(); go(current + 1);
+    }
+  });
+  // clear a step's message as soon as the student changes something in it
+  form.addEventListener('change', function (e) {
+    var p = e.target.closest('.wiz-pane');
+    if (p) showError(panes.indexOf(p) + 1, '');
+  });
+
+  // Last line of defence before sending: every step must pass. Runs before the
+  // page's "submit once" handler, which must not lock the button on a failure.
+  form.addEventListener('submit', function (e) {
+    for (var k = 1; k <= LAST; k++) {
+      if (!check(k, true)) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        show(k); check(k);
+        return;
+      }
+    }
+  });
+
+  // After the server turned a submission back, reopen the first step that
+  // still needs attention (or the review, if every step checks out).
+  var start = 1;
+  if (<%- JSON.stringify(!!formError) %>) {
+    start = LAST;
+    for (var k = 1; k < LAST; k++) if (!check(k, true)) { start = k; break; }
+  }
+  show(start, true);
+})();
 </script>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>
