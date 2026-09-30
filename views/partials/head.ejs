@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= title %> | SmartQ</title>
+<link rel="icon" href="/img/lcc-seal.jpg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = { theme: { extend: { colors: {
+  brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', wash:'#E7F1FA', line:'#C3DCF2' },
+  ink:'#303841', slateSoft:'#3A4750',
+  mist:'#F3F3F3', page:'#E9EBEF', hair:'#DFE2E6'
+}}}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body{font-family:'Public Sans',system-ui,sans-serif}
+  .fade-in{animation:fi .25s ease}
+  @keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media print{.no-print{display:none!important}body{background:#fff}}
+  :focus-visible{outline:2px solid #2185D5;outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body class="bg-page text-ink antialiased">
+<a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-3 focus:rounded focus:bg-brand focus:px-4 focus:py-2 focus:text-white">Skip to content</a>

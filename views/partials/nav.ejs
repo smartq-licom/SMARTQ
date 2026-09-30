@@ -1,0 +1,77 @@
+<%
+  const role = me.role;
+  const links = role === 'admin' ? [
+      ['/admin/dashboard','Dashboard'],['/admin/documents','Documents'],
+      ['/admin/students','Student Accounts'],['/admin/users','Staff Accounts'],
+      ['/admin/requirements','Requirements'],
+      ['/admin/priority','Priority Requests'],
+      ['/admin/calendar','Booking Calendar'],
+      ['/admin/windows','Service Windows'],
+      ['/admin/reports','Reports'],['/admin/settings','Settings']]
+    : (role === 'cashier' || role === 'registrar') ? [
+      ['/staff/dashboard', role === 'cashier' ? 'Cashier Counter' : 'Registrar Counter'],
+      ['/staff/calendar', 'Booking Calendar'],
+      ['/staff/documents', 'Documents']]
+    : [ ['/student/dashboard','Dashboard'],['/student/request','Request a Ticket'],
+        ['/student/history','History'],['/student/priority','Priority Lane'],
+        ['/student/account','Account'] ];
+  const boards = role === 'cashier' ? [['/display/cashier','Cashier Board']]
+               : role === 'registrar' ? [['/display/registrar','Registrar Board']]
+               : [['/display/cashier','Cashier Board'],['/display/registrar','Registrar Board']];
+  const activePath = typeof active !== 'undefined' ? active : '';
+  const initials = (me.firstName || '?').charAt(0) + (me.lastName || '').charAt(0);
+%>
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 bg-brand text-white flex flex-col
+       -translate-x-full lg:translate-x-0 transition-transform no-print">
+
+  <!-- seal and wordmark -->
+  <div class="px-5 py-5 border-b border-white/20 flex items-center gap-3">
+    <img src="/img/lcc-seal.jpg" alt="Libon Community College seal"
+         class="w-11 h-11 rounded-full bg-white ring-2 ring-white/40 object-cover shrink-0">
+    <div class="min-w-0">
+      <div class="text-[19px] font-extrabold tracking-tight leading-none">SmartQ</div>
+      <div class="text-[11px] text-white/70 leading-tight mt-1">Libon Community College</div>
+    </div>
+  </div>
+
+  <nav class="flex-1 py-3 overflow-y-auto">
+    <% links.forEach(function(l){ %>
+    <a href="<%= l[0] %>" class="block px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] transition-colors <%=
+      activePath === l[0]
+        ? 'bg-white text-brand-deep border-white font-semibold'
+        : 'border-transparent text-white/75 hover:text-white hover:bg-white/12' %>"><%= l[1] %></a>
+    <% }) %>
+
+    <div class="px-5 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/45">Public Display</div>
+    <% boards.forEach(function(b){ %>
+    <a href="<%= b[0] %>" target="_blank" rel="noopener"
+       class="block px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] border-transparent text-white/75 hover:text-white hover:bg-white/12 transition-colors"><%= b[1] %></a>
+    <% }) %>
+  </nav>
+
+  <div class="px-5 py-4 border-t border-white/20">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-white/20 grid place-items-center text-[12.5px] font-bold shrink-0 uppercase"><%= initials %></div>
+      <div class="min-w-0">
+        <div class="text-[13px] font-semibold truncate"><%= me.fullName %></div>
+        <div class="text-[11px] text-white/65 capitalize"><%= me.role %></div>
+      </div>
+    </div>
+    <a href="/logout" class="mt-3 block text-center rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-[12.5px] font-semibold transition-colors">Log out</a>
+  </div>
+</aside>
+
+<div class="lg:ml-60 flex flex-col min-h-screen">
+<header class="bg-white border-b border-hair h-14 flex items-center gap-3 px-5 sticky top-0 z-30 no-print">
+  <button id="menuBtn" class="lg:hidden rounded-lg border border-hair px-3 py-1.5 text-[12.5px] text-slateSoft" aria-label="Open menu">Menu</button>
+  <img src="/img/lcc-seal.jpg" alt="" width="26" height="26" class="rounded-full lg:hidden">
+  <h1 class="text-[15px] font-bold text-ink"><%= title %></h1>
+  <span class="<%= pill %> <%= tone(me.role) %> ml-auto capitalize"><%= me.role %></span>
+</header>
+<main id="main" class="flex-1 p-5 fade-in">
+<% if (flash) { %>
+<div role="status" class="mb-4 rounded-lg bg-brand-wash border-l-4 border-brand px-4 py-3 text-[13px] font-medium text-brand-deep"><%= flash %></div>
+<% } %>
+<% if (error) { %>
+<div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= error %></div>
+<% } %>

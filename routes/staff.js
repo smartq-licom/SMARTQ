@@ -1,0 +1,195 @@
+'use strict';
+const express = require('express');
+const router  = express.Router();
+const db      = require('../data/db');
+
+const deptOf = u => (u.role === 'cashier' ? 'Cashier' : 'Registrar');
+
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    const me   = req.session.user;
+    const dept = deptOf(me);
+    await db.processAutoCancel();
+    const [queue, windows, load] = await Promise.all([
+      db.getQueue(dept), db.getWindows(dept), db.getLoad(),
+    ]);
+    const mine = queue.find(t => t.staffId === me.id && ['called','serving'].includes(t.ticketStatus)) || null;
+    const timeLeft = mine ? await db.getTimeLeft(mine.id) : null;
+    const requirements = mine ? await db.getTransactionRequirements(mine.id) : [];
+
+    // Today's busy-hour shape for this office, so staff can time breaks and
+    // see a rush coming rather than discovering it at the window.
+    const settings = await db.getSettings();
+    const peakHours = await db.peak.hourlyProfile(dept, {
+      ...db.peak.optsFromSettings(settings),
+      weekday: new Date().getDay(),
+    });
+
+    res.render('pages/staff/dashboard', {
+      title: dept + ' Counter', dept, queue, windows, load: load[dept],
+      current: mine, timeLeft, requirements, peakHours,
+      nowHour: new Date().getHours(),
+      waitingPriority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority'),
+      waitingRegular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular'),
+      completed:       queue.filter(t => t.ticketStatus === 'completed'),
+      nextUp: await db.pickNextTicket(dept),
+    });
+  } catch (e) { next(e); }
+});
+
+const back = (req, res, msg, err) => {
+  if (msg) req.session.flash = msg;
+  if (err) req.session.error = err;
+  res.redirect('/staff/dashboard');
+};
+
+router.post('/call-next', async (req, res, next) => {
+  try {
+    const r = await db.callNext(req.session.user, deptOf(req.session.user));
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `Now calling ${r.ticketNo} at ${r.windowLabel}.`);
+  } catch (e) { next(e); }
+});
+
+// Call the same client again without disturbing the queue or the timer
+router.post('/recall/:id', async (req, res, next) => {
+  try {
+    const r = await db.recallTicket(req.session.user, req.params.id);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `${r.transaction.ticketNo} called again.`);
+  } catch (e) { next(e); }
+});
+
+router.post('/accept/:id', async (req, res, next) => {
+  try {
+    const r = await db.acceptTicket(req.session.user, req.params.id);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `Serving ${r.ticketNo}.`);
+  } catch (e) { next(e); }
+});
+
+router.post('/payment/:id', async (req, res, next) => {
+  try {
+    const r = await db.processPayment(req.session.user, req.params.id);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `Payment recorded. Receipt ${r.receiptNo} issued.`);
+  } catch (e) { next(e); }
+});
+
+router.post('/complete/:id', async (req, res, next) => {
+  try {
+    const me = req.session.user;
+    if (me.role === 'cashier') {
+      const r = await db.completeCashier(me, req.params.id);
+      if (r.error) return back(req, res, null, r.error);
+      return back(req, res, `${r.transaction.ticketNo} completed.`);
+    }
+    const r = await db.completeRegistrar(me, req.params.id);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `${r.ticketNo} completed.`);
+  } catch (e) { next(e); }
+});
+
+// Staff tick off the requirements the client actually handed over
+router.post('/requirements/:id', async (req, res, next) => {
+  try {
+    const r = await db.setTransactionRequirements(req.session.user, req.params.id, req.body.submitted);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, r.missing
+      ? `Saved. ${r.missing} required item${r.missing === 1 ? ' is' : 's are'} still missing.`
+      : 'All requirements recorded as submitted.');
+  } catch (e) { next(e); }
+});
+
+// Staff log a document that was submitted or released
+// ── Documents for this member's own office ───────────────────────────────────
+// The office comes from the session, never from the form, so a Cashier account
+// cannot reach a Registrar document by posting a different id.
+function officeOf(user) {
+  return user.role === 'cashier' ? 'Cashier' : 'Registrar';
+}
+
+// ── Booking calendar for this member's own office ────────────────────────────
+router.get('/calendar', async (req, res, next) => {
+  try {
+    const office = officeOf(req.session.user);
+    const now = new Date();
+    const year  = parseInt(req.query.y, 10) || now.getFullYear();
+    const month = parseInt(req.query.m, 10) || (now.getMonth() + 1);
+    const cal = await db.getCalendarMonth(office, year, month);
+    const pick = /^\d{4}-\d{2}-\d{2}$/.test(req.query.d || '') ? req.query.d : null;
+    res.render('pages/shared/calendar', {
+      title: office + ' Calendar', office, cal, base: '/staff/calendar',
+      canPickOffice: false,
+      pickDate: pick,
+      bookings: pick ? await db.getDayBookings(office, pick) : null,
+      pickDay: pick ? cal.days.find(function (x) { return x && x.date === pick; }) : null,
+      // Busy-hour profile for the weekday of the selected date, so whoever is
+      // deciding whether to cap or close the day can see what that weekday
+      // normally looks like before they set a limit.
+      peakDay: pick
+        ? await db.peak.hourlyProfile(office, {
+            ...db.peak.optsFromSettings(await db.getSettings()),
+            weekday: new Date(pick + 'T00:00:00').getDay(),
+          })
+        : null,
+    });
+  } catch (e) { next(e); }
+});
+
+router.post('/calendar/day', async (req, res, next) => {
+  try {
+    const office = officeOf(req.session.user);
+    const r = await db.setDayOverride(req.session.user, office, req.body.date, req.body);
+    if (r.error) req.session.error = r.error;
+    else req.session.flash = r.cleared
+      ? 'That day now follows the office defaults.'
+      : 'Day updated.';
+    const d = new Date(req.body.date + 'T00:00:00');
+    res.redirect(`/staff/calendar?y=${d.getFullYear()}&m=${d.getMonth() + 1}&d=${req.body.date}`);
+  } catch (e) { next(e); }
+});
+
+router.get('/documents', async (req, res, next) => {
+  try {
+    const office = officeOf(req.session.user);
+    res.render('pages/staff/documents', {
+      title: office + ' Documents', office,
+      documents: await db.getDocuments({ activeOnly: false, office }),
+      byDocument: await db.getRequirementsByDocument(),
+    });
+  } catch (e) { next(e); }
+});
+
+router.post('/documents', async (req, res, next) => {
+  try {
+    const office = officeOf(req.session.user);
+    // price is admin-only, so it is never taken from a staff submission
+    const r = await db.saveDocumentAsStaff(office, req.body);
+    if (r.error) req.session.error = r.error;
+    else req.session.flash = r.created ? 'Document added.' : 'Document updated.';
+    res.redirect('/staff/documents');
+  } catch (e) { next(e); }
+});
+
+router.post('/cancel/:id', async (req, res, next) => {
+  try {
+    const r = await db.cancelTicket(req.session.user, req.params.id, req.body.reason);
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, 'Ticket cancelled.');
+  } catch (e) { next(e); }
+});
+
+router.get('/ticket/:id', async (req, res, next) => {
+  try {
+    const t = await db.getTransaction(req.params.id);
+    if (!t) return res.status(404).render('pages/error', { title:'Not found', code:404, message:'Ticket not found.' });
+    res.render('pages/staff/ticket', {
+      title: 'Ticket ' + t.ticketNo, t, dept: deptOf(req.session.user),
+      history: await db.getHistory(t.id),
+      requirements: await db.getTransactionRequirements(t.id),
+    });
+  } catch (e) { next(e); }
+});
+
+module.exports = router;

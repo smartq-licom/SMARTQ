@@ -1,0 +1,118 @@
+<%
+  // Reusable confirmation modal. Any form or link carrying data-confirm opens
+  // it instead of the browser dialog:
+  //   <form data-confirm data-confirm-title="Confirm payment"
+  //         data-confirm-body="Record payment of PHP 110.00 for ticket C-002?"
+  //         data-confirm-ok="Confirm">
+%>
+<div id="confirmModal" class="fixed inset-0 z-50 hidden no-print" role="dialog"
+     aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+  <div id="confirmBackdrop" class="absolute inset-0 bg-ink/60"></div>
+  <div class="relative min-h-full flex items-center justify-center p-5">
+    <div class="w-full max-w-sm bg-white rounded-xl border border-hair shadow-xl overflow-hidden"
+         id="confirmPanel">
+      <div class="px-5 py-3.5 border-b border-hair">
+        <h2 id="confirmTitle" class="text-[15px] font-bold text-ink">Please confirm</h2>
+      </div>
+      <div class="px-5 py-4">
+        <p id="confirmBody" class="text-[13.5px] text-slateSoft leading-relaxed"></p>
+        <p id="confirmNote" class="text-[12px] text-slateSoft/70 mt-2" hidden></p>
+      </div>
+      <div class="px-5 py-3.5 border-t border-hair flex gap-2.5">
+        <button type="button" id="confirmCancel"
+                class="flex-1 rounded-lg bg-mist text-ink border border-hair px-4 py-2.5 text-[13px] font-semibold hover:bg-hair transition-colors">
+          Cancel
+        </button>
+        <button type="button" id="confirmOk"
+                class="flex-1 rounded-lg bg-brand text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-brand-deep transition-colors">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal    = document.getElementById('confirmModal');
+  var panel    = document.getElementById('confirmPanel');
+  var titleEl  = document.getElementById('confirmTitle');
+  var bodyEl   = document.getElementById('confirmBody');
+  var noteEl   = document.getElementById('confirmNote');
+  var okBtn    = document.getElementById('confirmOk');
+  var cancelBtn= document.getElementById('confirmCancel');
+  var backdrop = document.getElementById('confirmBackdrop');
+  var pending  = null;      // the form or link waiting on a decision
+  var lastFocus = null;
+
+  function open(opts, onConfirm) {
+    lastFocus = document.activeElement;
+    titleEl.textContent = opts.title || 'Please confirm';
+    bodyEl.textContent  = opts.body  || 'Do you want to continue?';
+    okBtn.textContent   = opts.ok    || 'Confirm';
+    noteEl.textContent  = opts.note  || '';
+    noteEl.hidden       = !opts.note;
+    okBtn.className = okBtn.className.replace(/bg-\S+|hover:bg-\S+/g, '').trim() + ' ' +
+      (opts.danger ? 'bg-red-700 hover:bg-red-800' : 'bg-brand hover:bg-brand-deep');
+    pending = onConfirm;
+    modal.classList.remove('hidden');
+    okBtn.focus();
+    document.addEventListener('keydown', onKey);
+  }
+
+  function close() {
+    modal.classList.add('hidden');
+    pending = null;
+    document.removeEventListener('keydown', onKey);
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  // Escape dismisses; Tab is trapped inside the dialog
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key !== 'Tab') return;
+    var f = [cancelBtn, okBtn];
+    var i = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+  }
+
+  okBtn.addEventListener('click', function () {
+    var go = pending; close(); if (go) go();
+  });
+  cancelBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+
+  // Available to page scripts:  smartqConfirm({title, body, ok}, fn)
+  window.smartqConfirm = open;
+
+  // Any element with data-confirm routes through the modal
+  document.querySelectorAll('[data-confirm]').forEach(function (el) {
+    if (el.tagName === 'FORM') {
+      el.addEventListener('submit', function (e) {
+        if (el.dataset.confirmed === '1') { el.dataset.confirmed = ''; return; }
+        e.preventDefault();
+        open({
+          title: el.dataset.confirmTitle, body: el.dataset.confirmBody,
+          ok: el.dataset.confirmOk, note: el.dataset.confirmNote,
+          danger: el.dataset.confirmDanger === '1',
+        }, function () {
+          el.dataset.confirmed = '1';
+          if (typeof el.requestSubmit === 'function') el.requestSubmit();
+          else el.submit();
+        });
+      });
+    } else {
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        var href = el.getAttribute('href');
+        open({
+          title: el.dataset.confirmTitle, body: el.dataset.confirmBody,
+          ok: el.dataset.confirmOk, note: el.dataset.confirmNote,
+          danger: el.dataset.confirmDanger === '1',
+        }, function () { if (href) window.location.href = href; });
+      });
+    }
+  });
+})();
+</script>

@@ -1,0 +1,99 @@
+<%- include('../../partials/auth-top', { title: title, wide: true }) %>
+
+  <h1 class="page-title">A few details and you are set</h1>
+  <p class="subtitle">
+    Signed in as <strong style="color:var(--ink)"><%= profile.email %></strong>.
+    We need these to put your request in the right queue.
+  </p>
+
+  <%- include('../../partials/auth-notes') %>
+
+  <div class="card">
+    <form method="POST" action="/complete-profile" data-once>
+      <fieldset style="border:0;padding:0;margin:0 0 20px">
+        <legend style="font-size:13px;font-weight:600;padding:0;margin-bottom:8px">I am</legend>
+        <div class="row row-2">
+          <label class="btn btn-outline" style="justify-content:flex-start;cursor:pointer;text-align:left;padding:14px 16px">
+            <input type="radio" name="role" value="student" checked onchange="roleSwap()" style="margin-right:4px">
+            <span>
+              <span style="display:block;font-weight:700">An enrolled student</span>
+              <span style="display:block;font-size:12.5px;color:var(--muted);font-weight:400">Access to every service</span>
+            </span>
+          </label>
+          <label class="btn btn-outline" style="justify-content:flex-start;cursor:pointer;text-align:left;padding:14px 16px">
+            <input type="radio" name="role" value="guest" onchange="roleSwap()" style="margin-right:4px">
+            <span>
+              <span style="display:block;font-weight:700">A guest or alumnus</span>
+              <span style="display:block;font-size:12.5px;color:var(--muted);font-weight:400">A limited set of documents</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <%- include('../../partials/name-fields', { nf: {
+            firstName: profile.firstName, middleName: profile.middleName, lastName: profile.lastName,
+            gridClass: 'row row-3', lblClass: '', inputClass: 'control'
+          } }) %>
+
+      <div id="studentOnly">
+        <div class="row row-2">
+          <div class="field">
+            <label for="course">Course</label>
+            <select id="course" name="course" class="control">
+              <option value="">Choose your course</option>
+              <% courses.forEach(function(c){ %>
+              <option value="<%= c %>" <%= profile.course === c ? 'selected' : '' %>><%= c %></option>
+              <% }) %>
+              <% if (profile.course && courses.indexOf(profile.course) === -1) { %>
+              <option value="" selected disabled><%= profile.course %> — no longer offered, please re-select</option>
+              <% } %>
+            </select>
+          </div>
+          <div class="field">
+            <label for="yearLevel">Year level</label>
+            <select id="yearLevel" name="yearLevel" class="control">
+              <option value="">Choose your year</option>
+              <% [1,2,3,4,5].forEach(function(y){ %>
+              <option value="<%= y %>" <%= String(profile.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label for="studentNo">Student number <span class="req">optional</span></label>
+            <input id="studentNo" name="studentNo" class="control" value="<%= profile.studentNo || '' %>"
+                   placeholder="2021-0001">
+            <span class="hint">Leave this blank if you do not know it.</span>
+          </div>
+          <div class="field">
+            <label for="academicYear">Academic year</label>
+            <input id="academicYear" name="academicYear" class="control"
+                   value="<%= profile.academicYear || academicYear %>">
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="contactNo">Contact number <span class="req">optional</span></label>
+        <input id="contactNo" name="contactNo" class="control" value="<%= profile.contactNo || '' %>"
+               placeholder="09XXXXXXXXX" style="max-width:220px">
+      </div>
+
+      <button type="submit" class="btn btn-primary" data-busy="Saving...">Finish setting up</button>
+    </form>
+  </div>
+
+  <p class="alt"><a href="/logout">Sign out instead</a></p>
+
+<%- include('../../partials/auth-bottom') %>
+<script>
+function roleSwap() {
+  var guest = document.querySelector('input[name=role][value=guest]').checked;
+  document.getElementById('studentOnly').style.display = guest ? 'none' : '';
+  ['course', 'yearLevel'].forEach(function (id) {
+    document.getElementById(id).required = !guest;
+  });
+}
+roleSwap();
+</script>

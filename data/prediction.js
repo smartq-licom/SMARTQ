@@ -1,0 +1,445 @@
+'use strict';
+/**
+ * Waiting-time estimation for SmartQ.
+ *
+ * Two different questions need two different models:
+ *
+ *   1. "I am holding ticket R-014, when will I be called?"
+ *      Position-based. We know exactly where the client stands, so counting
+ *      the queue ahead of them beats any probabilistic model.
+ *
+ *   2. "Should I come to the office at all right now?"
+ *      The client has no position yet, so we fall back to queueing theory —
+ *      Erlang C on an M/M/c queue — to predict the wait for someone who
+ *      arrives this minute.
+ *
+ * Service time uses the MEDIAN, not the mean. One 40-minute enrolment problem
+ * would drag a mean upwards and make every later estimate too pessimistic.
+ */
+const pool = require('../database/connection');
+const q = async (sql, p = []) => (await pool.execute(sql, p))[0];
+
+// ── statistics helpers ───────────────────────────────────────────────────────
+function median(values) {
+  if (!values.length) return null;
+  const a = values.slice().sort((x, y) => x - y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+
+/**
+ * Exponentially weighted moving average.
+ * Recent transactions matter more, but one outlier cannot dominate.
+ * alpha 0.2 means roughly the last 5 observations carry most of the weight.
+ */
+function ewma(values, alpha = 0.2) {
+  if (!values.length) return null;
+  return values.reduce((acc, v, i) => (i === 0 ? v : alpha * v + (1 - alpha) * acc), 0);
+}
+
+// ── service time per item, with a fallback ladder ────────────────────────────
+/**
+ * Ladder, most specific first:
+ *   1. median of recent completions of THIS item
+ *   2. median of recent completions in the same office
+ *   3. the baseline minutes the admin configured for the item
+ */
+async function getDocumentStats(minSamples = 3, lookback = 30) {
+  const rows = await q(
+    `SELECT td.document_name AS name, t.department, t.actual_minutes AS mins
+     FROM transactions t
+     JOIN transaction_documents td ON td.transaction_id = t.id
+     WHERE t.ticket_status='completed' AND t.actual_minutes IS NOT NULL
+       AND t.actual_minutes BETWEEN 1 AND 240
+     ORDER BY t.completed_at DESC`);
+
+  const byItem = {}, byDept = {};
+  rows.forEach(r => {
+    (byItem[r.name] = byItem[r.name] || []).push(Number(r.mins));
+    (byDept[r.department] = byDept[r.department] || []).push(Number(r.mins));
+  });
+
+  const documentStats = {};
+  for (const name in byItem) {
+    const recent = byItem[name].slice(0, lookback);
+    documentStats[name] = {
+      samples: recent.length,
+      median: median(recent),
+      ewma: ewma(recent.slice().reverse()),
+      usable: recent.length >= minSamples,
+    };
+  }
+  const deptStats = {};
+  for (const d in byDept) {
+    const recent = byDept[d].slice(0, lookback * 3);
+    deptStats[d] = { samples: recent.length, median: median(recent), usable: recent.length >= minSamples };
+  }
+  return { documentStats, deptStats };
+}
+
+/**
+ * Minutes to allow for one transaction covering these items.
+ * Returns the figure plus which rung of the ladder produced it, so the
+ * admin screen can show whether a number is learned or assumed.
+ */
+async function estimateService(items, department, settings, stats) {
+  const s = stats || await getDocumentStats(settings.minSamples);
+  let total = 0;
+  let source = 'baseline';
+
+  for (const it of items) {
+    const st = s.documentStats[it.name];
+    if (st && st.usable) {
+      total += st.median;
+      source = 'historical';
+    } else if (s.deptStats[department] && s.deptStats[department].usable) {
+      total += s.deptStats[department].median;
+      if (source !== 'historical') source = 'office';
+    } else {
+      total += it.baselineMinutes || settings.avgServiceMinutes;
+    }
+  }
+  return { minutes: Math.max(1, Math.round(total)), source };
+}
+
+// ── model 1: position-based wait for a client who already has a ticket ───────
+/**
+ * Counts what is genuinely ahead of this ticket:
+ *   - everyone in the same lane who arrived earlier
+ *   - priority tickets that will jump ahead of a regular ticket
+ *   - the clients currently being served
+ * then divides by the number of windows actually open.
+ */
+async function positionWait(department, { lane = 'regular', requestedAt = null, ticketId = null } = {}) {
+  const settings = await require('./db').getSettings();
+  const stats    = await getDocumentStats(settings.minSamples);
+
+  const wins = await q(
+    `SELECT COUNT(*) AS c FROM windows WHERE department=? AND status='open'`, [department]);
+  const openWindows = Number(wins[0].c) || 0;
+  if (!openWindows) return { minutes: null, aheadCount: 0, openWindows: 0, closed: true };
+
+  // same lane, arrived earlier (id breaks whole-second timestamp ties)
+  const sameLane = await q(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
+       AND queue_category=?
+       ${requestedAt ? 'AND (requested_at < ? OR (requested_at = ? AND id < ?))' : ''}`,
+    requestedAt ? [department, lane, requestedAt, requestedAt, ticketId || 0]
+                : [department, lane]);
+  const ahead = Number(sameLane[0].c) || 0;
+
+  // A regular ticket also waits behind priority clients, because the queue
+  // alternates priority then regular whenever both lanes have people.
+  let jumpers = 0;
+  if (lane === 'regular') {
+    const p = await q(
+      `SELECT COUNT(*) AS c FROM transactions
+       WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
+         AND queue_category='priority'`, [department]);
+    jumpers = Math.min(Number(p[0].c) || 0, ahead + 1);   // alternation: at most one per regular
+  }
+
+  // clients already at a window still have to finish
+  const serving = await q(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND ticket_status IN ('called','serving')`,
+    [department]);
+  const inService = Number(serving[0].c) || 0;
+
+  const perClient = (stats.deptStats[department] && stats.deptStats[department].usable)
+    ? stats.deptStats[department].median
+    : settings.avgServiceMinutes;
+
+  const effectiveAhead = ahead + jumpers + inService * 0.5;   // half a service on average
+  const minutes = Math.round((effectiveAhead / openWindows) * perClient);
+
+  return {
+    minutes: Math.max(0, minutes),
+    aheadCount: ahead, jumpers, inService, openWindows,
+    perClient: Math.round(perClient * 10) / 10,
+    method: 'position',
+    source: (stats.deptStats[department] && stats.deptStats[department].usable) ? 'historical' : 'baseline',
+  };
+}
+
+// ── observed pace: how fast is this office ACTUALLY moving today? ────────────
+/**
+ * Measures the real interval between consecutive completions today.
+ *
+ *   C-004 completed 09:12
+ *   C-005 completed 09:17   -> 5 min
+ *   C-006 completed 09:21   -> 4 min
+ *   C-007 completed 09:28   -> 7 min   => pace = median(5,4,7) = 5 min/client
+ *
+ * This beats an assumed service time because it silently includes everything
+ * that really happens: slow mornings, a window closing, staff stepping away.
+ *
+ * Gaps longer than `maxGap` are dropped — they are breaks or lunch, not work.
+ */
+async function observedPace(department, { sample = 8, maxGap = 45, minGaps = 3 } = {}) {
+  const rows = await q(
+    `SELECT completed_at FROM transactions
+     WHERE department=? AND service_date=CURDATE()
+       AND ticket_status='completed' AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC LIMIT ?`, [department, sample + 1]);
+
+  if (rows.length < 2) return { pace: null, gaps: 0, basis: 'none' };
+
+  // rows are newest first; walk back to get the interval between each pair
+  const gaps = [];
+  for (let i = 0; i < rows.length - 1; i++) {
+    const mins = (new Date(rows[i].completed_at) - new Date(rows[i + 1].completed_at)) / 60000;
+    if (mins > 0 && mins <= maxGap) gaps.push(mins);
+  }
+  if (gaps.length < minGaps) return { pace: null, gaps: gaps.length, basis: 'none' };
+
+  // Divide by the windows sharing the load: three windows completing one
+  // client every 5 minutes each is a 5-minute pace per window, and the gaps
+  // already reflect the combined output, so no extra division is needed.
+  return {
+    pace: Math.max(0.5, median(gaps)),
+    gaps: gaps.length,
+    sampleSize: rows.length,
+    basis: 'observed',
+  };
+}
+
+/**
+ * Estimated time until this ticket is called.
+ * Returns both a duration and a clock time, plus the basis so the screen can
+ * tell the client whether it is measured or merely assumed.
+ */
+async function ticketEta(t) {
+  const db       = require('./db');
+  const settings = await db.getSettings();
+
+  // already at the window, or finished
+  if (['called', 'serving'].includes(t.ticketStatus))
+    return { state: 'now', label: 'It is your turn', minutes: 0, seconds: 0 };
+  if (['completed', 'cancelled', 'no-show'].includes(t.ticketStatus))
+    return { state: 'done', label: null, minutes: null };
+
+  // scheduled for a later day
+  const today = db.today();
+  if (t.serviceDate && t.serviceDate > today)
+    return { state: 'scheduled', label: 'Scheduled for ' + t.serviceDate, minutes: null };
+
+  const wins = await q(
+    `SELECT COUNT(*) AS c FROM windows WHERE department=? AND status='open'`, [t.department]);
+  const openWindows = Number(wins[0].c) || 0;
+  if (!openWindows)
+    return { state: 'closed', label: 'No window is open right now', minutes: null, openWindows: 0 };
+
+  // how many are genuinely ahead in this ticket's lane
+  const same = await q(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
+       AND queue_category=?
+       AND (requested_at < ? OR (requested_at = ? AND id < ?))`,
+    [t.department, t.queueCategory, t.requestedAt, t.requestedAt, t.id]);
+  let ahead = Number(same[0].c) || 0;
+
+  // regular tickets also wait behind priority clients (the queue alternates)
+  let jumpers = 0;
+  if (t.queueCategory === 'regular') {
+    const p = await q(
+      `SELECT COUNT(*) AS c FROM transactions
+       WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
+         AND queue_category='priority'`, [t.department]);
+    jumpers = Math.min(Number(p[0].c) || 0, ahead + 1);
+  }
+
+  // anyone at a window still has to finish
+  const busy = await q(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND ticket_status IN ('called','serving')`,
+    [t.department]);
+  const inService = Number(busy[0].c) || 0;
+
+  // pace: measured today first, then item history, then the office default
+  const obs = await observedPace(t.department);
+  let pace = obs.pace, basis = obs.basis, basisLabel;
+
+  if (!pace) {
+    const stats = await getDocumentStats(settings.minSamples);
+    const items = t.items || [];
+    const itemStat = items.length ? stats.documentStats[items[0].name] : null;
+    if (itemStat && itemStat.usable) {
+      pace = itemStat.median / Math.max(1, openWindows);
+      basis = 'history';
+    } else if (stats.deptStats[t.department] && stats.deptStats[t.department].usable) {
+      pace = stats.deptStats[t.department].median / Math.max(1, openWindows);
+      basis = 'history';
+    } else {
+      pace = settings.avgServiceMinutes / Math.max(1, openWindows);
+      basis = 'estimate';
+    }
+  }
+
+  basisLabel = basis === 'observed'
+      ? `based on the last ${obs.gaps + 1} clients served`
+    : basis === 'history'
+      ? 'based on how long this service usually takes'
+      : 'estimate only, no data yet today';
+
+  const effective = ahead + jumpers + inService * 0.5;
+  const minutes   = Math.round(effective * pace);
+
+  if (effective <= 0) {
+    return {
+      state: 'next', label: 'You are next', minutes: 0, seconds: 0,
+      ahead: 0, jumpers, inService, pace: Math.round(pace * 10) / 10,
+      basis, basisLabel, openWindows,
+    };
+  }
+
+  const at = new Date(Date.now() + minutes * 60000);
+  const pad = n => String(n).padStart(2, '0');
+  let h = at.getHours(); const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+
+  return {
+    state: 'waiting',
+    minutes,
+    seconds: minutes * 60,
+    atClock: `${h}:${pad(at.getMinutes())} ${ampm}`,
+    ahead, jumpers, inService,
+    pace: Math.round(pace * 10) / 10,
+    basis, basisLabel, openWindows,
+  };
+}
+
+// ── model 2: Erlang C, for someone deciding whether to come at all ───────────
+/**
+ * Erlang C: probability that an arriving client has to wait at all.
+ *   a = offered load = lambda / mu
+ *   c = number of servers
+ * Computed iteratively to avoid factorial overflow.
+ */
+function erlangC(lambda, mu, c) {
+  if (c <= 0 || mu <= 0) return 1;
+  const a = lambda / mu;
+  const rho = a / c;
+  if (rho >= 1) return 1;              // arrivals outpace service: always a queue
+
+  let sum = 0, term = 1;
+  for (let k = 0; k < c; k++) {
+    if (k > 0) term *= a / k;
+    sum += term;
+  }
+  const last = term * (a / c);
+  const numerator = last / (1 - rho);
+  return numerator / (sum + numerator);
+}
+
+/** Arrivals per minute over the recent window. */
+async function arrivalRate(department, minutes = 60) {
+  const r = await q(
+    `SELECT COUNT(*) AS c FROM transactions
+     WHERE department=? AND requested_at > DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+    [department, minutes]);
+  return (Number(r[0].c) || 0) / minutes;
+}
+
+/**
+ * Expected wait for someone arriving right now, from queueing theory.
+ * Wq = C(c, a) / (c*mu - lambda)
+ */
+async function arrivalWait(department) {
+  const settings = await require('./db').getSettings();
+  const stats    = await getDocumentStats(settings.minSamples);
+
+  const wins = await q(
+    `SELECT COUNT(*) AS c FROM windows WHERE department=? AND status='open'`, [department]);
+  const c = Number(wins[0].c) || 0;
+  if (!c) return { minutes: null, closed: true, method: 'erlang-c' };
+
+  const serviceMin = (stats.deptStats[department] && stats.deptStats[department].usable)
+    ? stats.deptStats[department].median
+    : settings.avgServiceMinutes;
+
+  const mu     = 1 / serviceMin;              // clients served per minute, per window
+  const lambda = await arrivalRate(department);
+  const util   = lambda / (c * mu);
+
+  if (lambda <= 0) return { minutes: 0, utilisation: 0, servers: c, method: 'erlang-c', serviceMin };
+
+  if (util >= 1) {
+    // Demand exceeds capacity; the theoretical wait is unbounded, so fall back
+    // to draining the queue that actually exists.
+    const backlog = await q(
+      `SELECT COUNT(*) AS n FROM transactions
+       WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'`, [department]);
+    return {
+      minutes: Math.round((Number(backlog[0].n) || 0) / c * serviceMin),
+      utilisation: Math.round(util * 100) / 100, servers: c,
+      overloaded: true, method: 'backlog', serviceMin,
+    };
+  }
+
+  const pWait = erlangC(lambda, mu, c);
+  const wq    = pWait / (c * mu - lambda);
+  return {
+    minutes: Math.max(0, Math.round(wq)),
+    probabilityOfWaiting: Math.round(pWait * 100),
+    utilisation: Math.round(util * 100) / 100,
+    servers: c, arrivalsPerHour: Math.round(lambda * 60 * 10) / 10,
+    serviceMin: Math.round(serviceMin * 10) / 10,
+    method: 'erlang-c',
+  };
+}
+
+// ── accuracy: how good were the predictions? ─────────────────────────────────
+/**
+ * Mean Absolute Error between the wait predicted when the ticket was issued
+ * and the wait the client actually experienced. This is the number to report
+ * in the results chapter.
+ */
+async function getAccuracy(from = null, to = null) {
+  const range = from && to ? 'AND t.service_date BETWEEN ? AND ?' : '';
+  const args  = from && to ? [from, to] : [];
+
+  const rows = await q(
+    `SELECT t.predicted_wait AS predicted,
+            TIMESTAMPDIFF(MINUTE, t.requested_at, t.called_at) AS actual,
+            t.department, t.queue_category
+     FROM transactions t
+     WHERE t.predicted_wait IS NOT NULL AND t.called_at IS NOT NULL ${range}`, args);
+
+  if (!rows.length) {
+    return { samples: 0, mae: null, rmse: null, within5: null, byDept: {}, baselineMae: null };
+  }
+
+  let absSum = 0, sqSum = 0, within5 = 0;
+  const byDept = {};
+  rows.forEach(r => {
+    const err = Math.abs(Number(r.predicted) - Number(r.actual));
+    absSum += err;
+    sqSum  += err * err;
+    if (err <= 5) within5++;
+    const d = byDept[r.department] = byDept[r.department] || { n: 0, sum: 0 };
+    d.n++; d.sum += err;
+  });
+
+  const n = rows.length;
+  Object.keys(byDept).forEach(d => {
+    byDept[d].mae = Math.round((byDept[d].sum / byDept[d].n) * 10) / 10;
+  });
+
+  return {
+    samples: n,
+    mae:   Math.round((absSum / n) * 10) / 10,
+    rmse:  Math.round(Math.sqrt(sqSum / n) * 10) / 10,
+    within5: Math.round((within5 / n) * 100),
+    byDept,
+  };
+}
+
+module.exports = {
+  median, ewma, erlangC,
+  getDocumentStats, estimateService,
+  observedPace, ticketEta,
+  positionWait, arrivalWait, arrivalRate,
+  getAccuracy,
+};

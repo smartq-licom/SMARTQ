@@ -1,0 +1,130 @@
+<%
+  // Sounds an alert whenever a NEW announcement appears. `chimeId` is the
+  // newest announcement id; when it changes between refreshes, a number has
+  // just been called.
+  //
+  // There is no sound button anywhere. The alert fires when staff press Call
+  // Next or Call Again, and the boards and the student's ticket page follow
+  // along automatically when a new announcement appears.
+%>
+<script>
+(function () {
+  var KEY = 'smartq.chime.<%= chimeScope %>';
+  var now = '<%= chimeId || "" %>';
+  var ctx = null, unlocked = false, pending = false;
+
+  function audio() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    return ctx;
+  }
+
+  /**
+   * Three rising tones, played twice, on a square wave through a compressor.
+   * Square carries further over room noise than a pure sine, and the repeat
+   * gives someone a second chance to look up.
+   */
+  function alertSound() {
+    var a = audio();
+    if (!a) return false;
+    if (a.state === 'suspended') { a.resume(); }
+    if (a.state !== 'running') return false;
+
+    var comp = a.createDynamicsCompressor();
+    var master = a.createGain();
+    master.gain.value = 0.9;
+    comp.connect(master); master.connect(a.destination);
+
+    // note, start offset
+    var seq = [
+      [784, 0.00], [988, 0.16], [1319, 0.32],
+      [784, 0.62], [988, 0.78], [1319, 0.94]
+    ];
+    seq.forEach(function (n) {
+      var o = a.createOscillator(), g = a.createGain();
+      o.type = 'square';
+      o.frequency.value = n[0];
+      o.connect(g); g.connect(comp);
+      var t0 = a.currentTime + n[1];
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.015);
+      g.gain.setValueAtTime(0.5, t0 + 0.14);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.26);
+      o.start(t0); o.stop(t0 + 0.3);
+    });
+    return true;
+  }
+
+  // a visible pulse as well, for anyone who cannot hear it
+  function flash() {
+    var el = document.createElement('div');
+    el.style.cssText = 'position:fixed;inset:0;z-index:60;pointer-events:none;' +
+      'background:#2185D5;opacity:0;transition:opacity .18s';
+    document.body.appendChild(el);
+    var n = 0;
+    (function pulse() {
+      if (n >= 6) { el.remove(); return; }
+      el.style.opacity = (n % 2 === 0) ? '0.22' : '0';
+      n++; setTimeout(pulse, 180);
+    })();
+  }
+
+  function ring() {
+    flash();
+    if (!alertSound()) pending = true;   // will sound the moment the page is touched
+  }
+
+  // Forms marked data-sound (Call Next, Call Again) play the alert on the spot.
+  // The staff member's own click satisfies the browser's audio rule, so nothing
+  // ever needs enabling on the counter machine.
+  /**
+   * Any form marked data-sound plays the alert on the spot, then submits.
+   * The click itself satisfies the browser's audio rule, so nothing needs
+   * enabling - and the short delay lets the alert finish before the page
+   * reloads and cuts it off.
+   */
+  document.querySelectorAll('form[data-sound]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.dataset.rang === '1') return;          // second pass, let it through
+      e.preventDefault();
+      f.dataset.rang = '1';
+      unlocked = true;
+      flash();
+      alertSound();
+      var b = f.querySelector('[type=submit]');
+      if (b) { b.disabled = true; b.dataset.label = b.textContent; b.textContent = 'Calling...'; }
+      setTimeout(function () {
+        if (typeof f.requestSubmit === 'function') f.requestSubmit(); else f.submit();
+      }, 1250);                                     // the alert runs ~1.2s
+    });
+  });
+
+  // expose it so other scripts can sound the alert too
+  window.smartqAlert = function () { flash(); alertSound(); };
+
+  function unlock() {
+    if (unlocked) return;
+    var a = audio();
+    if (!a) return;
+    if (a.state === 'suspended') a.resume();
+    unlocked = true;
+    if (pending) { pending = false; alertSound(); }
+  }
+  ['pointerdown', 'keydown', 'touchstart', 'mousemove'].forEach(function (ev) {
+    window.addEventListener(ev, unlock, { passive: true });
+  });
+
+  // On a kiosk browser started with autoplay allowed this needs no touch at all.
+  var a0 = audio();
+  if (a0 && a0.state === 'suspended') a0.resume().catch(function () {});
+
+  if (!now) return;
+  var last = null;
+  try { last = sessionStorage.getItem(KEY); } catch (e) {}
+  if (last !== null && last !== now) ring();
+  try { sessionStorage.setItem(KEY, now); } catch (e) {}
+})();
+</script>

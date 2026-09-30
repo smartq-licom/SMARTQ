@@ -1,0 +1,91 @@
+<%- include('../../partials/head') %>
+<% if (['waiting','called','serving'].includes(t.ticketStatus)) { %><meta http-equiv="refresh" content="10"><% } %>
+<%- include('../../partials/nav', { active: '/student/dashboard' }) %>
+<div class="max-w-lg mx-auto">
+  <div class="<%= UI.card %> text-center p-8">
+    <div class="text-[11px] uppercase tracking-widest text-slateSoft/80">Your queue number</div>
+    <div class="font-mono text-6xl font-extrabold tracking-tight mt-1"><%= t.ticketNo %></div>
+    <div class="flex justify-center gap-2 mt-3">
+      <span class="<%= pill %> <%= tone(t.queueCategory) %>"><%= t.queueCategory %></span>
+      <span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
+      <span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span>
+    </div>
+    <dl class="mt-6 text-left space-y-2.5 text-[13px]">
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Name</dt><dd class="font-semibold text-right"><%= t.fullName %></dd></div>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Destination</dt><dd class="font-semibold"><%= t.department %></dd></div>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Requested</dt>
+        <dd class="font-semibold text-right"><%= t.items.map(function(i){return i.name}).join(', ') %></dd></div>
+      <% if (t.purposeText) { %><div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Purpose</dt><dd class="font-semibold text-right"><%= t.purposeText %></dd></div><% } %>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Amount</dt>
+        <dd class="font-extrabold font-mono"><%= t.amountDue > 0 ? peso(t.amountDue) : 'No payment' %></dd></div>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Date</dt>
+        <dd class="font-mono text-[12px]"><%= t.serviceDate %> <%= t.timeIn %></dd></div>
+      <% if (t.isScheduled) { %>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Scheduled</dt><dd class="font-mono text-[12px] font-bold"><%= t.scheduledDate %></dd></div>
+      <% } %>
+      <% if (t.parentTicket) { %>
+      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Cashier ticket</dt><dd class="font-mono text-[12px]"><%= t.parentTicket %></dd></div>
+      <% } %>
+      <div class="flex justify-between gap-4"><dt class="text-slateSoft/80">Transaction status</dt>
+        <dd><span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span></dd></div>
+    </dl>
+    <div class="mt-5 text-left">
+      <%- include('../../partials/eta', { eta: eta }) %>
+    </div>
+
+    <% if (t.claimant === 'representative') { %>
+    <div class="mt-4 text-left rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+      <div class="text-[12.5px] font-bold text-amber-900">To be claimed by a representative</div>
+      <div class="text-[12.5px] text-amber-800 mt-1">
+        <%= t.repName %><% if (t.repRelationship) { %> (<%= t.repRelationship %>)<% } %><% if (t.repContact) { %> &middot; <%= t.repContact %><% } %>
+      </div>
+      <div class="text-[11.5px] text-amber-800/85 mt-1.5">
+        They must bring a signed authorisation letter, their own valid ID, and a copy of yours.
+      </div>
+    </div>
+    <% } %>
+
+    <% if (requirements && requirements.length) { %>
+    <div class="mt-4 text-left <%= UI.card %>">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Bring these with you</h3></div>
+      <div class="<%= UI.body %>">
+        <ul class="space-y-2">
+          <% requirements.forEach(function(r){ %>
+          <li class="flex items-start gap-2.5 text-[13px]">
+            <span class="<%= r.submitted ? 'text-emerald-600' : 'text-slateSoft/40' %> mt-0.5">
+              <%= r.submitted ? '&#10003;' : '&#9633;' %>
+            </span>
+            <span class="<%= r.submitted ? 'text-slateSoft/60 line-through' : '' %>">
+              <%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %>
+            </span>
+          </li>
+          <% }) %>
+        </ul>
+        <p class="<%= UI.hint %>">Staff tick these off at the window as you hand them over.</p>
+      </div>
+    </div>
+    <% } %>
+    <% if (['called','serving'].includes(t.ticketStatus)) { %>
+    <div class="mt-5 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3">
+      <div class="text-[14px] font-bold text-emerald-900">It is your turn</div>
+      <div class="text-[12.5px] text-emerald-800">Proceed to <%= t.windowLabel || t.department %>.</div>
+      <% if (timeLeft != null && t.paymentStatus !== 'paid') { %>
+      <div class="font-mono text-2xl font-extrabold text-emerald-900 mt-1" data-countdown data-seconds="<%= timeLeft %>">--:--</div>
+      <% } %>
+    </div>
+    <% } %>
+    <div class="flex flex-wrap justify-center gap-2 mt-6 no-print">
+      <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
+      <% if (t.paymentStatus === 'paid') { %>
+      <a href="/student/receipt/<%= t.id %>" class="<%= UI.btn %> <%= UI.btnOk %> <%= UI.btnSm %>">View receipt</a>
+      <% } %>
+      <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</button>
+    </div>
+  </div>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/chime', {
+      chimeScope: 'ticket' + t.id,
+      chimeId: announcement ? announcement.id : ''
+    }) %>
+<%- include('../../partials/scripts') %>

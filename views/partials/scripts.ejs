@@ -1,0 +1,49 @@
+<%- include('modal') %>
+<script>
+document.querySelectorAll('[data-countdown]').forEach(function(el){
+  var s = parseInt(el.dataset.seconds || '0', 10);
+  (function tick(){
+    if (s <= 0) { el.textContent = '00:00'; location.reload(); return; }
+    var m = Math.floor(s/60), r = s%60;
+    el.textContent = String(m).padStart(2,'0')+':'+String(r).padStart(2,'0');
+    s--; setTimeout(tick, 1000);
+  })();
+});
+document.querySelectorAll('form[data-once]').forEach(function(f){
+  f.addEventListener('submit', function(){
+    var b = f.querySelector('[type=submit]');
+    if (b) { b.disabled = true; b.textContent = 'Please wait...'; }
+  });
+});
+var mb = document.getElementById('menuBtn'), sb = document.getElementById('sidebar');
+if (mb && sb) mb.addEventListener('click', function(){ sb.classList.toggle('-translate-x-full'); });
+</script>
+</body></html>
+<script>
+// Estimated time counts down live so the number never looks frozen.
+document.querySelectorAll('[data-eta]').forEach(function (el) {
+  var secs = parseInt(el.dataset.seconds || '0', 10);
+  var unit = el.parentElement.querySelector('[data-eta-unit]');
+  (function tick() {
+    if (secs <= 0) {
+      el.textContent = 'any moment';
+      el.classList.remove('font-mono');
+      el.classList.add('text-2xl');
+      if (unit) unit.textContent = 'now';
+      return;
+    }
+    if (secs >= 120) {
+      el.textContent = Math.round(secs / 60);
+      if (unit) unit.textContent = 'minutes';
+    } else if (secs >= 60) {
+      el.textContent = '1';
+      if (unit) unit.textContent = 'minute';
+    } else {
+      el.textContent = secs;
+      if (unit) unit.textContent = 'seconds';
+    }
+    secs--;
+    setTimeout(tick, 1000);
+  })();
+});
+</script>

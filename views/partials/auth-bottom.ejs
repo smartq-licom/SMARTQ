@@ -1,0 +1,50 @@
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-pw]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var input = document.getElementById(btn.dataset.pw);
+    if (!input) return;
+    var reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    btn.textContent = reveal ? 'Hide' : 'Show';
+    btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+  });
+});
+
+document.querySelectorAll('form[data-once]').forEach(function (f) {
+  f.addEventListener('submit', function () {
+    var b = f.querySelector('[type=submit]');
+    if (b) { b.disabled = true; b.textContent = b.dataset.busy || 'Working...'; }
+  });
+});
+
+(function () {
+  var input = document.querySelector('[data-rules-for]');
+  if (!input) return;
+  var list = document.getElementById(input.dataset.rulesFor);
+  if (!list) return;
+  var tests = [
+    function (p) { return p.length >= 8 },
+    function (p) { return /[A-Z]/.test(p) },
+    function (p) { return /[a-z]/.test(p) },
+    function (p) { return /[0-9]/.test(p) },
+    function (p) { return /[^A-Za-z0-9]/.test(p) }
+  ];
+  function paint() {
+    var v = input.value;
+    list.querySelectorAll('li').forEach(function (li, i) {
+      var ok = tests[i] ? tests[i](v) : false;
+      li.classList.toggle('met', ok);
+      li.querySelector('.tick').textContent = ok ? '\u2713' : '\u00B7';
+    });
+  }
+  input.addEventListener('input', paint);
+  paint();
+})();
+</script>
+</body>
+</html>

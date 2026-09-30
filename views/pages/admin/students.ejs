@@ -1,0 +1,78 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/students' }) %>
+
+<div class="mb-4">
+  <h2 class="text-xl font-extrabold">Student accounts</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    Students and guests register themselves. Disable an account to block it from logging in.
+  </p>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= counts.students %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Students</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= counts.guests %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Guests</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= list.filter(function(u){return u.isActive}).length %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Active</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= list.reduce(function(a,u){return a+u.txCount},0) %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Transactions</div></div>
+</div>
+
+<form method="GET" class="flex flex-wrap items-end gap-2 mb-4">
+  <div class="flex-1 min-w-[12rem] max-w-xs">
+    <label for="search" class="<%= UI.lbl %>">Search</label>
+    <input id="search" name="search" value="<%= search %>" class="<%= UI.input %>" placeholder="Name, email, or student number">
+  </div>
+  <div>
+    <label for="role" class="<%= UI.lbl %>">Type</label>
+    <select id="role" name="role" class="<%= UI.input %>">
+      <option value="">All</option>
+      <option value="student" <%= role === 'student' ? 'selected' : '' %>>Students</option>
+      <option value="guest"   <%= role === 'guest'   ? 'selected' : '' %>>Guests</option>
+    </select>
+  </div>
+  <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Filter</button>
+  <a href="/admin/students" class="<%= UI.btn %> <%= UI.btnGh %>">Reset</a>
+</form>
+
+<div class="<%= UI.card %> overflow-x-auto">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Email (login)</th>
+      <th class="<%= UI.th %>">Type</th><th class="<%= UI.th %>">Student no.</th>
+      <th class="<%= UI.th %>">Course</th><th class="<%= UI.th %>">Year</th>
+      <th class="<%= UI.th %>">Contact</th><th class="<%= UI.th %>">Transactions</th>
+      <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>"></th>
+    </tr></thead>
+    <tbody>
+      <% list.forEach(function(u){ %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= u.fullName %></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.email || '-' %></td>
+        <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(u.role) %> capitalize"><%= u.role %></span></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.studentNo || '-' %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= u.course || '-' %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= u.yearLevel || '-' %></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.contactNo || '-' %></td>
+        <td class="<%= UI.td %> font-mono"><%= u.txCount %></td>
+        <td class="<%= UI.td %>">
+          <span class="<%= pill %> <%= u.isActive ? tone('paid') : tone('cancelled') %>"><%= u.isActive ? 'active' : 'disabled' %></span>
+        </td>
+        <td class="<%= UI.td %>">
+          <form method="POST" action="/admin/students/<%= u.id %>/active">
+            <input type="hidden" name="active" value="<%= u.isActive ? '0' : '1' %>">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"><%= u.isActive ? 'Disable' : 'Enable' %></button>
+          </form>
+        </td>
+      </tr>
+      <% }) %>
+      <% if (!list.length) { %>
+      <tr><td colspan="10" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No accounts found.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

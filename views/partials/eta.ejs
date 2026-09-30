@@ -1,0 +1,41 @@
+<%
+  // `eta` comes from predict.ticketEta(). Shows a live duration and the clock
+  // time it maps to, plus what the figure is based on.
+  const e = eta;
+%>
+<% if (e && e.state === 'waiting') { %>
+<div class="rounded-lg bg-ink text-white px-4 py-3.5">
+  <div class="flex items-baseline justify-between gap-3">
+    <span class="text-[11px] uppercase tracking-wider text-white/50">Estimated time</span>
+    <span class="text-[11.5px] text-white/60">about <%= e.atClock %></span>
+  </div>
+  <div class="flex items-baseline gap-2 mt-1">
+    <span class="text-3xl font-extrabold font-mono leading-none"
+          data-eta data-seconds="<%= e.seconds %>"><%= e.minutes %></span>
+    <span class="text-[13px] text-white/70" data-eta-unit>minutes</span>
+  </div>
+  <div class="text-[11px] text-white/50 mt-2">
+    <%= e.ahead %> ahead of you<% if (e.jumpers) { %> plus <%= e.jumpers %> priority<% } %>
+    &middot; <%= e.basisLabel %>
+  </div>
+</div>
+<% } else if (e && e.state === 'next') { %>
+<div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
+  <div class="text-[11px] uppercase tracking-wider text-white/60">Estimated time</div>
+  <div class="text-2xl font-extrabold mt-0.5">You are next</div>
+  <div class="text-[11.5px] text-white/70 mt-1">Stay close to the window.</div>
+</div>
+<% } else if (e && e.state === 'now') { %>
+<div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
+  <div class="text-2xl font-extrabold">It is your turn</div>
+  <div class="text-[12px] text-white/80 mt-0.5">Please proceed to the window.</div>
+</div>
+<% } else if (e && e.state === 'closed') { %>
+<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
+  <%= e.label %>. Your number stays valid.
+</div>
+<% } else if (e && e.state === 'scheduled') { %>
+<div class="rounded-lg bg-mist border border-hair px-4 py-3 text-[12.5px] text-slateSoft">
+  <%= e.label %>. An estimate appears on the day.
+</div>
+<% } %>

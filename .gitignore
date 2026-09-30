@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Secrets (DB password, Google OAuth, mail credentials)
+.env
+
+# User-uploaded priority-lane proof files (keep the folder itself)
+uploads/priority/*
+!uploads/priority/.gitkeep
+
+# Logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.vscode/

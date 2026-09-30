@@ -1,0 +1,46 @@
+<%
+  // First -> Middle -> Last, all equal width. Used everywhere a full name is
+  // entered so the order never differs between screens.
+  const v   = typeof nf !== 'undefined' ? nf : {};
+  const pre = v.prefix || '';
+  const id  = function (n) { return pre ? pre + n.charAt(0).toUpperCase() + n.slice(1) : n; };
+  const nm  = function (n) { return pre ? pre + n.charAt(0).toUpperCase() + n.slice(1) : n; };
+  const mid = v.middleName || '';
+  const none = mid.trim().toUpperCase() === 'N/A';
+%>
+<div class="<%= v.gridClass || 'grid sm:grid-cols-3 gap-3' %>">
+  <div>
+    <label for="<%= id('firstName') %>" class="<%= v.lblClass %>">First name *</label>
+    <input id="<%= id('firstName') %>" name="<%= nm('firstName') %>" class="<%= v.inputClass %>"
+           required value="<%= v.firstName || '' %>" autocomplete="given-name">
+  </div>
+  <div>
+    <label for="<%= id('middleName') %>" class="<%= v.lblClass %>">Middle name *</label>
+    <input id="<%= id('middleName') %>" name="<%= nm('middleName') %>" class="<%= v.inputClass %>"
+           value="<%= mid %>" autocomplete="additional-name"
+           <%= none ? 'readonly' : '' %> data-middle>
+    <label class="flex items-center gap-2 mt-1.5 text-[12px] <%= v.noneClass || 'text-slateSoft/80' %>">
+      <input type="checkbox" data-middle-none <%= none ? 'checked' : '' %>
+             onchange="middleNone(this)" class="rounded">
+      I have no middle name
+    </label>
+  </div>
+  <div>
+    <label for="<%= id('lastName') %>" class="<%= v.lblClass %>">Last name *</label>
+    <input id="<%= id('lastName') %>" name="<%= nm('lastName') %>" class="<%= v.inputClass %>"
+           required value="<%= v.lastName || '' %>" autocomplete="family-name">
+  </div>
+</div>
+<script>
+// Ticking "no middle name" writes N/A so the record is never ambiguous.
+function middleNone(box){
+  var field = box.closest('div').parentElement.querySelector('[data-middle]');
+  if (box.checked) { field.value = 'N/A'; field.readOnly = true; }
+  else { if (field.value === 'N/A') field.value = ''; field.readOnly = false; field.focus(); }
+}
+document.querySelectorAll('[data-middle]').forEach(function(f){
+  f.form && f.form.addEventListener('submit', function(){
+    if (!f.value.trim()) f.value = 'N/A';
+  });
+});
+</script>

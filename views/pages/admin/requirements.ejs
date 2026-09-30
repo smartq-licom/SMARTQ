@@ -1,0 +1,93 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/requirements' }) %>
+
+<div class="mb-5">
+  <h2 class="text-xl font-extrabold text-ink">Document requirements</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    What a client must bring. Only documents marked as needing requirements appear here;
+    students see the list before requesting and staff tick it off at the window.
+  </p>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-4">
+  <div class="lg:col-span-2 space-y-4">
+    <% if (!documents.length) { %>
+    <div class="<%= UI.card %> p-8 text-center text-[13px] text-slateSoft/70">
+      No document is set up to take requirements yet.
+    </div>
+    <% } %>
+    <% documents.filter(function(s){ return s.isActive }).forEach(function(sv){ %>
+    <div class="<%= UI.card %>">
+      <div class="<%= UI.cardHd %>">
+        <h3 class="<%= UI.cardTtl %>"><%= sv.name %></h3>
+        <span class="<%= pill %> <%= sv.paymentRequired ? tone('regular') : tone('not_required') %>">
+          <%= sv.paymentRequired ? peso(sv.price) : 'No payment' %>
+        </span>
+      </div>
+      <div class="<%= UI.body %>">
+        <% const list = byDocument[sv.id] || []; %>
+        <% if (!list.length) { %>
+        <p class="text-[13px] text-slateSoft/70">No requirements listed for this document yet.</p>
+        <% } else { %>
+        <ul class="space-y-2">
+          <% list.forEach(function(r){ %>
+          <li class="flex items-start gap-3 text-[13px] border-b border-hair/70 last:border-0 pb-2 last:pb-0">
+            <span class="text-brand mt-0.5">&bull;</span>
+            <span class="flex-1">
+              <%= r.label %>
+              <% if (!r.isRequired) { %><span class="text-slateSoft/60">(optional)</span><% } %>
+              <% if (r.note) { %><span class="block text-[11.5px] text-slateSoft/70"><%= r.note %></span><% } %>
+            </span>
+            <form method="POST" action="/admin/requirements/<%= r.id %>/delete"
+                  data-confirm
+                  data-confirm-title="Remove requirement"
+                  data-confirm-body="Remove &quot;<%= r.label %>&quot; from <%= sv.name %>?"
+                  data-confirm-ok="Remove"
+                  data-confirm-danger="1">
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Remove</button>
+            </form>
+          </li>
+          <% }) %>
+        </ul>
+        <% } %>
+      </div>
+    </div>
+    <% }) %>
+  </div>
+
+  <div>
+    <div class="<%= UI.card %> sticky top-20">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Add a requirement</h3></div>
+      <div class="<%= UI.body %>">
+        <form method="POST" action="/admin/requirements" class="space-y-3">
+          <div>
+            <label for="documentId" class="<%= UI.lbl %>">Document</label>
+            <select id="documentId" name="documentId" class="<%= UI.input %>" required>
+              <option value="">Choose a document</option>
+              <% documents.filter(function(s){ return s.isActive }).forEach(function(sv){ %>
+              <option value="<%= sv.id %>"><%= sv.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div>
+            <label for="label" class="<%= UI.lbl %>">Requirement</label>
+            <input id="label" name="label" class="<%= UI.input %>" required
+                   placeholder="Valid school or government ID">
+          </div>
+          <div>
+            <label for="note" class="<%= UI.lbl %>">Note <span class="text-slateSoft/60 font-normal">optional</span></label>
+            <input id="note" name="note" class="<%= UI.input %>" placeholder="Original, presented at the window">
+          </div>
+          <label class="flex items-center gap-2 text-[12.5px]">
+            <input type="checkbox" name="isRequired" checked class="rounded border-hair">
+            Required, not optional
+          </label>
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Add requirement</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

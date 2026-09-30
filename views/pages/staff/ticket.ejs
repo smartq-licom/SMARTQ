@@ -1,0 +1,33 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/staff/dashboard' }) %>
+<div class="max-w-2xl">
+  <div class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>">
+      <h3 class="<%= UI.cardTtl %>">Ticket <%= t.ticketNo %></h3>
+      <span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span>
+    </div>
+    <div class="<%= UI.body %>">
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+        <div><dt class="text-slateSoft/80 text-[11.5px]">Name</dt><dd class="font-semibold"><%= t.fullName %></dd></div>
+        <div><dt class="text-slateSoft/80 text-[11.5px]">Department</dt><dd class="font-semibold"><%= t.department %></dd></div>
+        <% if (t.purposeText) { %><div><dt class="text-slateSoft/80 text-[11.5px]">Purpose</dt><dd class="font-semibold"><%= t.purposeText %></dd></div><% } %>
+        <div><dt class="text-slateSoft/80 text-[11.5px]">Amount</dt><dd class="font-mono font-bold"><%= peso(t.amountDue) %></dd></div>
+        <div class="col-span-2"><dt class="text-slateSoft/80 text-[11.5px]">Documents</dt>
+          <dd class="font-semibold"><%= t.items.map(function(i){return i.name}).join(', ') %></dd></div>
+      </dl>
+      <h4 class="text-[11.5px] font-bold uppercase tracking-wider text-slateSoft/80 mt-5 mb-2">Audit trail</h4>
+      <ol class="space-y-2">
+        <% history.forEach(function(h){ %>
+        <li class="flex gap-3 text-[12.5px] border-b border-mist pb-2">
+          <span class="font-mono text-[11.5px] text-slateSoft/60 shrink-0"><%= new Date(h.created_at).toLocaleTimeString('en-PH') %></span>
+          <span class="font-semibold capitalize"><%= String(h.action).replace('_',' ') %></span>
+          <span class="text-slateSoft/80"><%= h.staff_name || '' %><%= h.window_label ? ' · ' + h.window_label : '' %><%= h.note ? ' · ' + h.note : '' %></span>
+        </li>
+        <% }) %>
+      </ol>
+      <a href="/staff/dashboard" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-4">Back to counter</a>
+    </div>
+  </div>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

@@ -1,0 +1,211 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: base }) %>
+
+<%
+  const q = function (extra) {
+    const p = Object.assign({ y: cal.year, m: cal.month }, extra || {});
+    if (canPickOffice) p.office = office;
+    return base + '?' + Object.keys(p).filter(function(k){ return p[k] != null && p[k] !== ''; })
+      .map(function(k){ return k + '=' + encodeURIComponent(p[k]); }).join('&');
+  };
+  const tint = {
+    closed: 'bg-mist text-slateSoft/50 border-hair',
+    free:   'bg-white border-hair',
+    open:   'bg-brand-wash border-brand-line',
+    busy:   'bg-amber-50 border-amber-300',
+    full:   'bg-red-50 border-red-300',
+  };
+%>
+
+<div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+  <div>
+    <h2 class="text-xl font-extrabold text-ink"><%= office %> booking calendar</h2>
+    <p class="text-[13px] text-slateSoft/80 mt-0.5">
+      Scheduled appointments only. Walk-ins are not booked in advance and do not appear here.
+    </p>
+  </div>
+  <% if (canPickOffice) { %>
+  <div class="flex rounded-lg border border-hair overflow-hidden">
+    <% ['Cashier','Registrar'].forEach(function(o){ %>
+    <a href="<%= base %>?office=<%= o %>&y=<%= cal.year %>&m=<%= cal.month %>"
+       class="px-4 py-2 text-[13px] font-semibold <%= office === o ? 'bg-brand text-white' : 'bg-white text-slateSoft hover:bg-mist' %>"><%= o %></a>
+    <% }) %>
+  </div>
+  <% } %>
+</div>
+
+<!-- month controls -->
+<div class="flex items-center justify-between gap-3 mb-3">
+  <a href="<%= base %>?<%= canPickOffice ? 'office=' + office + '&' : '' %>y=<%= cal.prev.y %>&m=<%= cal.prev.m %>"
+     class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">&larr; Previous</a>
+  <div class="text-center">
+    <div class="text-[15px] font-extrabold text-ink"><%= cal.monthName %></div>
+    <div class="text-[11.5px] text-slateSoft/70">
+      <%= cal.totals.booked %> booked this month
+      <% if (cal.totals.priority) { %> &middot; <%= cal.totals.priority %> priority<% } %>
+      <% if (cal.totals.closedDays) { %> &middot; <%= cal.totals.closedDays %> day<%= cal.totals.closedDays === 1 ? '' : 's' %> closed<% } %>
+    </div>
+  </div>
+  <a href="<%= base %>?<%= canPickOffice ? 'office=' + office + '&' : '' %>y=<%= cal.next.y %>&m=<%= cal.next.m %>"
+     class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Next &rarr;</a>
+</div>
+
+<!-- grid -->
+<div class="<%= UI.card %> p-3">
+  <div class="grid grid-cols-7 gap-1.5 mb-1.5">
+    <% ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d){ %>
+    <div class="text-center text-[11px] font-bold uppercase tracking-wider text-slateSoft/70 py-1"><%= d %></div>
+    <% }) %>
+  </div>
+  <div class="grid grid-cols-7 gap-1.5">
+    <% cal.days.forEach(function(d){ %>
+      <% if (!d) { %>
+      <div class="min-h-[84px] rounded-lg bg-mist/40"></div>
+      <% } else { %>
+      <a href="<%= q({ d: d.date }) %>"
+         class="min-h-[84px] rounded-lg border p-2 flex flex-col transition-colors hover:border-brand
+                <%= tint[d.load] || tint.free %>
+                <%= d.isPast ? 'opacity-55' : '' %>
+                <%= pickDate === d.date ? 'ring-2 ring-brand' : '' %>">
+        <div class="flex items-start justify-between gap-1">
+          <span class="text-[13px] font-bold <%= d.isToday ? 'bg-brand text-white rounded-full w-6 h-6 grid place-items-center' : '' %>"><%= d.dayNum %></span>
+          <% if (d.hasOverride) { %><span class="text-[9px] font-bold text-brand" title="Set by staff">SET</span><% } %>
+        </div>
+
+        <% if (d.closed) { %>
+        <div class="mt-auto text-[10.5px] font-semibold">
+          <%= d.closedByOffice ? 'Office closed' : 'Closed' %>
+        </div>
+        <% } else if (d.booked) { %>
+        <div class="mt-auto">
+          <div class="text-[18px] font-extrabold leading-none text-ink"><%= d.booked %></div>
+          <div class="text-[10px] text-slateSoft/75">
+            booked<% if (d.cap > 0) { %> of <%= d.cap %><% } %>
+          </div>
+          <% if (d.priority) { %>
+          <div class="text-[10px] font-semibold text-violet-700"><%= d.priority %> priority</div>
+          <% } %>
+        </div>
+        <% } else { %>
+        <div class="mt-auto text-[10.5px] text-slateSoft/60">
+          <%= d.cap > 0 ? d.cap + ' slots' : 'open' %>
+        </div>
+        <% } %>
+      </a>
+      <% } %>
+    <% }) %>
+  </div>
+
+  <div class="flex flex-wrap gap-3 mt-3 pt-3 border-t border-hair text-[11px] text-slateSoft/75">
+    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border border-hair bg-white"></span>No bookings</span>
+    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border border-brand-line bg-brand-wash"></span>Has bookings</span>
+    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border border-amber-300 bg-amber-50"></span>Nearly full</span>
+    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border border-red-300 bg-red-50"></span>Full</span>
+    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded border border-hair bg-mist"></span>Closed</span>
+  </div>
+</div>
+
+<!-- one day -->
+<% if (pickDate && pickDay) { %>
+<div class="grid lg:grid-cols-3 gap-4 mt-4">
+  <div class="lg:col-span-2 <%= UI.card %>">
+    <div class="<%= UI.cardHd %>">
+      <h3 class="<%= UI.cardTtl %>"><%= new Date(pickDate + 'T00:00:00').toLocaleDateString('en-PH', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) %></h3>
+      <span class="<%= pill %> <%= pickDay.closed ? tone('cancelled') : pickDay.booked ? tone('called') : tone('paid') %>">
+        <%= pickDay.closed ? 'closed' : pickDay.booked + ' booked' %>
+      </span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead><tr>
+          <th class="<%= UI.th %>">Ticket</th><th class="<%= UI.th %>">Client</th>
+          <th class="<%= UI.th %>">Documents</th><th class="<%= UI.th %>">Amount</th>
+          <th class="<%= UI.th %>">Lane</th><th class="<%= UI.th %>">Status</th>
+        </tr></thead>
+        <tbody>
+          <% (bookings || []).forEach(function(t){ %>
+          <tr class="<%= UI.tr %>">
+            <td class="<%= UI.td %>"><span class="<%= chip %>"><%= t.ticketNo %></span></td>
+            <td class="<%= UI.td %>">
+              <span class="font-semibold"><%= t.fullName %></span>
+              <% if (t.claimant === 'representative') { %>
+              <span class="block text-[11px] text-amber-700">via <%= t.repName %></span>
+              <% } %>
+            </td>
+            <td class="<%= UI.td %> text-[12px]"><%= t.documents.map(function(d){ return d.label }).join(', ') %></td>
+            <td class="<%= UI.td %> font-mono"><%= t.amountDue > 0 ? peso(t.amountDue) : '-' %></td>
+            <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(t.queueCategory) %>"><%= t.queueCategory %></span></td>
+            <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span></td>
+          </tr>
+          <% }) %>
+          <% if (!bookings || !bookings.length) { %>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-[13px] text-slateSoft/70">Nobody booked for this date.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Manage this day</h3></div>
+    <div class="<%= UI.body %>">
+      <% if (pickDay.closedByOffice) { %>
+      <p class="mb-3 rounded-lg bg-mist border border-hair px-3.5 py-2.5 text-[12.5px] text-slateSoft">
+        The office is closed on this weekday under Settings, so nobody can book it.
+      </p>
+      <% } %>
+      <form method="POST" action="<%= base %>/day" class="space-y-3"
+            data-confirm
+            data-confirm-title="Update this day"
+            data-confirm-body="Apply these changes to <%= pickDate %> for the <%= office %> office?"
+            data-confirm-ok="Save day">
+        <input type="hidden" name="date" value="<%= pickDate %>">
+        <% if (canPickOffice) { %><input type="hidden" name="office" value="<%= office %>"><% } %>
+
+        <label class="flex items-start gap-2.5 text-[13px]">
+          <input type="checkbox" name="isClosed" value="1" <%= pickDay.closed && !pickDay.closedByOffice ? 'checked' : '' %>
+                 class="mt-0.5 rounded border-hair">
+          <span>
+            <span class="font-semibold">Close this date</span>
+            <span class="block text-[11.5px] text-slateSoft/75">Students cannot book it. Existing bookings are kept.</span>
+          </span>
+        </label>
+
+        <div>
+          <label for="slotLimit" class="<%= UI.lbl %>">Cap for this day</label>
+          <input id="slotLimit" name="slotLimit" type="number" min="0" max="999"
+                 value="<%= pickDay.hasOverride && pickDay.cap !== cal.defaultCap ? pickDay.cap : '' %>"
+                 class="<%= UI.input %>" placeholder="Default (<%= cal.defaultCap > 0 ? cal.defaultCap : 'no cap' %>)">
+          <span class="<%= UI.hint %>">Leave blank to use the office default. 0 means no cap.</span>
+        </div>
+
+        <div>
+          <label for="note" class="<%= UI.lbl %>">Reason <span class="text-slateSoft/60 font-normal">optional</span></label>
+          <input id="note" name="note" class="<%= UI.input %>" value="<%= pickDay.note %>"
+                 placeholder="Enrollment period, staff training">
+          <span class="<%= UI.hint %>">Shown to students who try to book this date.</span>
+        </div>
+
+        <% if (pickDay.setterName) { %>
+        <p class="text-[11.5px] text-slateSoft/70">Last set by <%= pickDay.setterName %>.</p>
+        <% } %>
+
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Save day</button>
+      </form>
+    </div>
+  </div>
+
+  <%# What this weekday normally looks like, so a cap or closure is set against
+      the real shape of the day rather than a guess. %>
+  <% if (peakDay && peakDay.hours.length) { %>
+  <div class="lg:col-span-3">
+    <%- include('../../partials/peak-hours', {
+          p: peakDay, compact: false,
+          heading: 'Busy hours on a ' + peakDay.weekdayName + ' — ' + office }) %>
+  </div>
+  <% } %>
+</div>
+<% } %>
+
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

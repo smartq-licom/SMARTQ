@@ -1,0 +1,128 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/student/priority' }) %>
+
+<div class="max-w-2xl">
+  <div class="mb-5">
+    <h2 class="text-xl font-extrabold">Priority lane</h2>
+    <p class="text-[13px] text-slateSoft/80 mt-0.5">
+      PWD, Senior Citizen and Pregnant clients are called ahead of the regular lane.
+      Upload proof once and every future ticket is flagged automatically.
+    </p>
+  </div>
+
+  <% if (profile.priorityStatus !== 'none') { %>
+  <div class="<%= UI.card %> border-emerald-300 mb-5">
+    <div class="<%= UI.cardHd %> bg-emerald-50">
+      <h3 class="<%= UI.cardTtl %>">You are approved for the priority lane</h3>
+      <span class="<%= pill %> <%= tone(profile.priorityStatus) %>"><%= labels[profile.priorityStatus] %></span>
+    </div>
+    <div class="<%= UI.body %>">
+      <p class="text-[13px] text-slateSoft">
+        Every ticket you request now joins the <strong>priority lane</strong> automatically.
+        You do not need to select anything on the request form.
+      </p>
+      <% if (profile.priorityApprovedAt) { %>
+      <p class="text-[12px] text-slateSoft/80 mt-1.5">
+        Approved on <%= new Date(profile.priorityApprovedAt).toLocaleDateString('en-PH') %>.
+      </p>
+      <% } %>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (formError) { %>
+  <div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= formError %></div>
+  <% } %>
+
+  <% const pending = requests.find(function(r){ return r.status === 'pending'; }); %>
+  <% if (pending) { %>
+  <div class="<%= UI.card %> mb-5">
+    <div class="<%= UI.cardHd %>">
+      <h3 class="<%= UI.cardTtl %>">Waiting for review</h3>
+      <span class="<%= pill %> <%= tone('waiting') %>">pending</span>
+    </div>
+    <div class="<%= UI.body %>">
+      <p class="text-[13px] text-slateSoft">
+        You submitted proof for <strong><%= pending.categoryLabel %></strong> on
+        <%= new Date(pending.createdAt).toLocaleDateString('en-PH') %>.
+        An administrator will review it. You will get an email with the result.
+      </p>
+      <a href="/student/priority/proof/<%= pending.id %>" target="_blank" rel="noopener"
+         class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-3">View what I uploaded</a>
+    </div>
+  </div>
+  <% } else { %>
+  <div class="<%= UI.card %> mb-5">
+    <div class="<%= UI.cardHd %>">
+      <h3 class="<%= UI.cardTtl %>"><%= profile.priorityStatus !== 'none' ? 'Submit updated proof' : 'Request priority status' %></h3>
+    </div>
+    <div class="<%= UI.body %>">
+      <form method="POST" action="/student/priority" enctype="multipart/form-data" class="space-y-4" data-once>
+        <div>
+          <label for="category" class="<%= UI.lbl %>">Category *</label>
+          <select id="category" name="category" class="<%= UI.input %> max-w-xs" required onchange="hintFor(this.value)">
+            <option value="">Select category</option>
+            <option value="pwd">PWD</option>
+            <option value="senior">Senior Citizen</option>
+            <option value="pregnant">Pregnant</option>
+          </select>
+          <span id="proofHint" class="<%= UI.hint %>">Choose a category to see what proof is needed.</span>
+        </div>
+        <div>
+          <label for="proof" class="<%= UI.lbl %>">Proof *</label>
+          <input id="proof" name="proof" type="file" accept=".jpg,.jpeg,.png,.pdf" required
+                 class="w-full rounded-lg border border-hair px-3 py-2.5 text-[13px] file:mr-3 file:rounded file:border-0 file:bg-ink file:px-3 file:py-1.5 file:text-white file:text-[12px] file:font-semibold">
+          <span class="<%= UI.hint %>">JPG, PNG or PDF. Maximum 5 MB. Make sure the name and ID number are readable.</span>
+        </div>
+        <div class="rounded-lg bg-mist border border-hair px-3.5 py-2.5 text-[12px] text-slateSoft">
+          Your file is only visible to you and the administrator reviewing it.
+        </div>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Submit for review</button>
+      </form>
+    </div>
+  </div>
+  <% } %>
+
+  <% if (requests.length) { %>
+  <h3 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Your submissions</h3>
+  <div class="<%= UI.card %> overflow-x-auto">
+    <table class="w-full">
+      <thead><tr>
+        <th class="<%= UI.th %>">Submitted</th><th class="<%= UI.th %>">Category</th>
+        <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>">Reviewer</th>
+        <th class="<%= UI.th %>">Reason</th><th class="<%= UI.th %>">Proof</th>
+      </tr></thead>
+      <tbody>
+        <% requests.forEach(function(r){ %>
+        <tr class="<%= UI.tr %>">
+          <td class="<%= UI.td %> font-mono text-[12px]"><%= new Date(r.createdAt).toLocaleDateString('en-PH') %></td>
+          <td class="<%= UI.td %>"><%= r.categoryLabel %></td>
+          <td class="<%= UI.td %>">
+            <span class="<%= pill %> <%= r.status === 'approved' ? tone('paid') : r.status === 'rejected' ? tone('cancelled') : tone('waiting') %>"><%= r.status %></span>
+          </td>
+          <td class="<%= UI.td %> text-[12px]"><%= r.reviewerName || '-' %></td>
+          <td class="<%= UI.td %> text-[12px] text-slateSoft"><%= r.reason || '-' %></td>
+          <td class="<%= UI.td %>">
+            <a href="/student/priority/proof/<%= r.id %>" target="_blank" rel="noopener" class="text-[12px] font-semibold underline">View</a>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<script>
+function hintFor(v){
+  var map = {
+    pwd: 'Upload a photo of your PWD ID (front side, showing your name and ID number).',
+    senior: 'Upload a photo of your Senior Citizen ID.',
+    pregnant: "Upload a doctor's certificate or medical record confirming your pregnancy.",
+    '': 'Choose a category to see what proof is needed.'
+  };
+  document.getElementById('proofHint').textContent = map[v] || map[''];
+}
+</script>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

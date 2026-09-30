@@ -1,0 +1,65 @@
+<%- include('../../partials/auth-top', { title: title }) %>
+
+  <h1 class="page-title">Check your email</h1>
+  <p class="subtitle">
+    We sent a 6-digit code to <strong style="color:var(--ink)"><%= pending.masked %></strong>.
+  </p>
+
+  <%- include('../../partials/auth-notes') %>
+
+  <% if (devMode) { %>
+  <p class="note note-warn">
+    Email is not set up yet, so the code was printed in the terminal running <code>npm start</code>.
+  </p>
+  <% } %>
+
+  <div class="card">
+    <form method="POST" action="/verify" data-once>
+      <div class="field">
+        <label for="code"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.6 6a5.5 5.5 0 1 0-6.6 6.6L2 16.6V22h5.4l4-4a5.5 5.5 0 0 0 6.6-6.6"/><circle cx="16.5" cy="7.5" r="1.5"/></svg>Verification code</label>
+        <input id="code" name="code" class="otp" inputmode="numeric" pattern="[0-9]{6}"
+               maxlength="6" required autofocus autocomplete="one-time-code" placeholder="------">
+      </div>
+      <button type="submit" class="btn btn-primary" data-busy="Checking...">Verify and continue</button>
+    </form>
+
+    <p style="text-align:center;font-size:13px;color:var(--muted);margin:16px 0 0">
+      Code expires in <span id="ttl" class="countdown" data-seconds="<%= secondsLeft %>">--:--</span>
+    </p>
+  </div>
+
+  <div style="margin-top:16px">
+    <form method="POST" action="/verify/resend">
+      <button type="submit" id="resend" class="btn btn-quiet" data-cooldown="<%= cooldown %>">
+        Send a new code
+      </button>
+    </form>
+  </div>
+
+  <p class="alt"><a href="/verify/cancel">Use a different account</a></p>
+
+<%- include('../../partials/auth-bottom') %>
+<script>
+(function () {
+  var ttl = document.getElementById('ttl');
+  var left = parseInt(ttl.dataset.seconds || '0', 10);
+  (function tick() {
+    if (left <= 0) { ttl.textContent = 'expired'; ttl.classList.add('expired'); return; }
+    var m = Math.floor(left / 60), s = left % 60;
+    ttl.textContent = m + ':' + String(s).padStart(2, '0');
+    left--; setTimeout(tick, 1000);
+  })();
+
+  var b = document.getElementById('resend');
+  var cd = parseInt(b.dataset.cooldown || '0', 10);
+  if (cd > 0) {
+    var label = b.textContent.trim();
+    (function tick2() {
+      if (cd <= 0) { b.disabled = false; b.textContent = label; return; }
+      b.disabled = true;
+      b.textContent = 'Send a new code in ' + cd + 's';
+      cd--; setTimeout(tick2, 1000);
+    })();
+  }
+})();
+</script>

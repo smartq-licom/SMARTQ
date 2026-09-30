@@ -1,0 +1,170 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/windows' }) %>
+
+<div class="flex flex-wrap items-start justify-between gap-3 mb-5">
+  <div>
+  <h2 class="text-xl font-extrabold">Service windows</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    Rename a window, open or close it, and post a staff member to it.
+    A closed window is skipped when Call Next runs.
+  </p>
+  </div>
+  <button type="button" onclick="document.getElementById('addWin').hidden=!document.getElementById('addWin').hidden"
+          class="<%= UI.btn %> <%= UI.btnMain %>">Add a window</button>
+</div>
+
+<!-- add a window -->
+<section id="addWin" hidden class="<%= UI.card %> mb-6 max-w-2xl">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Add a service window</h3></div>
+  <div class="<%= UI.body %>">
+    <form method="POST" action="/admin/windows" class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label for="newDept" class="<%= UI.lbl %>">Office</label>
+        <select id="newDept" name="department" class="<%= UI.input %>" required>
+          <option value="Cashier">Cashier</option>
+          <option value="Registrar">Registrar</option>
+        </select>
+      </div>
+      <div>
+        <label for="newLabel" class="<%= UI.lbl %>">Window name</label>
+        <input id="newLabel" name="label" class="<%= UI.input %>" placeholder="Leave blank to number it automatically">
+        <span class="<%= UI.hint %>">For example, Cashier Window 2.</span>
+      </div>
+      <div>
+        <label for="newStatus" class="<%= UI.lbl %>">Open it now?</label>
+        <select id="newStatus" name="status" class="<%= UI.input %>">
+          <option value="closed">No, add it closed</option>
+          <option value="open">Yes, open immediately</option>
+        </select>
+      </div>
+      <div>
+        <label for="newStaff" class="<%= UI.lbl %>">Post a staff member <span class="text-slateSoft/60 font-normal">optional</span></label>
+        <select id="newStaff" name="staffId" class="<%= UI.input %>">
+          <option value="">Nobody yet</option>
+          <optgroup label="Cashier">
+            <% (staffBy.Cashier || []).forEach(function(u){ %><option value="<%= u.id %>"><%= u.name %></option><% }) %>
+          </optgroup>
+          <optgroup label="Registrar">
+            <% (staffBy.Registrar || []).forEach(function(u){ %><option value="<%= u.id %>"><%= u.name %></option><% }) %>
+          </optgroup>
+        </select>
+        <span class="<%= UI.hint %>">Must match the office you picked.</span>
+      </div>
+      <div class="sm:col-span-2 flex gap-2">
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Add window</button>
+        <button type="button" onclick="document.getElementById('addWin').hidden=true"
+                class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<% ['Cashier','Registrar'].forEach(function(dept){
+     const list = windows.filter(function(w){ return w.department === dept; });
+     if (!list.length) return; %>
+<section class="mb-6">
+  <div class="flex items-center gap-3 mb-3">
+    <h3 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80"><%= dept %></h3>
+    <span class="<%= pill %> bg-mist text-slateSoft"><%= list.length %> window<%= list.length === 1 ? '' : 's' %></span>
+    <span class="<%= pill %> <%= tone('waiting') %>"><%= list[0].waitingDept %> waiting now</span>
+  </div>
+
+  <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <% list.forEach(function(w){ %>
+    <div class="<%= UI.card %>">
+      <div class="<%= UI.cardHd %>">
+        <h4 class="<%= UI.cardTtl %>"><%= w.label %></h4>
+        <span class="<%= pill %> <%= tone(w.status) %>"><%= w.status %></span>
+      </div>
+
+      <div class="px-5 py-3.5 bg-mist border-b border-hair">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-[10.5px] uppercase tracking-wider text-slateSoft/80">Now serving</div>
+            <% if (w.serving) { %>
+            <div class="font-mono text-2xl font-extrabold leading-tight"><%= w.serving %></div>
+            <div class="text-[11.5px] text-slateSoft truncate"><%= w.servingName %></div>
+            <% } else { %>
+            <div class="font-mono text-2xl font-extrabold leading-tight text-hair">----</div>
+            <div class="text-[11.5px] text-slateSoft/60">idle</div>
+            <% } %>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-xl font-extrabold"><%= w.servedToday %></div>
+            <div class="text-[10.5px] text-slateSoft/80">served today</div>
+          </div>
+        </div>
+        <div class="mt-2.5 text-[11.5px] text-slateSoft">
+          Assigned staff: <strong><%= w.staffName || 'nobody posted' %></strong>
+        </div>
+      </div>
+
+      <div class="<%= UI.body %>">
+        <form method="POST" action="/admin/windows/<%= w.id %>" class="space-y-3">
+          <div>
+            <label for="label<%= w.id %>" class="<%= UI.lbl %>">Window name</label>
+            <input id="label<%= w.id %>" name="label" value="<%= w.label %>" class="<%= UI.input %>">
+          </div>
+          <div>
+            <label for="status<%= w.id %>" class="<%= UI.lbl %>">Status</label>
+            <select id="status<%= w.id %>" name="status" class="<%= UI.input %>">
+              <% ['open','closed','break'].forEach(function(st){ %>
+              <option value="<%= st %>" <%= w.status === st ? 'selected' : '' %>>
+                <%= st === 'open' ? 'Open - accepting clients'
+                   : st === 'break' ? 'On break - temporarily paused'
+                   : 'Closed - skipped by Call Next' %>
+              </option>
+              <% }) %>
+            </select>
+          </div>
+          <div>
+            <label for="staff<%= w.id %>" class="<%= UI.lbl %>">Staff posted here</label>
+            <select id="staff<%= w.id %>" name="staffId" class="<%= UI.input %>">
+              <option value="">Nobody</option>
+              <% (staffBy[w.department] || []).forEach(function(u){ %>
+              <option value="<%= u.id %>" <%= u.id === w.staffId ? 'selected' : '' %>>
+                <%= u.name %><%= (u.window && u.window !== w.id) ? ' (on another window)' : '' %>
+              </option>
+              <% }) %>
+            </select>
+            <span class="<%= UI.hint %>">Only <%= w.department.toLowerCase() %> accounts can be posted here.</span>
+          </div>
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Save window</button>
+        </form>
+      </div>
+    </div>
+    <% }) %>
+  </div>
+</section>
+<% }) %>
+
+<div class="<%= UI.card %>">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">All windows</h3></div>
+  <div class="overflow-x-auto">
+    <table class="w-full">
+      <thead><tr>
+        <th class="<%= UI.th %>">Window</th><th class="<%= UI.th %>">Department</th>
+        <th class="<%= UI.th %>">Staff</th><th class="<%= UI.th %>">Status</th>
+        <th class="<%= UI.th %>">Serving</th><th class="<%= UI.th %>">Served today</th>
+      </tr></thead>
+      <tbody>
+        <% windows.forEach(function(w){ %>
+        <tr class="<%= UI.tr %>">
+          <td class="<%= UI.td %> font-semibold"><%= w.label %></td>
+          <td class="<%= UI.td %> text-[12px]"><%= w.department %></td>
+          <td class="<%= UI.td %> text-[12px]"><%= w.staffName || '-' %></td>
+          <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(w.status) %>"><%= w.status %></span></td>
+          <td class="<%= UI.td %>">
+            <% if (w.serving) { %><span class="<%= chip %>"><%= w.serving %></span>
+            <% } else { %><span class="text-slateSoft/60">-</span><% } %>
+          </td>
+          <td class="<%= UI.td %> font-mono"><%= w.servedToday %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

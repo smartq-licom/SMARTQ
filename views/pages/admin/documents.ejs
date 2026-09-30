@@ -1,0 +1,67 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/documents' }) %>
+<h2 class="text-xl font-extrabold mb-1">Requested documents &amp; prices</h2>
+<p class="text-[13px] text-slateSoft/80 mb-4">The price here is what the student sees. Students can never type their own amount.</p>
+<div class="<%= UI.card %> overflow-x-auto mb-5">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Document</th><th class="<%= UI.th %>">Price</th>
+      <th class="<%= UI.th %>">Destination</th><th class="<%= UI.th %>">To claim</th><th class="<%= UI.th %>">Guests</th>
+      <th class="<%= UI.th %>">Est. minutes</th><th class="<%= UI.th %>">Active</th><th class="<%= UI.th %>"></th>
+    </tr></thead>
+    <tbody>
+      <% documents.forEach(function(s){ %>
+      <tr class="<%= UI.tr %>">
+        <form method="POST" action="/admin/documents/<%= s.id %>">
+        <td class="<%= UI.td %>"><input name="name" value="<%= s.name %>" class="<%= UI.input %> py-1.5 text-[12.5px]"></td>
+        <td class="<%= UI.td %>"><input name="price" type="number" step="0.01" min="0" value="<%= s.price %>" class="<%= UI.input %> py-1.5 text-[12.5px] w-24"></td>
+        <td class="<%= UI.td %>">
+          <label class="flex items-center gap-1.5 text-[12px]">
+            <input type="checkbox" name="paymentRequired" <%= s.paymentRequired ? 'checked' : '' %> class="rounded border-hair">Cashier
+          </label>
+        </td>
+        <td class="<%= UI.td %>">
+          <label class="flex items-center gap-1.5 text-[12px]">
+            <input type="checkbox" name="requiresClaim" <%= s.requiresClaim ? 'checked' : '' %> class="rounded border-hair">Pick up
+          </label>
+        </td>
+        <td class="<%= UI.td %>">
+          <label class="flex items-center gap-1.5 text-[12px]">
+            <input type="checkbox" name="guestAllowed" <%= s.guestAllowed ? 'checked' : '' %> class="rounded border-hair">Allowed
+          </label>
+        </td>
+        <td class="<%= UI.td %>"><input name="baselineMinutes" type="number" min="1" value="<%= s.baselineMinutes %>" class="<%= UI.input %> py-1.5 text-[12.5px] w-20"></td>
+        <td class="<%= UI.td %>">
+          <label class="flex items-center gap-1.5 text-[12px]">
+            <input type="checkbox" name="isActive" <%= s.isActive ? 'checked' : '' %> class="rounded border-hair">Active
+          </label>
+        </td>
+        <td class="<%= UI.td %>"><button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Save</button></td>
+        </form>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<div class="<%= UI.card %> max-w-2xl">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Add a new item</h3></div>
+  <div class="<%= UI.body %>">
+    <form method="POST" action="/admin/documents" class="grid sm:grid-cols-2 gap-3">
+      <div><label for="nname" class="<%= UI.lbl %>">Document name</label>
+        <input id="nname" name="name" class="<%= UI.input %>" required></div>
+      <div><label for="nprice" class="<%= UI.lbl %>">Price</label>
+        <input id="nprice" name="price" type="number" step="0.01" min="0" value="30" class="<%= UI.input %>" required></div>
+      <div><label for="nmin" class="<%= UI.lbl %>">Estimated minutes</label>
+        <input id="nmin" name="baselineMinutes" type="number" min="1" value="8" class="<%= UI.input %>"></div>
+      <div class="flex items-end gap-4 text-[12.5px]">
+        <label class="flex items-center gap-1.5"><input type="checkbox" name="paymentRequired" checked class="rounded border-hair">Needs payment</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" name="requiresClaim" checked class="rounded border-hair">To claim</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" name="guestAllowed" class="rounded border-hair">Guests</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" name="isActive" checked class="rounded border-hair">Active</label>
+      </div>
+      <div class="sm:col-span-2"><button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Add item</button></div>
+    </form>
+  </div>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

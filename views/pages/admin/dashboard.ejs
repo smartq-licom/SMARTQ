@@ -1,0 +1,79 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/dashboard' }) %>
+<h2 class="text-xl font-extrabold mb-4">Today at a glance</h2>
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+  <% [['Transactions', reports.summary.total],['Completed', reports.summary.completed],
+      ['Collected', peso(reports.summary.collected)],['Cancelled', reports.summary.cancelled]].forEach(function(c){ %>
+  <div class="<%= UI.card %> p-4">
+    <div class="text-2xl font-extrabold"><%= c[1] %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5"><%= c[0] %></div>
+  </div>
+  <% }) %>
+</div>
+
+<div class="grid sm:grid-cols-2 gap-3 mb-5">
+  <% ['Cashier','Registrar'].forEach(function(d){ const L = load[d]; %>
+  <div class="<%= UI.card %> p-5">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80"><%= d %></span>
+      <span class="<%= pill %> <%= tone(L.level) %>"><%= L.level %></span>
+    </div>
+    <div class="flex items-end justify-between">
+      <div><div class="text-3xl font-extrabold"><%= L.waiting %></div>
+        <div class="text-[11px] text-slateSoft/80">waiting</div></div>
+      <div class="text-right"><div class="font-mono text-[13px] font-bold"><%= L.issued %> / <%= L.capacity %></div>
+        <div class="text-[11px] text-slateSoft/80"><%= L.remaining %> slots left</div></div>
+    </div>
+    <div class="h-2.5 rounded bg-mist mt-3 overflow-hidden">
+      <div class="h-full rounded <%= L.level==='full'?'bg-red-600':L.level==='busy'?'bg-amber-500':'bg-emerald-600' %>" style="width:<%= L.percent %>%"></div>
+    </div>
+  </div>
+  <% }) %>
+</div>
+
+<div class="grid lg:grid-cols-12 gap-4">
+  <div class="lg:col-span-7">
+    <div class="<%= UI.card %>">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Latest transactions</h3></div>
+      <div class="overflow-x-auto"><table class="w-full">
+        <thead><tr>
+          <th class="<%= UI.th %>">Ticket</th><th class="<%= UI.th %>">Name</th>
+          <th class="<%= UI.th %>">Document</th><th class="<%= UI.th %>">Amount</th>
+          <th class="<%= UI.th %>">Status</th>
+        </tr></thead>
+        <tbody>
+          <% recent.forEach(function(t){ %>
+          <tr class="<%= UI.tr %>">
+            <td class="<%= UI.td %>"><span class="<%= chip %>"><%= t.ticketNo %></span></td>
+            <td class="<%= UI.td %>"><%= t.name %></td>
+            <td class="<%= UI.td %> text-[12px]"><%= t.items.map(function(i){return i.name}).join(', ') %></td>
+            <td class="<%= UI.td %> font-mono text-[12px]"><%= t.amountDue > 0 ? peso(t.amountDue) : '—' %></td>
+            <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span></td>
+          </tr>
+          <% }) %>
+          <% if (!recent.length) { %>
+          <tr><td colspan="5" class="px-4 py-8 text-center text-[13px] text-slateSoft/80">No transactions today.</td></tr>
+          <% } %>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="lg:col-span-5">
+    <div class="<%= UI.card %>">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Windows</h3></div>
+      <div class="<%= UI.body %>">
+        <% windows.forEach(function(w){ %>
+        <div class="flex items-center justify-between gap-3 py-2.5 border-b border-mist last:border-0">
+          <div>
+            <div class="text-[13px] font-semibold"><%= w.label %></div>
+            <div class="text-[11.5px] text-slateSoft/80"><%= w.department %><% if (w.serving) { %> &middot; serving <span class="font-mono font-bold"><%= w.serving %></span><% } %></div>
+          </div>
+          <span class="<%= pill %> <%= tone(w.status) %>"><%= w.status %></span>
+        </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

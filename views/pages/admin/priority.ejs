@@ -1,0 +1,135 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/priority' }) %>
+
+<div class="mb-5">
+  <h2 class="text-xl font-extrabold">Priority lane requests</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    Open the proof, check the name matches the account, then approve or reject.
+    Approving flags every future ticket from that account as priority.
+  </p>
+</div>
+
+<div class="grid grid-cols-3 gap-3 mb-5 max-w-md">
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= pending.length %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Pending</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= all.filter(function(r){return r.status==='approved'}).length %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Approved</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= all.filter(function(r){return r.status==='rejected'}).length %></div>
+    <div class="text-[11.5px] text-slateSoft/80 mt-0.5">Rejected</div></div>
+</div>
+
+<h3 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Waiting for review</h3>
+<% if (!pending.length) { %>
+<div class="<%= UI.card %> p-8 text-center text-[13px] text-slateSoft/80 mb-6">Nothing waiting for review.</div>
+<% } else { %>
+<div class="grid lg:grid-cols-2 gap-4 mb-6">
+  <% pending.forEach(function(r){ %>
+  <div class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>">
+      <h4 class="<%= UI.cardTtl %>"><%= r.name %></h4>
+      <span class="<%= pill %> <%= tone(r.category) %>"><%= r.categoryLabel %></span>
+    </div>
+    <div class="<%= UI.body %>">
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px] mb-3">
+        <div><dt class="text-slateSoft/80 text-[11px]">Account</dt><dd class="font-mono text-[12px]"><%= r.email %></dd></div>
+        <div><dt class="text-slateSoft/80 text-[11px]">Type</dt><dd class="capitalize"><%= r.role %></dd></div>
+        <% if (r.studentNo) { %>
+        <div><dt class="text-slateSoft/80 text-[11px]">Student no.</dt><dd class="font-mono text-[12px]"><%= r.studentNo %></dd></div>
+        <% } %>
+        <% if (r.course) { %>
+        <div><dt class="text-slateSoft/80 text-[11px]">Course</dt><dd><%= r.course %><%= r.yearLevel ? ' - Year ' + r.yearLevel : '' %></dd></div>
+        <% } %>
+        <div class="col-span-2"><dt class="text-slateSoft/80 text-[11px]">Submitted</dt>
+          <dd class="font-mono text-[12px]"><%= new Date(r.createdAt).toLocaleString('en-PH') %></dd></div>
+      </dl>
+
+      <div class="rounded-lg border border-hair overflow-hidden mb-3 bg-mist">
+        <% if (r.isImage) { %>
+        <a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener">
+          <img src="/admin/priority/proof/<%= r.id %>" alt="Proof submitted by <%= r.name %>"
+               class="w-full max-h-64 object-contain bg-white">
+        </a>
+        <% } else { %>
+        <div class="p-5 text-center">
+          <div class="text-[13px] font-semibold">PDF document</div>
+          <div class="text-[11.5px] text-slateSoft/80 mt-0.5"><%= r.proofName %></div>
+        </div>
+        <% } %>
+        <div class="px-3 py-2 border-t border-hair flex items-center justify-between gap-2">
+          <span class="text-[11px] text-slateSoft/80 truncate"><%= r.proofName %></span>
+          <a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener"
+             class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> shrink-0">Open full size</a>
+        </div>
+      </div>
+
+      <div class="grid gap-2">
+        <form method="POST" action="/admin/priority/<%= r.id %>/decide"
+              data-confirm
+              data-confirm-title="Approve priority status"
+              data-confirm-body="Approve <%= r.name %> for the <%= r.categoryLabel %> lane?"
+              data-confirm-note="Every future ticket from this account will be flagged priority."
+              data-confirm-ok="Approve">
+          <input type="hidden" name="decision" value="approve">
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full">Approve</button>
+        </form>
+        <details>
+          <summary class="cursor-pointer text-[12.5px] font-semibold text-slateSoft py-1.5">Reject with a reason</summary>
+          <form method="POST" action="/admin/priority/<%= r.id %>/decide" class="mt-2 space-y-2">
+            <input type="hidden" name="decision" value="reject">
+            <label for="reason<%= r.id %>" class="<%= UI.lbl %>">Reason (the student will see this)</label>
+            <input id="reason<%= r.id %>" name="reason" class="<%= UI.input %>" required
+                   placeholder="e.g. The ID photo is blurred and the number is unreadable">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnBad %> w-full">Reject</button>
+          </form>
+        </details>
+      </div>
+    </div>
+  </div>
+  <% }) %>
+</div>
+<% } %>
+
+<h3 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Already reviewed</h3>
+<div class="<%= UI.card %> overflow-x-auto">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Category</th>
+      <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>">Reviewer</th>
+      <th class="<%= UI.th %>">Reviewed</th><th class="<%= UI.th %>">Reason</th>
+      <th class="<%= UI.th %>">Proof</th><th class="<%= UI.th %>"></th>
+    </tr></thead>
+    <tbody>
+      <% reviewed.forEach(function(r){ %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= r.name %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= r.categoryLabel %></td>
+        <td class="<%= UI.td %>">
+          <span class="<%= pill %> <%= r.status === 'approved' ? tone('paid') : tone('cancelled') %>"><%= r.status %></span>
+        </td>
+        <td class="<%= UI.td %> text-[12px]"><%= r.reviewerName || '-' %></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= r.reviewedAt ? new Date(r.reviewedAt).toLocaleDateString('en-PH') : '-' %></td>
+        <td class="<%= UI.td %> text-[12px] text-slateSoft"><%= r.reason || '-' %></td>
+        <td class="<%= UI.td %>"><a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener" class="text-[12px] font-semibold underline">View</a></td>
+        <td class="<%= UI.td %>">
+          <% if (r.status === 'approved') { %>
+          <form method="POST" action="/admin/priority/revoke/<%= r.userId %>"
+                data-confirm
+                data-confirm-title="Revoke priority status"
+                data-confirm-body="Remove priority status from <%= r.name %>?"
+                data-confirm-ok="Revoke"
+                data-confirm-danger="1">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Revoke</button>
+          </form>
+          <% } %>
+        </td>
+      </tr>
+      <% }) %>
+      <% if (!reviewed.length) { %>
+      <tr><td colspan="8" class="px-4 py-8 text-center text-[13px] text-slateSoft/80">Nothing reviewed yet.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

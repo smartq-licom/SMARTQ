@@ -1,0 +1,482 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/student/request' }) %>
+
+<div class="max-w-3xl">
+  <div class="mb-5">
+    <h2 class="text-xl font-extrabold">Request a queue ticket</h2>
+    <p class="text-[13px] text-slateSoft/80 mt-0.5">The amount is set by the office. You never type a price yourself.</p>
+  </div>
+
+  <% if (formError) { %>
+  <div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= formError %></div>
+  <% } %>
+
+  <form method="POST" action="/student/request" data-once class="space-y-4">
+    <input type="hidden" name="submitToken" value="<%= submitToken %>">
+
+    <!-- STEP 1 - when -->
+    <section class="<%= UI.card %> step">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; When do you need this?</h3></div>
+      <div class="<%= UI.body %>">
+        <fieldset>
+          <legend class="sr-only">Choose when</legend>
+          <div class="grid sm:grid-cols-2 gap-2.5">
+            <% if (settings.allowSameDay) { %>
+            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <input type="radio" name="mode" value="now" class="sr-only" <%= form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
+              <div class="text-[14px] font-bold">Request now</div>
+              <div class="text-[12px] text-slateSoft/80 mt-0.5">Join today's queue immediately</div>
+            </label>
+            <% } %>
+            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <input type="radio" name="mode" value="schedule" class="sr-only"
+                     <%= (!settings.allowSameDay || form.mode === 'schedule') ? 'checked' : '' %> onchange="toggleMode()">
+              <div class="text-[14px] font-bold">Schedule for a later date</div>
+              <div class="text-[12px] text-slateSoft/80 mt-0.5">Book up to <%= settings.scheduleMaxDays %> days ahead</div>
+            </label>
+          </div>
+        </fieldset>
+        <div id="scheduleBox" class="hidden mt-3.5">
+          <label for="scheduledDate" class="<%= UI.lbl %>">Date of your visit</label>
+          <input id="scheduledDate" name="scheduledDate" type="date" class="<%= UI.input %> max-w-xs"
+                 value="<%= form.scheduledDate || '' %>" min="<%= today %>" max="<%= maxDate %>">
+          <span class="<%= UI.hint %>">
+            Any open day from <%= today %> up to <%= maxDate %>.
+          </span>
+        </div>
+        <% if (!settings.allowSameDay) { %>
+        <p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
+          Same-day requests are closed at the moment, so please pick a date.
+        </p>
+        <% } %>
+
+        <%# Quiet-hour advice. Informational only — the student may still come
+            whenever they like; this only says when the line is usually shorter.
+            All seven weekdays are embedded so the text follows the date they
+            pick without another request to the server. %>
+        <% var advWeek = { Cashier: peakAdvice.Cashier, Registrar: peakAdvice.Registrar };
+           var anyAdvice = advWeek.Cashier.some(Boolean) || advWeek.Registrar.some(Boolean); %>
+        <% if (anyAdvice) { %>
+        <div id="peakAdvice" class="mt-3.5 rounded-lg bg-brand-wash border border-brand-line px-3.5 py-3"
+             <%# The escaping output tag already makes the quotes attribute-safe.
+                 Escaping them by hand first would double-escape the string and
+                 break JSON.parse in the browser. %>
+             data-advice="<%= JSON.stringify(advWeek) %>"
+             data-today="<%= new Date().getDay() %>">
+          <div class="text-[12px] font-bold text-brand-deep mb-1.5">
+            Best time to come <span data-peak-day></span>
+          </div>
+          <ul data-peak-list class="space-y-1"></ul>
+          <span class="<%= UI.hint %>" data-peak-note></span>
+        </div>
+        <script>
+        (function () {
+          var box = document.getElementById('peakAdvice');
+          if (!box) return;
+          var week  = JSON.parse(box.dataset.advice);
+          var today = parseInt(box.dataset.today, 10);
+          var days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+          var dayEl  = box.querySelector('[data-peak-day]');
+          var listEl = box.querySelector('[data-peak-list]');
+          var noteEl = box.querySelector('[data-peak-note]');
+
+          function paint(dow, isFuture) {
+            var rows = [];
+            ['Cashier', 'Registrar'].forEach(function (office) {
+              var a = week[office] && week[office][dow];
+              if (a) rows.push({ office: office, a: a });
+            });
+            if (!rows.length) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+
+            dayEl.textContent = isFuture ? 'on ' + days[dow] : 'today (' + days[dow] + ')';
+
+            listEl.innerHTML = '';
+            var provisional = false;
+            rows.forEach(function (r) {
+              if (r.a.provisional) provisional = true;
+              var li = document.createElement('li');
+              li.className = 'text-[12.5px] text-slateSoft';
+              var quiet = r.a.quietest
+                ? ', usually shorter around <strong>' + r.a.quietest.label + '</strong>'
+                : '';
+              li.innerHTML = '<strong>' + r.office + ':</strong> busiest around <strong>'
+                           + r.a.busiest.label + '</strong>' + quiet + '.';
+              listEl.appendChild(li);
+            });
+
+            noteEl.textContent = provisional
+              ? 'There are not many ' + days[dow] + 's on record yet, so this is a rough guide '
+                + 'from all days combined. You may come at any open hour.'
+              : 'Based on past ' + days[dow] + 's. You are free to come at any open hour — '
+                + 'this is only a guide.';
+          }
+
+          // Which day is the student actually asking about?
+          function currentDow() {
+            var sched = document.querySelector('input[name=mode][value=schedule]');
+            var date  = document.getElementById('scheduledDate');
+            if (sched && sched.checked && date && date.value) {
+              var d = new Date(date.value + 'T00:00:00');
+              if (!isNaN(d)) return { dow: d.getDay(), future: true };
+            }
+            return { dow: today, future: false };
+          }
+
+          function refresh() { var c = currentDow(); paint(c.dow, c.future); }
+
+          document.querySelectorAll('input[name=mode]').forEach(function (r) {
+            r.addEventListener('change', refresh);
+          });
+          var dateInput = document.getElementById('scheduledDate');
+          if (dateInput) dateInput.addEventListener('change', refresh);
+          refresh();
+        })();
+        </script>
+        <% } %>
+      </div>
+    </section>
+
+    <!-- STEP 2 — student info -->
+    <section class="<%= UI.card %> step">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Your information</h3></div>
+      <div class="<%= UI.body %>">
+        <%- include('../../partials/name-fields', { nf: {
+              firstName: form.firstName || me.firstName, middleName: form.middleName || me.middleName,
+              lastName: form.lastName || me.lastName,
+              lblClass: UI.lbl, inputClass: UI.input
+            } }) %>
+        <% if (me.role !== 'guest') { %>
+        <div class="grid sm:grid-cols-4 gap-3 mt-3">
+          <div>
+            <label for="course" class="<%= UI.lbl %>">Course *</label>
+            <select id="course" name="course" class="<%= UI.input %>" required>
+              <% var pickedCourse = form.course || me.course || ''; %>
+              <option value="">Select</option>
+              <% courses.forEach(function(c){ %>
+              <option value="<%= c %>" <%= pickedCourse === c ? 'selected' : '' %>><%= c %></option>
+              <% }) %>
+              <% if (pickedCourse && courses.indexOf(pickedCourse) === -1) { %>
+              <option value="" selected disabled><%= pickedCourse %> — no longer offered, please re-select</option>
+              <% } %>
+            </select>
+          </div>
+          <div>
+            <label for="yearLevel" class="<%= UI.lbl %>">Year level *</label>
+            <select id="yearLevel" name="yearLevel" class="<%= UI.input %>" required>
+              <option value="">Select</option>
+              <% [1,2,3,4,5].forEach(function(y){ %>
+              <option value="<%= y %>" <%= String(form.yearLevel || me.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div>
+            <label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
+            <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= form.academicYear || me.academicYear || settings.academicYear %>">
+          </div>
+          <div>
+            <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
+            <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= form.studentNo || me.studentNo %>" placeholder="Optional">
+            <span class="<%= UI.hint %>">Optional</span>
+          </div>
+        </div>
+        <% } %>
+      </div>
+    </section>
+
+    <!-- STEP 3 - which office -->
+    <section class="<%= UI.card %> step">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Which office?</h3></div>
+      <div class="<%= UI.body %>">
+        <fieldset>
+          <legend class="sr-only">Office</legend>
+          <div class="grid sm:grid-cols-2 gap-2.5">
+            <% ['Cashier','Registrar'].forEach(function(off){ %>
+            <% const busy = !!activeBy[off]; %>
+            <label class="rounded-lg border-2 px-4 py-3.5 <%= busy ? 'border-hair bg-mist/60 opacity-60 cursor-not-allowed' : 'cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash' %>">
+              <input type="radio" name="office" value="<%= off %>" class="sr-only"
+                     <%= busy ? 'disabled' : '' %>
+                     <%= form.office === off ? 'checked' : '' %> onchange="pickOffice()">
+              <div class="text-[14px] font-bold"><%= off %></div>
+              <div class="text-[12px] text-slateSoft/80 mt-0.5">
+                <% if (busy) { %>You already have <%= activeBy[off].ticketNo %> here
+                <% } else { %><%= off === 'Cashier' ? 'Documents you pay for' : 'Free requests and claiming' %><% } %>
+              </div>
+            </label>
+            <% }) %>
+          </div>
+        </fieldset>
+        <p class="<%= UI.hint %>">One ticket covers one office. Choose the office first, then the documents.</p>
+      </div>
+    </section>
+
+    <!-- STEP 4 - documents -->
+    <section class="<%= UI.card %> step" id="docSection" hidden>
+      <div class="<%= UI.cardHd %>">
+        <h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Which documents?</h3>
+        <span id="pickCount" class="text-[11.5px] font-semibold text-slateSoft/80">0 of <%= settings.maxBatchDocuments %> selected</span>
+      </div>
+      <div class="<%= UI.body %>">
+        <fieldset>
+          <legend class="sr-only">Requested documents</legend>
+          <div class="grid gap-2" id="docList" data-max="<%= settings.maxBatchDocuments %>">
+            <% documents.forEach(function(sv){ %>
+            <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
+                 data-office="<%= sv.office %>" hidden>
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="documentIds" value="<%= sv.id %>"
+                       data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
+                       data-purpose="<%= sv.needsPurpose ? 1 : 0 %>"
+                       class="mt-0.5 rounded border-hair" onchange="recalc()">
+                <span class="min-w-0 flex-1">
+                  <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
+                  <span class="block text-[11.5px] text-slateSoft/80 mt-0.5">
+                    <%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %>
+                  </span>
+                </span>
+                <span class="shrink-0 flex items-center gap-1.5" id="qty-<%= sv.id %>" hidden>
+                  <label for="copies-<%= sv.id %>" class="text-[11.5px] text-slateSoft/80">Copies</label>
+                  <input id="copies-<%= sv.id %>" type="number" name="copies" value="1" min="1"
+                         max="<%= settings.maxCopies %>" data-copies="<%= sv.id %>" disabled
+                         class="w-16 rounded border border-hair px-2 py-1 text-[13px] text-center"
+                         onchange="recalc()" oninput="recalc()">
+                </span>
+              </label>
+              <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
+              <details class="mt-2 ml-7">
+                <summary class="cursor-pointer text-[11.5px] font-semibold text-brand">What you need to bring</summary>
+                <ul class="mt-1.5 space-y-1">
+                  <% requirements[sv.id].forEach(function(r){ %>
+                  <li class="text-[11.5px] text-slateSoft/85 flex gap-2">
+                    <span class="text-brand">&bull;</span>
+                    <span><%= r.label %><% if (r.note) { %> <span class="text-slateSoft/60">&mdash; <%= r.note %></span><% } %>
+                    <% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
+                  </li>
+                  <% }) %>
+                </ul>
+              </details>
+              <% } %>
+            </div>
+            <% }) %>
+          </div>
+          <p id="noDocs" class="text-[13px] text-slateSoft/70" hidden>No documents are available for this office.</p>
+        </fieldset>
+
+        <div class="mt-4 rounded-lg bg-ink text-white px-4 py-3.5 flex items-center justify-between">
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-white/55">Amount due</div>
+            <div class="text-[11.5px] text-white/70" id="destLabel">Select a document to continue</div>
+          </div>
+          <div class="text-2xl font-extrabold font-mono" id="amountDue">PHP 0.00</div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- STEP 5 - purpose, only for documents that ask for one -->
+    <section class="<%= UI.card %> step" id="purposeSection" hidden>
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Purpose of request</h3></div>
+      <div class="<%= UI.body %>">
+        <label for="purpose" class="<%= UI.lbl %>">Purpose *</label>
+        <select id="purpose" name="purpose" class="<%= UI.input %> max-w-sm" required onchange="toggleOther()">
+          <option value="">Select purpose</option>
+          <% purposes.forEach(function(p){ %>
+          <option value="<%= p %>" <%= form.purpose === p ? 'selected' : '' %>><%= p %></option>
+          <% }) %>
+        </select>
+        <div id="otherBox" class="hidden mt-3">
+          <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
+          <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %> max-w-lg" value="<%= form.otherPurpose || '' %>">
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 5 - queue category (granted by the admin, not chosen here) -->
+    <section class="<%= UI.card %> step">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Queue lane</h3></div>
+      <div class="<%= UI.body %>">
+        <% if (me.priorityStatus && me.priorityStatus !== 'none') { %>
+          <input type="hidden" name="queueCategory" value="priority">
+          <div class="rounded-lg bg-violet-50 border border-violet-200 px-4 py-3.5">
+            <div class="flex items-center gap-2">
+              <span class="<%= pill %> <%= tone(me.priorityStatus) %>">
+                <%= me.priorityStatus === 'pwd' ? 'PWD' : me.priorityStatus.charAt(0).toUpperCase() + me.priorityStatus.slice(1) %>
+              </span>
+              <span class="text-[13.5px] font-bold text-violet-900">Priority lane</span>
+            </div>
+            <p class="text-[12.5px] text-violet-800 mt-1.5">
+              Your account is approved for the priority lane, so this ticket is flagged automatically.
+            </p>
+          </div>
+        <% } else { %>
+          <input type="hidden" name="queueCategory" value="regular">
+          <div class="rounded-lg bg-mist border border-hair px-4 py-3.5">
+            <div class="text-[13.5px] font-bold">Regular lane</div>
+            <p class="text-[12.5px] text-slateSoft mt-1.5">
+              PWD, Senior Citizen and Pregnant clients are called ahead of the regular lane.
+              To join it, upload your ID or medical certificate for approval.
+            </p>
+            <a href="/student/priority" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-3">Request priority status</a>
+          </div>
+        <% } %>
+      </div>
+    </section>
+
+    <!-- STEP 7 - who will claim it -->
+    <section class="<%= UI.card %> step">
+      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Step <span data-step-no></span> &middot; Who will claim this?</h3></div>
+      <div class="<%= UI.body %>">
+        <fieldset>
+          <legend class="sr-only">Claimant</legend>
+          <div class="grid sm:grid-cols-2 gap-2.5">
+            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <input type="radio" name="claimant" value="self" class="sr-only"
+                     <%= form.claimant !== 'representative' ? 'checked' : '' %> onchange="toggleRep()">
+              <div class="text-[14px] font-bold">I will claim it myself</div>
+              <div class="text-[12px] text-slateSoft/80 mt-0.5">Bring a valid ID to the window</div>
+            </label>
+            <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <input type="radio" name="claimant" value="representative" class="sr-only"
+                     <%= form.claimant === 'representative' ? 'checked' : '' %> onchange="toggleRep()">
+              <div class="text-[14px] font-bold">Someone will claim it for me</div>
+              <div class="text-[12px] text-slateSoft/80 mt-0.5">A parent, relative or friend</div>
+            </label>
+          </div>
+        </fieldset>
+
+        <div id="repBox" class="hidden mt-4 space-y-3">
+          <div class="grid sm:grid-cols-3 gap-3">
+            <div>
+              <label for="repName" class="<%= UI.lbl %>">Representative's full name *</label>
+              <input id="repName" name="repName" class="<%= UI.input %>" value="<%= form.repName || '' %>">
+            </div>
+            <div>
+              <label for="repRelationship" class="<%= UI.lbl %>">Relationship to you *</label>
+              <input id="repRelationship" name="repRelationship" class="<%= UI.input %>"
+                     value="<%= form.repRelationship || '' %>" placeholder="Mother, sibling, friend">
+            </div>
+            <div>
+              <label for="repContact" class="<%= UI.lbl %>">Contact number</label>
+              <input id="repContact" name="repContact" class="<%= UI.input %>"
+                     value="<%= form.repContact || '' %>" placeholder="09XXXXXXXXX">
+            </div>
+          </div>
+          <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
+            Your representative must bring a signed authorisation letter, their own valid ID,
+            and a copy of yours. Staff will check these before releasing anything.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="flex flex-wrap gap-2.5">
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px]">Submit request</button>
+      <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleMode(){
+  var sched = document.querySelector('input[name=mode][value=schedule]');
+  var box = document.getElementById('scheduleBox');
+  var on = sched && sched.checked;
+  box.classList.toggle('hidden', !on);
+  document.getElementById('scheduledDate').required = on;
+}
+function toggleOther(){
+  var v = document.getElementById('purpose').value;
+  var box = document.getElementById('otherBox');
+  box.classList.toggle('hidden', v !== 'Others');
+  document.getElementById('otherPurpose').required = (v === 'Others');
+}
+function toggleRep(){
+  var rep = document.querySelector('input[name=claimant][value=representative]').checked;
+  document.getElementById('repBox').classList.toggle('hidden', !rep);
+  ['repName','repRelationship'].forEach(function(id){
+    document.getElementById(id).required = rep;
+  });
+}
+
+// Office is chosen first; only that office's documents are shown.
+function pickOffice(){
+  var chosen = document.querySelector('input[name=office]:checked');
+  var section = document.getElementById('docSection');
+  var rows = document.querySelectorAll('#docList .doc-row');
+  section.hidden = !chosen;
+  var shown = 0;
+  rows.forEach(function(row){
+    var match = chosen && row.dataset.office === chosen.value;
+    row.hidden = !match;
+    if (match) shown++;
+    if (!match) {
+      var cb = row.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = false;
+    }
+  });
+  document.getElementById('noDocs').hidden = !chosen || shown > 0;
+  recalc();
+}
+
+function recalc(){
+  var list  = document.getElementById('docList');
+  var max   = parseInt(list.dataset.max, 10);
+  var chosen = document.querySelector('input[name=office]:checked');
+  var boxes = list.querySelectorAll('input[type=checkbox]');
+  var picked = [], total = 0;
+
+  boxes.forEach(function(b){
+    var visible = chosen && b.dataset.office === chosen.value;
+    var qty    = document.getElementById('qty-' + b.dataset.row);
+    var copies = document.querySelector('[data-copies="' + b.dataset.row + '"]');
+    if (qty) qty.hidden = !(b.checked && visible);
+    // an unticked box must not submit a copies value, or the arrays misalign
+    if (copies) copies.disabled = !(b.checked && visible);
+    if (!b.checked || !visible) return;
+    picked.push(b);
+    var n = copies ? Math.max(1, parseInt(copies.value || '1', 10)) : 1;
+    total += parseFloat(b.dataset.price) * n;
+  });
+
+  boxes.forEach(function(b){
+    b.disabled = !b.checked && picked.length >= max;
+  });
+
+  document.getElementById('pickCount').textContent = picked.length + ' of ' + max + ' selected';
+  document.getElementById('amountDue').textContent =
+    'PHP ' + total.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  // Purpose is only asked for documents flagged as needing one.
+  var wantsPurpose = picked.some(function (b) { return b.dataset.purpose === '1'; });
+  var ps = document.getElementById('purposeSection');
+  var pf = document.getElementById('purpose');
+  if (ps) {
+    ps.hidden = !wantsPurpose;
+    if (pf) {
+      pf.required = wantsPurpose;
+      if (!wantsPurpose) { pf.value = ''; toggleOther(); }
+    }
+  }
+
+  renumber();
+
+  var d = document.getElementById('destLabel');
+  if (!picked.length)  d.textContent = 'Select a document to continue';
+  else                 d.textContent = 'You will be queued at the ' + chosen.value;
+}
+
+/** Numbers only the steps that are actually on screen, so the run never skips. */
+function renumber(){
+  var n = 0;
+  document.querySelectorAll('section.step').forEach(function (sec) {
+    if (sec.hidden) return;
+    n++;
+    var slot = sec.querySelector('[data-step-no]');
+    if (slot) slot.textContent = n;
+  });
+}
+
+toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
+</script>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

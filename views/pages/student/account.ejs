@@ -1,0 +1,107 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/student/account' }) %>
+<div class="max-w-2xl">
+  <h2 class="text-xl font-extrabold mb-1">Account settings</h2>
+  <p class="text-[13px] text-slateSoft/80 mb-4">Update your details or change your password.</p>
+
+  <section class="<%= UI.card %> mb-4">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Profile</h3></div>
+    <div class="<%= UI.body %>">
+      <% if (profileError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= profileError %></div>
+      <% } %>
+      <form method="POST" action="/student/account/profile" class="space-y-3">
+        <%- include('../../partials/name-fields', { nf: {
+              firstName: profile.firstName, middleName: profile.middleName, lastName: profile.lastName,
+              lblClass: UI.lbl, inputClass: UI.input
+            } }) %>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div><label for="email" class="<%= UI.lbl %>">Email (your login) *</label>
+            <input id="email" name="email" type="email" class="<%= UI.input %>" required value="<%= profile.email %>"></div>
+          <div><label for="contactNo" class="<%= UI.lbl %>">Contact number</label>
+            <input id="contactNo" name="contactNo" class="<%= UI.input %>" value="<%= profile.contactNo %>"></div>
+        </div>
+        <% if (me.role !== 'guest') { %>
+        <div class="grid sm:grid-cols-4 gap-3">
+          <div><label for="course" class="<%= UI.lbl %>">Course</label>
+            <select id="course" name="course" class="<%= UI.input %>">
+              <option value="">Select</option>
+              <% courses.forEach(function(c){ %>
+              <option value="<%= c %>" <%= profile.course === c ? 'selected' : '' %>><%= c %></option>
+              <% }) %>
+              <% if (profile.course && courses.indexOf(profile.course) === -1) { %>
+              <option value="" selected disabled><%= profile.course %> — no longer offered, please re-select</option>
+              <% } %>
+            </select></div>
+          <div><label for="yearLevel" class="<%= UI.lbl %>">Year level</label>
+            <select id="yearLevel" name="yearLevel" class="<%= UI.input %>">
+              <option value="">Select</option>
+              <% [1,2,3,4,5].forEach(function(y){ %>
+              <option value="<%= y %>" <%= String(profile.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
+              <% }) %>
+            </select></div>
+          <div><label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
+            <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= profile.academicYear %>"></div>
+          <div><label for="studentNo" class="<%= UI.lbl %>">Student number</label>
+            <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= profile.studentNo %>" placeholder="Optional">
+            <span class="<%= UI.hint %>">Optional</span></div>
+        </div>
+        <% } %>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save profile</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %> mb-4">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Change email address</h3></div>
+    <div class="<%= UI.body %>">
+      <% if (typeof emailError !== 'undefined' && emailError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= emailError %></div>
+      <% } %>
+      <p class="text-[12.5px] text-slateSoft mb-3">
+        Current address: <strong class="font-mono"><%= profile.email || 'none' %></strong>.
+        We will send a code to the new address; your old one stays active until you enter it.
+      </p>
+      <form method="POST" action="/student/account/email" class="flex flex-wrap items-end gap-2.5" data-once>
+        <div class="flex-1 min-w-[14rem]">
+          <label for="newEmail" class="<%= UI.lbl %>">New email address</label>
+          <input id="newEmail" name="newEmail" type="email" class="<%= UI.input %>" required>
+        </div>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Send code</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>">
+      <h3 class="<%= UI.cardTtl %>"><%= profile.hasPassword ? 'Change password' : 'Set a password' %></h3>
+      <% if (profile.authProvider === 'google') { %>
+      <span class="<%= pill %> bg-mist text-slateSoft">Google account</span>
+      <% } %>
+    </div>
+    <div class="<%= UI.body %>">
+      <% if (passwordError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= passwordError %></div>
+      <% } %>
+      <form method="POST" action="/student/account/password" class="space-y-3 max-w-sm">
+        <% if (profile.hasPassword) { %>
+        <div><label for="currentPassword" class="<%= UI.lbl %>">Current password *</label>
+          <input id="currentPassword" name="currentPassword" type="password" class="<%= UI.input %>" required></div>
+        <% } else { %>
+        <p class="rounded-lg bg-mist border border-hair px-3.5 py-2.5 text-[12.5px] text-slateSoft">
+          You sign in with Google, so there is no password on this account.
+          You do not need one - keep using the Google button.
+        </p>
+        <% } %>
+        <div><label for="newPassword" class="<%= UI.lbl %>">New password *</label>
+          <input id="newPassword" name="newPassword" type="password" class="<%= UI.input %>" required minlength="8">
+          <span class="<%= UI.hint %>">At least 8 characters with upper case, lower case, a number and a symbol.</span></div>
+        <div><label for="confirmPassword" class="<%= UI.lbl %>">Confirm new password *</label>
+          <input id="confirmPassword" name="confirmPassword" type="password" class="<%= UI.input %>" required minlength="8"></div>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>"><%= profile.hasPassword ? 'Change password' : 'Set password' %></button>
+      </form>
+    </div>
+  </section>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

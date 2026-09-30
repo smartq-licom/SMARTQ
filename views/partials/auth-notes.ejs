@@ -1,0 +1,9 @@
+<% if (typeof error !== 'undefined' && error) { %>
+<p role="alert" class="note note-bad"><%= error %></p>
+<% } %>
+<% if (typeof flash !== 'undefined' && flash) { %>
+<p role="status" class="note note-ok"><%= flash %></p>
+<% } %>
+<% if (typeof formError !== 'undefined' && formError) { %>
+<p role="alert" class="note note-bad"><%= formError %></p>
+<% } %>

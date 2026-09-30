@@ -1,0 +1,116 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/settings' }) %>
+<h2 class="text-xl font-extrabold mb-4">System settings</h2>
+<form method="POST" action="/admin/settings" class="grid lg:grid-cols-2 gap-4 max-w-4xl">
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Institution</h3></div>
+    <div class="<%= UI.body %> space-y-3">
+      <div><label class="<%= UI.lbl %>">Institution name</label><input name="institutionName" value="<%= settings.institutionName %>" class="<%= UI.input %>"></div>
+      <div><label class="<%= UI.lbl %>">Academic year</label><input name="academicYear" value="<%= settings.academicYear %>" class="<%= UI.input %>"></div>
+      <div><label class="<%= UI.lbl %>">Display announcement</label><input name="announcement" value="<%= settings.announcement %>" class="<%= UI.input %>"></div>
+      <div><label class="<%= UI.lbl %>">Display refresh (seconds)</label><input name="refreshRate" type="number" min="3" value="<%= settings.refreshRate %>" class="<%= UI.input %>"></div>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Office hours</h3></div>
+    <div class="<%= UI.body %> space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="<%= UI.lbl %>">Open</label><input name="openTime" type="time" value="<%= settings.openTime %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Close</label><input name="closeTime" type="time" value="<%= settings.closeTime %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Break start</label><input name="breakStart" type="time" value="<%= settings.breakStart %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Break end</label><input name="breakEnd" type="time" value="<%= settings.breakEnd %>" class="<%= UI.input %>"></div>
+      </div>
+      <fieldset>
+        <legend class="<%= UI.lbl %>">Open days</legend>
+        <div class="flex flex-wrap gap-2.5 text-[12.5px]">
+          <% ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d, i){ %>
+          <label class="flex items-center gap-1.5">
+            <input type="checkbox" name="openDays" value="<%= i+1 %>" <%= settings.openDays.includes(i+1) ? 'checked' : '' %> class="rounded border-hair"><%= d %>
+          </label>
+          <% }) %>
+        </div>
+        <span class="<%= UI.hint %>">Students cannot schedule for a closed day.</span>
+      </fieldset>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Capacity</h3></div>
+    <div class="<%= UI.body %> space-y-3">
+      <div><label class="<%= UI.lbl %>">Capacity mode</label>
+        <select name="capacityMode" class="<%= UI.input %>">
+          <option value="auto" <%= settings.capacityMode === 'auto' ? 'selected' : '' %>>Auto (from office hours)</option>
+          <option value="manual" <%= settings.capacityMode === 'manual' ? 'selected' : '' %>>Manual</option>
+        </select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="<%= UI.lbl %>">Cashier capacity</label><input name="cashierCapacity" type="number" min="1" value="<%= settings.cashierCapacity %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Registrar capacity</label><input name="registrarCapacity" type="number" min="1" value="<%= settings.registrarCapacity %>" class="<%= UI.input %>"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="<%= UI.lbl %>">Avg service minutes</label><input name="avgServiceMinutes" type="number" min="1" value="<%= settings.avgServiceMinutes %>" class="<%= UI.input %>"></div>
+        <div><label class="<%= UI.lbl %>">Max items per request</label><input name="maxBatchDocuments" type="number" min="1" max="8" value="<%= settings.maxBatchDocuments %>" class="<%= UI.input %>"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Auto-cancellation</h3></div>
+    <div class="<%= UI.body %> space-y-3">
+      <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12px] text-amber-900">
+        A transaction that has already been paid is never auto-cancelled.
+      </p>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="<%= UI.lbl %>">Cancel after</label><input name="cancelAfterMinutes" type="number" min="5" max="60" value="<%= settings.cancelAfterMinutes %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">minutes</span></div>
+        <div><label class="<%= UI.lbl %>">Warn before</label><input name="warnBeforeMinutes" type="number" min="1" max="30" value="<%= settings.warnBeforeMinutes %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">minutes</span></div>
+        <div><label class="<%= UI.lbl %>">No-show after</label><input name="noShowAfterMinutes" type="number" min="1" max="30" value="<%= settings.noShowAfterMinutes %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">minutes</span></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="sm:col-span-2 pt-2 mt-2 border-t border-hair">
+          <div class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Scheduling</div>
+        </div>
+        <div>
+          <label class="<%= UI.lbl %>">Students may book up to</label>
+          <input name="scheduleMaxDays" type="number" min="0" max="365"
+                 value="<%= settings.scheduleMaxDays %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">days ahead. Set 0 to allow same-day only.</span>
+        </div>
+        <div>
+          <label class="<%= UI.lbl %>">Same-day requests</label>
+          <select name="allowSameDay" class="<%= UI.input %>">
+            <option value="1" <%= settings.allowSameDay ? 'selected' : '' %>>Open - students can request now</option>
+            <option value="0" <%= !settings.allowSameDay ? 'selected' : '' %>>Closed - scheduled dates only</option>
+          </select>
+          <span class="<%= UI.hint %>">Close this on a busy day to stop walk-in numbers.</span>
+        </div>
+        <div>
+          <label class="<%= UI.lbl %>">Daily limit per office</label>
+          <input name="dailySlotLimit" type="number" min="0" max="999"
+                 value="<%= settings.dailySlotLimit %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">tickets per day. 0 means no cap.</span>
+        </div>
+        <div>
+          <label class="<%= UI.lbl %>">Maximum copies per document</label>
+          <input name="maxCopies" type="number" min="1" max="99"
+                 value="<%= settings.maxCopies %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">How many copies of one document a student may request.</span>
+        </div>
+        <div class="sm:col-span-2 pt-2 mt-2 border-t border-hair">
+          <div class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Auto-cancellation</div>
+        </div>
+        <div><label class="<%= UI.lbl %>">Expire an unattended ticket after</label>
+          <input name="expireWaitingMinutes" type="number" min="10" max="480" value="<%= settings.expireWaitingMinutes %>" class="<%= UI.input %>">
+          <span class="<%= UI.hint %>">minutes. A number that is taken but never called is cancelled after this.</span></div>
+      </div>
+      <div><label class="<%= UI.lbl %>">Minimum samples for historical estimates</label>
+        <input name="minSamples" type="number" min="1" value="<%= settings.minSamples %>" class="<%= UI.input %> max-w-[10rem]"></div>
+    </div>
+  </section>
+
+  <div class="lg:col-span-2"><button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save settings</button></div>
+</form>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

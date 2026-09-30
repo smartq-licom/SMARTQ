@@ -1,0 +1,67 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/users' }) %>
+<div class="mb-4">
+  <h2 class="text-xl font-extrabold">Staff accounts</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    Cashier, Registrar and Admin accounts. Student and guest accounts are on the
+    <a href="/admin/students" class="underline font-semibold">Student Accounts</a> page.
+  </p>
+</div>
+<div class="<%= UI.card %> overflow-x-auto mb-5">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Login</th>
+      <th class="<%= UI.th %>">Role</th><th class="<%= UI.th %>">Window</th>
+      <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>"></th>
+    </tr></thead>
+    <tbody>
+      <% users.forEach(function(u){ %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= u.fullName %></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.email || u.username %></td>
+        <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(u.role) %> capitalize"><%= u.role %></span></td>
+        <td class="<%= UI.td %> text-[12px] text-slateSoft">
+          <% if (u.windowId) { %>
+            <% const w = windows.find(function(x){ return x.id === u.windowId }); %>
+            <%= w ? w.label : 'window ' + u.windowId %>
+          <% } else if (u.role === 'admin') { %>Full access
+          <% } else { %><span class="text-amber-700">not posted to a window</span><% } %>
+        </td>
+        <td class="<%= UI.td %>"><span class="<%= pill %> <%= u.isActive ? tone('paid') : tone('cancelled') %>"><%= u.isActive ? 'active' : 'disabled' %></span></td>
+        <td class="<%= UI.td %>">
+          <% if (u.role !== 'admin') { %>
+          <form method="POST" action="/admin/users/<%= u.id %>/active">
+            <input type="hidden" name="active" value="<%= u.isActive ? '0' : '1' %>">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"><%= u.isActive ? 'Disable' : 'Enable' %></button>
+          </form>
+          <% } else { %><span class="text-[12px] text-slateSoft/60">Protected</span><% } %>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<div class="<%= UI.card %> max-w-2xl">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Create a staff account</h3></div>
+  <div class="<%= UI.body %>">
+    <p class="text-[12.5px] text-slateSoft/80 mb-3">You can also post staff to a window from the <a href="/admin/windows" class="underline font-semibold">Service Windows</a> page.</p>
+    <form method="POST" action="/admin/users/staff" class="grid sm:grid-cols-2 gap-3">
+      <div><label for="sfn" class="<%= UI.lbl %>">First name</label><input id="sfn" name="firstName" class="<%= UI.input %>" required></div>
+      <div><label for="sln" class="<%= UI.lbl %>">Last name</label><input id="sln" name="lastName" class="<%= UI.input %>" required></div>
+      <div><label for="sun" class="<%= UI.lbl %>">Username</label><input id="sun" name="username" class="<%= UI.input %>" required></div>
+      <div><label for="spw" class="<%= UI.lbl %>">Password</label><input id="spw" name="password" class="<%= UI.input %>" required></div>
+      <div><label for="srl" class="<%= UI.lbl %>">Role</label>
+        <select id="srl" name="role" class="<%= UI.input %>" required>
+          <option value="cashier">Cashier</option><option value="registrar">Registrar</option><option value="admin">Admin</option>
+        </select></div>
+      <div><label for="swn" class="<%= UI.lbl %>">Window</label>
+        <select id="swn" name="windowId" class="<%= UI.input %>">
+          <option value="">None</option>
+          <% windows.forEach(function(w){ %><option value="<%= w.id %>"><%= w.label %></option><% }) %>
+        </select></div>
+      <div class="sm:col-span-2"><button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Create account</button></div>
+    </form>
+  </div>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

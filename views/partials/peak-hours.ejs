@@ -1,0 +1,171 @@
+<%#
+  Peak-hour card.
+  Locals:
+    p        the profile object from data/peak.js hourlyProfile()
+    compact  true = bars + headline only (staff dashboard)
+             false/absent = bars + full figures table (admin reports)
+    heading  optional card title override
+%>
+<%
+  var pk        = typeof p !== 'undefined' ? p : null;
+  var isCompact = (typeof compact !== 'undefined') && compact;
+  var ttl       = (typeof heading !== 'undefined' && heading)
+                    ? heading
+                    : 'Peak hours — ' + (pk ? pk.department : '');
+  // Bars are drawn against the busiest serving hour, so the tallest bar is
+  // always full height and the shape of the day is readable at a glance.
+  var maxA = 0, maxC = 0, maxW = 0;
+  if (pk) pk.hours.forEach(function (h) {
+    if (!h.isBreak) {
+      if (h.arrivals > maxA) maxA = h.arrivals;
+      if (h.crowding > maxC) maxC = h.crowding;
+      if (h.avgWait  > maxW) maxW = h.avgWait;
+    }
+  });
+%>
+<div class="<%= UI.card %>">
+  <div class="<%= UI.cardHd %>">
+    <h3 class="<%= UI.cardTtl %>"><%= ttl %></h3>
+    <% if (pk && pk.hours.length) { %>
+    <span class="<%= pill %> bg-mist text-slateSoft">
+      <%= pk.basis === 'weekday'
+            ? 'every ' + pk.weekdayName + ', last ' + pk.lookback + ' days'
+            : 'all days, last ' + pk.lookback + ' days' %>
+    </span>
+    <% } %>
+  </div>
+
+  <div class="<%= UI.body %>">
+  <% if (!pk || !pk.hours.length) { %>
+    <p class="text-[13px] text-slateSoft/80">
+      Not enough history yet. Peak hours appear once the office has served
+      a few days of tickets — every request already records the time it was
+      made, so nothing needs to be switched on.
+    </p>
+  <% } else { %>
+
+    <% if (pk.basis === 'all-days') { %>
+    <div class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 mb-4 text-[12px] text-amber-900">
+      <strong>Provisional.</strong>
+      There are not yet enough
+      <%= pk.weekdayName ? pk.weekdayName + 's' : 'same-weekday days' %>
+      on record, so this profile combines every day of the week. It will switch
+      to a per-weekday profile once more history builds up.
+    </div>
+    <% } %>
+
+    <!-- headline findings -->
+    <div class="grid grid-cols-2 <%= isCompact ? '' : 'lg:grid-cols-4' %> gap-3 mb-4">
+      <div class="rounded-lg bg-red-50 border border-red-200 p-3.5">
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-red-800/80">Busiest hour</div>
+        <div class="text-[15px] font-extrabold text-red-900 mt-0.5">
+          <%= pk.busiest ? pk.busiest.label : '—' %></div>
+        <div class="text-[11px] text-red-800/80">
+          <%= pk.busiest ? pk.busiest.arrivals + ' requests on average' : 'no traffic' %></div>
+      </div>
+      <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3.5">
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-emerald-800/80">Quietest hour</div>
+        <div class="text-[15px] font-extrabold text-emerald-900 mt-0.5">
+          <%= pk.quietest ? pk.quietest.label : '—' %></div>
+        <div class="text-[11px] text-emerald-800/80">
+          <%= pk.quietest ? pk.quietest.arrivals + ' requests on average' : 'no traffic' %></div>
+      </div>
+      <% if (!isCompact) { %>
+      <div class="rounded-lg bg-mist border border-hair p-3.5">
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-slateSoft/80">Most crowded</div>
+        <div class="text-[15px] font-extrabold mt-0.5">
+          <%= pk.mostCrowded ? pk.mostCrowded.label : '—' %></div>
+        <div class="text-[11px] text-slateSoft/80">
+          <%= pk.mostCrowded ? pk.mostCrowded.crowding + ' waiting at once' : '—' %></div>
+      </div>
+      <div class="rounded-lg bg-mist border border-hair p-3.5">
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-slateSoft/80">Longest wait</div>
+        <div class="text-[15px] font-extrabold mt-0.5">
+          <%= pk.longestWait ? pk.longestWait.label : '—' %></div>
+        <div class="text-[11px] text-slateSoft/80">
+          <%= pk.longestWait ? pk.longestWait.avgWait + ' min average' : 'nothing called yet' %></div>
+      </div>
+      <% } %>
+    </div>
+
+    <!-- arrivals per hour, as bars -->
+    <div class="flex items-end gap-1.5 h-32 mb-1">
+      <% pk.hours.forEach(function (h) {
+           var pct = maxA > 0 ? Math.round(h.arrivals / maxA * 100) : 0;
+           var fill = h.isBreak      ? 'bg-hair'
+                    : h.level==='peak'     ? 'bg-red-500'
+                    : h.level==='busy'     ? 'bg-amber-400'
+                    : h.level==='moderate' ? 'bg-brand'
+                    : 'bg-brand-line';
+      %>
+      <div class="flex-1 flex flex-col justify-end items-center h-full"
+           title="<%= h.label %> — <%= h.arrivals %> requests<%= h.avgWait !== null ? ', ' + h.avgWait + ' min average wait' : '' %><%= h.isBreak ? ' (break)' : '' %>">
+        <div class="text-[10px] font-bold text-slateSoft/70 mb-0.5"><%= h.arrivals %></div>
+        <div class="w-full rounded-t <%= fill %>"
+             style="height: <%= Math.max(pct, h.arrivals > 0 ? 4 : 1) %>%"></div>
+      </div>
+      <% }) %>
+    </div>
+    <div class="flex gap-1.5 mb-4">
+      <% pk.hours.forEach(function (h) { %>
+      <div class="flex-1 text-center text-[9.5px] text-slateSoft/70 leading-tight">
+        <%= h.hour === 12 ? '12' : (h.hour > 12 ? h.hour - 12 : h.hour) %>
+      </div>
+      <% }) %>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-[11px] text-slateSoft/80 <%= isCompact ? '' : 'mb-4' %>">
+      <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-red-500"></span>Peak</span>
+      <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-amber-400"></span>Busy</span>
+      <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-brand"></span>Moderate</span>
+      <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-brand-line"></span>Quiet</span>
+      <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm bg-hair"></span>Break</span>
+      <span class="ml-auto"><%= pk.sampleDays %> day<%= pk.sampleDays === 1 ? '' : 's' %>,
+        <%= pk.totalTickets %> ticket<%= pk.totalTickets === 1 ? '' : 's' %></span>
+    </div>
+
+    <% if (!isCompact) { %>
+    <!-- the three measures side by side -->
+    <div class="overflow-x-auto -mx-5 px-5">
+      <table class="w-full border-collapse">
+        <thead><tr>
+          <th class="<%= UI.th %>">Hour</th>
+          <th class="<%= UI.th %>">Requests / day</th>
+          <th class="<%= UI.th %>">Waiting at once</th>
+          <th class="<%= UI.th %>">Average wait</th>
+          <th class="<%= UI.th %>">Share of peak</th>
+          <th class="<%= UI.th %>">Level</th>
+        </tr></thead>
+        <tbody>
+        <% pk.hours.forEach(function (h) { %>
+          <tr class="<%= UI.tr %> <%= h.isBreak ? 'opacity-60' : '' %>">
+            <td class="<%= UI.td %> font-semibold whitespace-nowrap"><%= h.label %></td>
+            <td class="<%= UI.td %>"><%= h.arrivals %></td>
+            <td class="<%= UI.td %>"><%= h.crowding %></td>
+            <td class="<%= UI.td %>">
+              <%= h.avgWait !== null ? h.avgWait + ' min' : '—' %>
+              <% if (h.avgWait !== null && h.waitSamples < 3) { %>
+              <span class="text-[11px] text-slateSoft/60">(<%= h.waitSamples %>)</span>
+              <% } %>
+            </td>
+            <td class="<%= UI.td %>"><%= h.isBreak ? '—' : h.share + '%' %></td>
+            <td class="<%= UI.td %>">
+              <span class="<%= pill %> <%= tone(h.level) %>"><%= h.level %></span>
+            </td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <p class="<%= UI.hint %> mt-3">
+      <strong>Requests / day</strong> is demand — how many numbers were taken in
+      that hour on an average <%= pk.basis === 'weekday' ? pk.weekdayName : 'day' %>.
+      <strong>Waiting at once</strong> is congestion — clients still holding an
+      uncalled ticket during that hour, which is why it can exceed the requests
+      made in the same hour. <strong>Average wait</strong> is what a client
+      actually experienced; a figure in brackets marks an hour with fewer than
+      three measured tickets, which is too thin to lean on.
+    </p>
+    <% } %>
+  <% } %>
+  </div>
+</div>
