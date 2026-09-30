@@ -4,7 +4,8 @@
 # Blueprint is created and are never stored in this file.
 services:
   - type: web
-    name: smartq
+    name: smartq-sg
+    region: singapore
     runtime: node
     plan: free
     buildCommand: npm ci
