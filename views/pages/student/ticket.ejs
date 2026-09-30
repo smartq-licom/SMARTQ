@@ -84,11 +84,12 @@
       <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</button>
     </div>
 
-    <%# A student can cancel their own ticket while it is still waiting and
-        unpaid; after that only the office can (checked again on the server). %>
-    <% if (t.ticketStatus === 'waiting' && t.paymentStatus !== 'paid') { %>
+    <%# A student can cancel their own BOOKED ticket while it is still waiting
+        and unpaid; same-day tickets and anything later go through the office
+        (checked again on the server). %>
+    <% if (t.isScheduled && t.ticketStatus === 'waiting' && t.paymentStatus !== 'paid') { %>
     <details class="mt-6 pt-4 border-t border-mist no-print">
-      <summary class="cursor-pointer text-center text-[12.5px] font-semibold text-red-700">Can't make it? Cancel this ticket</summary>
+      <summary class="cursor-pointer text-center text-[12.5px] font-semibold text-red-700">Can't make it? Cancel this booking</summary>
       <form method="POST" action="/student/ticket/<%= t.id %>/cancel" class="mt-3 space-y-2.5"
             data-confirm data-confirm-danger="1"
             data-confirm-title="Cancel ticket <%= t.ticketNo %>?"

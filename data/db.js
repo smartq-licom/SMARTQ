@@ -1688,13 +1688,15 @@ async function completeRegistrar(staff, txId) {
 }
 
 /**
- * A student cancels their own ticket: booked or today's, while it is still
- * waiting and unpaid. Once staff call it, or the Cashier records payment, only
- * staff can cancel. A cancelled claim ticket frees its paid documents again.
+ * A student cancels their own BOOKED ticket (scheduled for a date) while it is
+ * still waiting and unpaid. Same-day "Request now" tickets are cancelled by
+ * staff only. Once staff call it, or the Cashier records payment, only staff
+ * can cancel. A cancelled claim ticket frees its paid documents again.
  */
 async function cancelByStudent(user, txId, reason) {
   const t = await getTransaction(txId);
   if (!t || t.userId !== user.id)        return { error: 'Ticket not found.' };
+  if (!t.isScheduled)                     return { error: 'Only booked tickets can be cancelled here. For a same-day ticket, please ask the office.' };
   if (t.paymentStatus === 'paid')         return { error: 'This ticket is already paid, so it cannot be cancelled here. Please ask the Cashier.' };
   if (t.ticketStatus !== 'waiting')       return { error: 'This ticket has already been called, so only the office can cancel it now.' };
 
@@ -1703,7 +1705,7 @@ async function cancelByStudent(user, txId, reason) {
   const r = await run(
     `UPDATE transactions SET ticket_status='cancelled', overall_status='cancelled',
        cancel_reason=?, completed_at=NOW()
-     WHERE id=? AND user_id=? AND ticket_status='waiting' AND payment_status<>'paid'`,
+     WHERE id=? AND user_id=? AND is_scheduled=1 AND ticket_status='waiting' AND payment_status<>'paid'`,
     ['Cancelled by student' + (why ? ': ' + why : ''), txId, user.id]);
   if (!r.affectedRows) return { error: 'This ticket can no longer be cancelled. Please ask the office.' };
 
