@@ -958,16 +958,21 @@ async function updateWindow(id, b) {
   return { ok: true };
 }
 
-// ── TICKET NUMBERING (daily reset, one counter per lane) ─────────────────────
-// Priority and regular each count from 1 every day. The two counters are
-// shared by both offices, so an office's numbers can skip (C-001, then C-003
-// after R-002 went to the Registrar). Priority tickets carry a P: CP-001, RP-001.
+// ── TICKET NUMBERING (daily reset, per office and lane) ──────────────────────
+// Four counters, each starting at 1 every day: Cashier regular (C-001),
+// Cashier priority (CP-001), Registrar regular (R-001), Registrar priority
+// (RP-001). A counter created mid-day starts after the highest number that
+// office and lane already issued that day, so it never repeats a ticket.
 async function nextTicketNo(conn, department, serviceDate, category) {
   const lane = category === 'priority' ? 'priority' : 'regular';
-  const key  = 'ticket-' + lane;
+  const key  = `ticket-${department === 'Cashier' ? 'cashier' : 'registrar'}-${lane}`;
+  const [used] = await conn.execute(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ticket_no,'-',-1) AS UNSIGNED)),0) AS n
+     FROM transactions WHERE department=? AND queue_category=? AND service_date=?`,
+    [department, lane, serviceDate]);
   await conn.execute(
-    `INSERT INTO counters (name,ref_date,value) VALUES (?,?,1)
-     ON DUPLICATE KEY UPDATE value = value + 1`, [key, serviceDate]);
+    `INSERT INTO counters (name,ref_date,value) VALUES (?,?,?)
+     ON DUPLICATE KEY UPDATE value = value + 1`, [key, serviceDate, Number(used[0].n) + 1]);
   const [r] = await conn.execute(
     'SELECT value FROM counters WHERE name=? AND ref_date=?', [key, serviceDate]);
   const prefix = (department === 'Cashier' ? 'C' : 'R') + (lane === 'priority' ? 'P' : '');

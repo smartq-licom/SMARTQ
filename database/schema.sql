@@ -109,7 +109,7 @@ CREATE TABLE windows (
 -- the documents requested live in transaction_documents.
 CREATE TABLE transactions (
   id              INT AUTO_INCREMENT PRIMARY KEY,
-  ticket_no       VARCHAR(12) NOT NULL,             -- C-001 / R-001, priority CP-001 / RP-001
+  ticket_no       VARCHAR(12) NOT NULL,             -- C-001 / R-001, priority CP-001 / RP-001 (per office, daily)
   department      ENUM('Cashier','Registrar') NOT NULL,
   queue_category  ENUM('priority','regular') NOT NULL DEFAULT 'regular',
   priority_type   ENUM('none','pwd','senior','pregnant') NOT NULL DEFAULT 'none',
