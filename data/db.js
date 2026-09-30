@@ -1687,6 +1687,34 @@ async function completeRegistrar(staff, txId) {
   return await getTransaction(txId);
 }
 
+/**
+ * A student cancels their own ticket: booked or today's, while it is still
+ * waiting and unpaid. Once staff call it, or the Cashier records payment, only
+ * staff can cancel. A cancelled claim ticket frees its paid documents again.
+ */
+async function cancelByStudent(user, txId, reason) {
+  const t = await getTransaction(txId);
+  if (!t || t.userId !== user.id)        return { error: 'Ticket not found.' };
+  if (t.paymentStatus === 'paid')         return { error: 'This ticket is already paid, so it cannot be cancelled here. Please ask the Cashier.' };
+  if (t.ticketStatus !== 'waiting')       return { error: 'This ticket has already been called, so only the office can cancel it now.' };
+
+  const why = String(reason || '').trim().slice(0, 90);
+  // The WHERE repeats the checks, so a ticket called in the same instant is left alone.
+  const r = await run(
+    `UPDATE transactions SET ticket_status='cancelled', overall_status='cancelled',
+       cancel_reason=?, completed_at=NOW()
+     WHERE id=? AND user_id=? AND ticket_status='waiting' AND payment_status<>'paid'`,
+    ['Cancelled by student' + (why ? ': ' + why : ''), txId, user.id]);
+  if (!r.affectedRows) return { error: 'This ticket can no longer be cancelled. Please ask the office.' };
+
+  await run(
+    `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,note)
+     VALUES (?,?,'cancelled',NULL,?,?,?)`,
+    [txId, t.ticketNo, t.fullName || 'Student', t.department,
+     'Cancelled by the student' + (why ? ': ' + why : '')]);
+  return { ok: true, ticketNo: t.ticketNo };
+}
+
 async function cancelTicket(staff, txId, reason) {
   const t = await getTransaction(txId);
   if (!t) return { error: 'Ticket not found.' };
@@ -2078,7 +2106,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12,
+  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

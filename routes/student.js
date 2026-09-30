@@ -124,6 +124,16 @@ router.post('/request', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// The student cancels their own waiting, unpaid ticket (see db.cancelByStudent).
+router.post('/ticket/:id/cancel', async (req, res, next) => {
+  try {
+    const r = await db.cancelByStudent(req.session.user, Number(req.params.id), req.body.reason);
+    if (r.error) { req.session.error = r.error; return res.redirect('/student/ticket/' + req.params.id); }
+    req.session.flash = `Ticket ${r.ticketNo} was cancelled. You can request a new ticket for this office any time.`;
+    res.redirect('/student/dashboard');
+  } catch (e) { next(e); }
+});
+
 router.get('/ticket/:id', async (req, res, next) => {
   try {
     await db.processAutoCancel();

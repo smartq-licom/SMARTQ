@@ -3,7 +3,7 @@
   // it instead of the browser dialog:
   //   <form data-confirm data-confirm-title="Confirm payment"
   //         data-confirm-body="Record payment of PHP 110.00 for ticket C-002?"
-  //         data-confirm-ok="Confirm">
+  //         data-confirm-ok="Confirm" data-confirm-back="Go back">  (back is optional)
 %>
 <div id="confirmModal" class="fixed inset-0 z-50 hidden no-print" role="dialog"
      aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
@@ -50,6 +50,7 @@
     titleEl.textContent = opts.title || 'Please confirm';
     bodyEl.textContent  = opts.body  || 'Do you want to continue?';
     okBtn.textContent   = opts.ok    || 'Confirm';
+    cancelBtn.textContent = opts.back || 'Cancel';
     noteEl.textContent  = opts.note  || '';
     noteEl.hidden       = !opts.note;
     okBtn.className = okBtn.className.replace(/bg-\S+|hover:bg-\S+/g, '').trim() + ' ' +
@@ -94,7 +95,7 @@
         e.preventDefault();
         open({
           title: el.dataset.confirmTitle, body: el.dataset.confirmBody,
-          ok: el.dataset.confirmOk, note: el.dataset.confirmNote,
+          ok: el.dataset.confirmOk, back: el.dataset.confirmBack, note: el.dataset.confirmNote,
           danger: el.dataset.confirmDanger === '1',
         }, function () {
           el.dataset.confirmed = '1';
@@ -108,7 +109,7 @@
         var href = el.getAttribute('href');
         open({
           title: el.dataset.confirmTitle, body: el.dataset.confirmBody,
-          ok: el.dataset.confirmOk, note: el.dataset.confirmNote,
+          ok: el.dataset.confirmOk, back: el.dataset.confirmBack, note: el.dataset.confirmNote,
           danger: el.dataset.confirmDanger === '1',
         }, function () { if (href) window.location.href = href; });
       });
