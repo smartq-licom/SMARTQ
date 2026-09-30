@@ -13,13 +13,13 @@
   </div>
   <div class="flex gap-2 no-print">
     <% if (current) { %>
-    <form method="POST" action="/staff/recall/<%= current.id %>" data-sound>
+    <form method="POST" action="/staff/recall/<%= current.id %>" data-once>
       <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> px-5 py-3 text-[14px]">
         Call <%= current.ticketNo %> Again
       </button>
     </form>
     <% } %>
-    <form method="POST" action="/staff/call-next" data-sound>
+    <form method="POST" action="/staff/call-next" data-once>
       <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px]"
               <%= current ? 'disabled title="Finish the client at your window first"' : '' %>>Call Next</button>
     </form>
@@ -70,14 +70,14 @@
             <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)
             <% } else { %>The queue is empty.<% } %>
           </p>
-          <form method="POST" action="/staff/call-next" class="mt-4 no-print" data-sound>
+          <form method="POST" action="/staff/call-next" class="mt-4 no-print" data-once>
             <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Call Next</button>
           </form>
         </div>
         <% } else { %>
         <div class="text-center border-b border-hair pb-4">
           <div class="font-mono text-5xl font-extrabold"><%= current.ticketNo %></div>
-          <form method="POST" action="/staff/recall/<%= current.id %>" class="mt-3 no-print" data-sound>
+          <form method="POST" action="/staff/recall/<%= current.id %>" class="mt-3 no-print" data-once>
             <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">
               Call again
             </button>
@@ -292,5 +292,4 @@
 </div>
 
 <%- include('../../partials/foot') %>
-<%- include('../../partials/chime', { chimeScope: 'staff', chimeId: '', soundButton: false }) %>
 <%- include('../../partials/scripts') %>
