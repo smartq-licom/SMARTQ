@@ -1822,11 +1822,29 @@ async function announcementPulse(department) {
   const r = await q('SELECT MAX(id) AS id FROM announcements WHERE department=?', [department]);
   return r[0].id || null;
 }
+/**
+ * The student's own ticket: newest call, status, and how many are ahead in the
+ * same office and lane today (the same count the ticket page shows). Drives
+ * the call alert and the "5 ahead" / "you are next" notices.
+ */
 async function announcementPulseFor(txId, userId) {
   const r = await q(
-    `SELECT MAX(a.id) AS id FROM announcements a JOIN transactions t ON t.id = a.transaction_id
-     WHERE a.transaction_id=? AND t.user_id=?`, [txId, userId]);
-  return r[0].id || null;
+    `SELECT t.ticket_status, t.service_date,
+            (SELECT MAX(a.id) FROM announcements a WHERE a.transaction_id = t.id) AS call_id,
+            (SELECT COUNT(*) FROM transactions x
+              WHERE x.department = t.department AND x.service_date = t.service_date
+                AND x.queue_category = t.queue_category AND x.ticket_status = 'waiting'
+                AND (x.requested_at < t.requested_at OR (x.requested_at = t.requested_at AND x.id < t.id))
+            ) AS ahead
+     FROM transactions t WHERE t.id=? AND t.user_id=?`, [txId, userId]);
+  if (!r.length) return { id: null };
+  const t = r[0];
+  return {
+    id: t.call_id || null,
+    status: t.ticket_status,
+    today: ymd(new Date(t.service_date)) === today(),
+    ahead: t.ticket_status === 'waiting' ? Number(t.ahead) : null,
+  };
 }
 
 /** The newest announcement for one ticket, for the student's own page. */

@@ -147,7 +147,7 @@ router.post('/request', async (req, res, next) => {
 router.get('/ticket/:id/pulse', async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store');
-    res.json({ id: await db.announcementPulseFor(Number(req.params.id), req.session.user.id) });
+    res.json(await db.announcementPulseFor(Number(req.params.id), req.session.user.id));
   } catch (e) { next(e); }
 });
 
@@ -178,6 +178,7 @@ router.get('/ticket/:id', async (req, res, next) => {
     res.render('pages/student/ticket', {
       title: 'Ticket ' + t.ticketNo, t, ahead, timeLeft, eta,
       officeHours: officeHours(await db.getSettings()),
+      isToday: t.serviceDate === db.today(),
       requirements: await db.getTransactionRequirements(t.id),
       announcement: await db.latestAnnouncementFor(t.id),
     });

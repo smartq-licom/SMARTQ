@@ -133,6 +133,8 @@
       fetch(PULSE, { cache: 'no-store', credentials: 'same-origin' })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
+          // other scripts on the page (e.g. the "almost your turn" notices) listen for this
+          if (d) window.dispatchEvent(new CustomEvent('smartq:pulse', { detail: d }));
           if (!d || d.id == null || String(d.id) === String(now)) return;
           reloading = true;
           try { sessionStorage.setItem(KEY, String(d.id)); } catch (e) {}

@@ -10,6 +10,21 @@
       <span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
       <span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span>
     </div>
+
+    <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
+        a vibration and (if allowed) a phone notification at 5 ahead and when
+        next. Kept up to date by the ticket's /pulse check every 1.5 s. %>
+    <% if (t.ticketStatus === 'waiting' && isToday) { %>
+    <div id="nearBox" class="mt-5 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3 text-left" hidden
+         data-tx="<%= t.id %>" data-no="<%= t.ticketNo %>" data-office="<%= t.department %>" data-ahead="<%= ahead %>">
+      <div class="text-[14px] font-bold text-amber-900" data-near-title></div>
+      <div class="text-[12.5px] text-amber-900/85 mt-0.5" data-near-body></div>
+    </div>
+    <div id="alertsOffer" class="mt-4 no-print" hidden>
+      <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">&#128276; Allow alerts on this phone</button>
+      <p class="text-[11.5px] text-slateSoft/70 mt-1.5">We will notify you when 5 people are ahead of you and when you are next. Keep this page open.</p>
+    </div>
+    <% } %>
     <dl class="mt-6 text-left space-y-2.5 text-[13px]">
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Name</dt><dd class="font-semibold text-right"><%= t.fullName %></dd></div>
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Destination</dt><dd class="font-semibold"><%= t.department %></dd></div>
@@ -105,6 +120,94 @@
   </div>
 </div>
 <%- include('../../partials/foot') %>
+<script>
+(function () {
+  var box = document.getElementById('nearBox');
+  if (!box) return;
+  var TX = box.dataset.tx, NO = box.dataset.no, OFFICE = box.dataset.office;
+  var KEY = 'smartq.near.' + TX;               // remembers which notices were already given
+  var offer = document.getElementById('alertsOffer');
+  var canNotify = 'Notification' in window;
+
+  // Android only shows notifications through a service worker
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+
+  function given() { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
+  function remember(l) { try { localStorage.setItem(KEY, l); } catch (e) {} }
+
+  function text(ahead) {
+    return ahead === 0
+      ? { title: 'You are next — ' + NO, body: 'Stay close to the ' + OFFICE + ' window. You will be called shortly.' }
+      : { title: 'Almost your turn — ' + NO,
+          body: ahead + (ahead === 1 ? ' person is' : ' people are') + ' ahead of you. Please head to the ' + OFFICE + ' now.' };
+  }
+
+  function paint(ahead) {
+    if (ahead == null || ahead > 5) { box.hidden = true; return; }
+    var t = text(ahead);
+    box.querySelector('[data-near-title]').textContent = '🔔 ' + t.title;
+    box.querySelector('[data-near-body]').textContent = t.body;
+    box.hidden = false;
+  }
+
+  function beep() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      var a = new AC(); if (a.state === 'suspended') a.resume();
+      [0, 0.22].forEach(function (at, i) {
+        var o = a.createOscillator(), g = a.createGain();
+        o.type = 'sine'; o.frequency.value = i ? 1046 : 784;
+        g.gain.setValueAtTime(0.0001, a.currentTime + at);
+        g.gain.exponentialRampToValueAtTime(0.4, a.currentTime + at + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + at + 0.2);
+        o.connect(g); g.connect(a.destination); o.start(a.currentTime + at); o.stop(a.currentTime + at + 0.22);
+      });
+    } catch (e) {}
+  }
+
+  function notify(t) {
+    if (!canNotify || Notification.permission !== 'granted') return;
+    var opts = { body: t.body, tag: 'smartq-' + TX, renotify: true, icon: '/img/lcc-seal.jpg',
+                 vibrate: [200, 100, 200], data: { url: '/student/ticket/' + TX } };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(function (r) { r.showNotification(t.title, opts); })
+        .catch(function () { try { new Notification(t.title, opts); } catch (e) {} });
+    } else { try { new Notification(t.title, opts); } catch (e) {} }
+  }
+
+  // Two notices per ticket: at 5 (or fewer) ahead, then when next.
+  function check(ahead) {
+    paint(ahead);
+    if (ahead == null || ahead > 5) return;
+    var level = ahead === 0 ? 'next' : '5';
+    var done = given();
+    if (done === 'next' || done === level) return;
+    remember(level);
+    beep();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    notify(text(ahead));
+  }
+
+  // Offer phone notifications until the student answers the permission prompt.
+  if (canNotify && Notification.permission === 'default') {
+    offer.hidden = false;
+    offer.querySelector('button').addEventListener('click', function () {
+      Notification.requestPermission().then(function (p) {
+        offer.hidden = true;
+        if (p === 'granted') notify({ title: 'Alerts are on — ' + NO,
+          body: 'We will tell you when 5 people are ahead of you and when you are next.' });
+      });
+    });
+  }
+
+  window.addEventListener('smartq:pulse', function (e) {
+    var d = e.detail || {};
+    if (d.status !== 'waiting' || !d.today) { box.hidden = true; return; }
+    check(d.ahead);
+  });
+  check(parseInt(box.dataset.ahead, 10));
+})();
+</script>
 <%- include('../../partials/chime', {
       chimeScope: 'ticket' + t.id,
       chimeId: announcement ? announcement.id : '',
