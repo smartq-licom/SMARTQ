@@ -351,9 +351,10 @@
               <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= form.academicYear || me.academicYear || settings.academicYear %>">
             </div>
             <div>
+              <%# Comes from the account (one number per student); not editable per ticket. %>
               <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
-              <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= form.studentNo || me.studentNo %>" placeholder="Optional">
-              <span class="<%= UI.hint %>">Optional</span>
+              <input id="studentNo" class="<%= UI.input %> bg-mist text-slateSoft font-mono" value="<%= me.studentNo %>" readonly>
+              <span class="<%= UI.hint %>">From your account. <a href="/student/account" class="underline">Change it</a></span>
             </div>
           </div>
           <% } %>

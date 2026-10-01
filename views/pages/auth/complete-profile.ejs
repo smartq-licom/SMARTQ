@@ -61,10 +61,11 @@
         </div>
         <div class="row row-2">
           <div class="field">
-            <label for="studentNo">Student number <span class="req">optional</span></label>
+            <label for="studentNo">Student number <span class="req">required for students</span></label>
             <input id="studentNo" name="studentNo" class="control" value="<%= profile.studentNo || '' %>"
-                   placeholder="2021-0001">
-            <span class="hint">Leave this blank if you do not know it.</span>
+                   inputmode="numeric" maxlength="9" pattern="[0-9]{9}" autocomplete="off"
+                   title="Exactly 9 digits" placeholder="9 digits, e.g. 202100001">
+            <span class="hint">Exactly 9 digits. Each student number can only be used by one account.</span>
           </div>
           <div class="field">
             <label for="academicYear">Academic year</label>

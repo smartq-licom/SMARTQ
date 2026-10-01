@@ -33,12 +33,28 @@ const STEPS = [
       CONSTRAINT fk_ci_line FOREIGN KEY (line_id)     REFERENCES transaction_documents(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`,
   },
+  {
+    name: 'blank student numbers stored as NULL (so they do not clash)',
+    sql: "UPDATE users SET student_no = NULL WHERE student_no = ''",
+  },
+  {
+    name: 'one student number per account (unique index)',
+    // Added only if missing. If two accounts share a number, MySQL refuses
+    // and the duplicates must be fixed first (Admin > Student Accounts).
+    check: `SELECT COUNT(*) AS has FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'uq_student_no'`,
+    add:   'ALTER TABLE users ADD UNIQUE KEY uq_student_no (student_no)',
+  },
 ];
 
 (async () => {
   console.log(`\n  Updating "${process.env.DB_NAME || 'smartq_db'}" on ${process.env.DB_HOST || 'localhost'}`);
   for (const s of STEPS) {
-    await db.query(s.sql);
+    if (s.sql) await db.query(s.sql);
+    if (s.check) {
+      const [[r]] = await db.query(s.check);
+      if (!Number(r.has)) await db.query(s.add);
+    }
     console.log('  ok  ' + s.name);
   }
   console.log('  Done. No data was removed.\n');

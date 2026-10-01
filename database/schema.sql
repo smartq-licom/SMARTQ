@@ -30,7 +30,7 @@ CREATE TABLE users (
   role          ENUM('admin','cashier','registrar','student','guest') NOT NULL,
   contact_no    VARCHAR(20)  DEFAULT NULL,
   -- student-only profile fields
-  student_no    VARCHAR(30)  DEFAULT NULL,    -- OPTIONAL by design
+  student_no    VARCHAR(30)  DEFAULT NULL,    -- 9 digits, required for students, one per account
   course        VARCHAR(40)  DEFAULT NULL,
   year_level    TINYINT      DEFAULT NULL,
   academic_year VARCHAR(12)  DEFAULT NULL,
@@ -44,6 +44,7 @@ CREATE TABLE users (
   last_login    TIMESTAMP    NULL DEFAULT NULL,
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_student_no (student_no),
   INDEX idx_role (role),
   INDEX idx_status (status)
 ) ENGINE=InnoDB;

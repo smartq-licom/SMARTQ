@@ -85,6 +85,12 @@ async function peakAdvice(settings) {
 router.get('/request', async (req, res, next) => {
   try {
     const me = req.session.user;
+    // Accounts made before the student number became required finish their
+    // profile first (it is checked again when the ticket is created).
+    if (db.needsProfile(await db.getUser(me.id))) {
+      req.session.flash = 'Please add your 9-digit student number before requesting a ticket.';
+      return res.redirect('/complete-profile');
+    }
 
     const [documents, settings, activeBy, requirements, claimable] = await Promise.all([
       db.getDocuments({ guestOnly: me.role === 'guest' }), db.getSettings(),

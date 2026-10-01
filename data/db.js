@@ -238,6 +238,13 @@ async function updateProfile(id, b) {
     return { error: 'That email is already used by another account.' };
   if (b.course && !isCourse(b.course))
     return { error: 'Please choose one of the courses offered by the college.' };
+  // Students must keep a valid, unique student number; guests have none.
+  let studentNo = null;
+  if (me.role === 'student') {
+    const sn = await checkStudentNo(b.studentNo, id);
+    if (sn.error) return { error: sn.error };
+    studentNo = sn.no;
+  }
 
   await run(
     `UPDATE users SET email=?,first_name=?,middle_name=?,last_name=?,contact_no=?,
@@ -245,16 +252,27 @@ async function updateProfile(id, b) {
     [ b.email.trim().toLowerCase(), b.firstName.trim(),
       (b.middleName || '').trim() || null, b.lastName.trim(),
       (b.contactNo || '').trim() || null,
-      (b.studentNo || '').trim() || null,
+      studentNo,
       b.course || null, b.yearLevel ? +b.yearLevel : null,
       (b.academicYear || '').trim() || null, id ]
   );
   return getUser(id);
 }
 
-/** True when a student account still needs course / year level. */
+/** True when a student account still needs course, year level or a student number. */
 function needsProfile(u) {
-  return u && u.role === 'student' && (!u.course || !u.yearLevel);
+  return u && u.role === 'student' && (!u.course || !u.yearLevel || !STUDENT_NO_RE.test(u.studentNo || ''));
+}
+
+// LCC student numbers are exactly 9 digits, and one number belongs to one account.
+const STUDENT_NO_RE = /^\d{9}$/;
+async function checkStudentNo(raw, userId) {
+  const no = String(raw || '').replace(/\s+/g, '');
+  if (!no)                     return { error: 'Student number is required.' };
+  if (!STUDENT_NO_RE.test(no)) return { error: 'Student number must be exactly 9 digits, numbers only.' };
+  const taken = await q('SELECT id FROM users WHERE student_no=? AND id<>? LIMIT 1', [no, userId]);
+  if (taken.length)            return { error: 'That student number is already used by another account. If it is yours, please contact the Registrar.' };
+  return { no };
 }
 
 /** Finish the profile after signing in with Google for the first time. */
@@ -265,6 +283,12 @@ async function completeProfile(id, b) {
     return { error: 'Course and year level are required for a student account.' };
   if (role === 'student' && !isCourse(b.course))
     return { error: 'Please choose one of the courses offered by the college.' };
+  let studentNo = null;
+  if (role === 'student') {
+    const sn = await checkStudentNo(b.studentNo, id);
+    if (sn.error) return { error: sn.error };
+    studentNo = sn.no;
+  }
 
   const s = await getSettings();
   await run(
@@ -272,7 +296,7 @@ async function completeProfile(id, b) {
        student_no=?, course=?, year_level=?, academic_year=? WHERE id=?`,
     [ role, b.firstName.trim(), (b.middleName || '').trim() || null, b.lastName.trim(),
       (b.contactNo || '').trim() || null,
-      role === 'student' ? ((b.studentNo || '').trim() || null) : null,
+      studentNo,
       role === 'student' ? b.course : null,
       role === 'student' ? +b.yearLevel : null,
       role === 'student' ? (b.academicYear || s.academicYear) : null, id ]);
@@ -1118,8 +1142,14 @@ async function createRequest(user, b) {
   // ---- queue category -------------------------------------------------------
   // Priority can no longer be self-selected. It comes from the approved status
   // on the account, which an admin grants after reviewing uploaded proof.
-  const approved = await q('SELECT priority_status FROM users WHERE id=?', [user.id]);
+  const approved = await q('SELECT priority_status, student_no FROM users WHERE id=?', [user.id]);
   const granted  = approved.length ? approved[0].priority_status : 'none';
+
+  // The ticket carries the student number on the account (one per student),
+  // never a number typed into the request form.
+  const accountStudentNo = approved.length ? approved[0].student_no : null;
+  if (user.role === 'student' && !STUDENT_NO_RE.test(accountStudentNo || ''))
+    return { error: 'Add your 9-digit student number to your account before requesting a ticket.' };
 
   let category = 'regular';
   let pType    = 'none';
@@ -1239,7 +1269,7 @@ async function createRequest(user, b) {
       [ ticketNo, department, category, pType, user.id,
         user.role === 'guest' ? 'guest' : 'student',
         String(b.firstName).trim(), String(b.middleName || '').trim() || null,
-        String(b.lastName).trim(), String(b.studentNo || '').trim() || null,
+        String(b.lastName).trim(), user.role === 'student' ? accountStudentNo : null,
         b.course || null, b.yearLevel ? +b.yearLevel : null,
         b.academicYear || s.academicYear,
         rep.claimant, rep.name, rep.relationship, rep.contact, rep.authFile,

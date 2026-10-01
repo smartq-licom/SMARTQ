@@ -42,9 +42,10 @@
             </select></div>
           <div><label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
             <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= profile.academicYear %>"></div>
-          <div><label for="studentNo" class="<%= UI.lbl %>">Student number</label>
-            <input id="studentNo" name="studentNo" class="<%= UI.input %>" value="<%= profile.studentNo %>" placeholder="Optional">
-            <span class="<%= UI.hint %>">Optional</span></div>
+          <div><label for="studentNo" class="<%= UI.lbl %>">Student number *</label>
+            <input id="studentNo" name="studentNo" class="<%= UI.input %> font-mono" value="<%= profile.studentNo %>"
+                   required inputmode="numeric" maxlength="9" pattern="[0-9]{9}" title="Exactly 9 digits" placeholder="9 digits">
+            <span class="<%= UI.hint %>">Exactly 9 digits</span></div>
         </div>
         <% } %>
         <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save profile</button>
