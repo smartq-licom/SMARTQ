@@ -17,6 +17,29 @@ document.querySelectorAll('form[data-once]').forEach(function(f){
 });
 var mb = document.getElementById('menuBtn'), sb = document.getElementById('sidebar');
 if (mb && sb) mb.addEventListener('click', function(){ sb.classList.toggle('-translate-x-full'); });
+
+// Keep the reader's place. A button (form submit) or an automatic refresh
+// reloads the same page; return to where they were instead of the top.
+// A different page, a #link, or an error message still opens at the top.
+(function () {
+  var KEY = 'smartq.scroll';
+  function save() {
+    try { sessionStorage.setItem(KEY, JSON.stringify({ p: location.pathname, y: window.scrollY, t: Date.now() })); } catch (e) {}
+  }
+  window.addEventListener('pagehide', save);
+  window.addEventListener('beforeunload', save);
+
+  var saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(KEY) || 'null'); sessionStorage.removeItem(KEY); } catch (e) {}
+  if (!saved || saved.p !== location.pathname || Date.now() - saved.t > 30000 || !saved.y) return;
+  var errorShown = [].some.call(document.querySelectorAll('[role="alert"]'), function (el) {
+    return el.offsetParent !== null && el.textContent.trim() !== '';     // a visible message, not an empty slot
+  });
+  if (location.hash || errorShown) return;          // let errors be seen
+  function go() { window.scrollTo(0, saved.y); }
+  go();
+  window.addEventListener('load', go);              // again once images have their size
+})();
 </script>
 </body></html>
 <script>
