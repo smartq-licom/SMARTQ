@@ -192,21 +192,17 @@
         <% } %>
 
         <div class="grid gap-2 mt-4 no-print">
-          <% if (current.ticketStatus === 'called') { %>
-          <form method="POST" action="/staff/accept/<%= current.id %>" data-once>
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Accept Ticket</button>
-          </form>
-          <% } %>
-
+          <%# No Accept step: Call Next already starts serving. The Cashier has one
+              button that records the payment, issues the receipt and finishes. %>
           <% if (dept === 'Cashier') { %>
             <% if (current.paymentStatus !== 'paid') { %>
-            <form method="POST" action="/staff/payment/<%= current.id %>" data-once
+            <form method="POST" action="/staff/pay-complete/<%= current.id %>" data-once
                   data-confirm
-                data-confirm-title="Confirm payment"
-                data-confirm-body="Record payment of <%= peso(current.amountDue) %> for ticket <%= current.ticketNo %>?"
-                data-confirm-note="An official receipt will be issued and cannot be undone."
-                data-confirm-ok="Record payment">
-              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full">Record Payment &amp; Issue Receipt</button>
+                data-confirm-title="Paid &amp; complete"
+                data-confirm-body="<%= current.amountDue > 0 ? 'Received ' + peso(current.amountDue) + ' for ticket ' + current.ticketNo + '? This records the payment, issues the official receipt and finishes the ticket.' : 'Finish ticket ' + current.ticketNo + '? Nothing to pay.' %>"
+                data-confirm-note="<%= current.amountDue > 0 ? 'The receipt cannot be undone.' : '' %>"
+                data-confirm-ok="<%= current.amountDue > 0 ? 'Paid & complete' : 'Complete' %>" data-confirm-back="Not yet">
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full"><%= current.amountDue > 0 ? 'Paid & Complete' : 'Complete' %></button>
             </form>
             <% } else { %>
               <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-[12.5px] text-emerald-900">

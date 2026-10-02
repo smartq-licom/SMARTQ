@@ -11,6 +11,7 @@
     : (role === 'cashier' || role === 'registrar') ? [
       ['/staff/dashboard', role === 'cashier' ? 'Cashier Counter' : 'Registrar Counter'],
       ['/staff/calendar', 'Booking Calendar'],
+      ['/staff/priority', 'Priority Requests'],
       ['/staff/documents', 'Documents']]
     : [ ['/student/dashboard','Dashboard'],['/student/request','Request a Ticket'],
         ['/student/history','History'],['/student/priority','Priority Lane'],

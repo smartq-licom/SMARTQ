@@ -1609,8 +1609,10 @@ async function callNext(staff, department) {
   const t = await pickNextTicket(department);
   if (!t) return { error: 'There are no clients waiting in this queue.' };
 
+  // Calling a number also starts serving it: there is no separate Accept step.
+  // A client who never comes is cleared by Cancel or the inactivity auto-cancel.
   await run(
-    `UPDATE transactions SET ticket_status='called', called_at=NOW(),
+    `UPDATE transactions SET ticket_status='serving', called_at=NOW(), started_at=NOW(),
        staff_id=?, staff_name=?, window_id=?, window_label=?,
        overall_status=CASE WHEN department='Cashier' THEN 'cashier_processing'
                            ELSE 'registrar_processing' END
@@ -1707,6 +1709,30 @@ async function completeCashier(staff, txId) {
   return { ok: true, transaction: await getTransaction(txId) };
 }
 
+
+/**
+ * The Cashier's one button: record the payment, issue the receipt and finish
+ * the ticket. Free items skip the payment. Uses the same steps as before
+ * (processPayment, completeCashier), just in one click.
+ */
+async function payAndComplete(staff, txId) {
+  const t = await getTransaction(txId);
+  if (!t)                                   return { error: 'Ticket not found.' };
+  if (t.department !== 'Cashier')           return { error: 'Only cashier tickets take payments.' };
+  if (t.staffId !== staff.id)               return { error: 'That ticket is not at your window.' };
+  if (!['called', 'serving'].includes(t.ticketStatus))
+    return { error: `${t.ticketNo} is no longer at your window.` };
+
+  let receiptNo = t.receiptNo;
+  if (t.amountDue > 0 && t.paymentStatus !== 'paid') {
+    const p = await processPayment(staff, txId);
+    if (p.error) return p;
+    receiptNo = p.receiptNo;
+  }
+  const c = await completeCashier(staff, txId);
+  if (c.error) return c;
+  return { ok: true, ticketNo: t.ticketNo, receiptNo, amount: t.amountDue };
+}
 
 // ── REGISTRAR: COMPLETE ──────────────────────────────────────────────────────
 async function completeRegistrar(staff, txId) {
@@ -2184,7 +2210,7 @@ module.exports = {
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
   processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
-  announcementPulse, announcementPulseFor,
+  announcementPulse, announcementPulseFor, payAndComplete,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

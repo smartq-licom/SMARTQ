@@ -115,13 +115,15 @@ uploaded. Only commit .env.example.
 1. Log in as a student, click Issue Ticket, pick Request Now.
 2. Choose "Official Transcript of Records" — the amount shows PHP 110 automatically.
 3. Pick a purpose, choose Regular or Priority, submit. You get C-001.
-4. Log in as a cashier in another browser. Click Call Next (a chime sounds at the
-   counter), then Accept Ticket. Call Again re-announces the same number.
-5. Click Record Payment & Issue Receipt. The cashier transaction ends there.
+4. Log in as a cashier in another browser. Click Call Next: the board and the
+   student's phone chime, and the client is now being served (no Accept step).
+   Call Again re-announces the same number.
+5. Click Paid & Complete. It records the payment, issues the receipt and ends
+   the cashier transaction in one click.
 6. The Cashier and the Registrar are NOT linked in one transaction. If the
    student also needs the Registrar, they request a separate Registrar ticket
    themselves from their own dashboard.
-7. Log in as a registrar. Call Next, Accept, Complete.
+7. Log in as a registrar. Call Next, then Complete.
 8. Back on the student account: status is Completed, and the receipt is viewable.
 
 ## Documents that are picked up later
@@ -190,7 +192,7 @@ Students and guests can no longer simply tick "Priority". They upload proof
 (PWD ID, Senior Citizen ID, or a doctor's certificate) under
 Student > Priority Lane. It is stored as Pending.
 
-An admin reviews it under Admin > Priority Requests, sees the uploaded image
+An admin, cashier or registrar reviews it under Priority Requests, sees the uploaded image
 or PDF, and approves or rejects it with a reason. Approval stamps the category
 onto the account, so every future ticket is flagged priority automatically.
 Rejected students can upload new proof and submit again.

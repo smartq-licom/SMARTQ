@@ -1,10 +1,7 @@
 'use strict';
 const express = require('express');
 const router  = express.Router();
-const path    = require('path');
 const db      = require('../data/db');
-const mailer  = require('../data/mailer');
-const { DIR } = require('../data/uploads');
 
 router.get('/dashboard', async (req, res, next) => {
   try {
@@ -195,50 +192,8 @@ router.post('/windows/:id', async (req, res, next) => {
 });
 
 // ── Priority lane review ─────────────────────────────────────────────────────
-router.get('/priority', async (req, res, next) => {
-  try {
-    const all = await db.getPriorityRequests();
-    res.render('pages/admin/priority', {
-      title: 'Priority Requests', all,
-      pending:  all.filter(r => r.status === 'pending'),
-      reviewed: all.filter(r => r.status !== 'pending'),
-      labels: db.PRIORITY_LABELS,
-    });
-  } catch (e) { next(e); }
-});
-
-router.get('/priority/proof/:id', async (req, res, next) => {
-  try {
-    const pr = await db.getPriorityRequest(req.params.id);
-    if (!pr) return res.status(404).render('pages/error', { title:'Not found', code:404, message:'File not found.' });
-    res.type(pr.proofMime).sendFile(path.join(DIR, pr.proofFile));
-  } catch (e) { next(e); }
-});
-
-router.post('/priority/:id/decide', async (req, res, next) => {
-  try {
-    const approve = req.body.decision === 'approve';
-    const r = await db.decidePriorityRequest(req.session.user, req.params.id, approve, req.body.reason);
-    if (r.error) { req.session.error = r.error; return res.redirect('/admin/priority'); }
-    const pr = r.request;
-    if (pr.email) {
-      try { await mailer.sendPriorityDecision(pr.email, pr.name, pr.category, approve, pr.reason); }
-      catch (e) { console.error('[MAIL]', e.message); }
-    }
-    req.session.flash = approve
-      ? `${pr.name} is now approved for the ${pr.categoryLabel} priority lane.`
-      : `Request from ${pr.name} was rejected. They can upload new proof.`;
-    res.redirect('/admin/priority');
-  } catch (e) { next(e); }
-});
-
-router.post('/priority/revoke/:userId', async (req, res, next) => {
-  try {
-    await db.revokePriority(req.params.userId);
-    req.session.flash = 'Priority status removed.';
-    res.redirect('/admin/priority');
-  } catch (e) { next(e); }
-});
+// Priority requests: shared with the Cashier and Registrar (routes/priority.js).
+router.use('/priority', require('./priority')('/admin/priority', { canRevoke: true }));
 
 router.get('/reports', async (req, res, next) => {
   try {

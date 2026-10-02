@@ -1,5 +1,5 @@
 <%- include('../../partials/head') %>
-<%- include('../../partials/nav', { active: '/admin/priority' }) %>
+<%- include('../../partials/nav', { active: base }) %>
 
 <div class="mb-5">
   <h2 class="text-xl font-extrabold">Priority lane requests</h2>
@@ -45,8 +45,8 @@
 
       <div class="rounded-lg border border-hair overflow-hidden mb-3 bg-mist">
         <% if (r.isImage) { %>
-        <a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener">
-          <img src="/admin/priority/proof/<%= r.id %>" alt="Proof submitted by <%= r.name %>"
+        <a href="<%= base %>/proof/<%= r.id %>" target="_blank" rel="noopener">
+          <img src="<%= base %>/proof/<%= r.id %>" alt="Proof submitted by <%= r.name %>"
                class="w-full max-h-64 object-contain bg-white">
         </a>
         <% } else { %>
@@ -57,13 +57,13 @@
         <% } %>
         <div class="px-3 py-2 border-t border-hair flex items-center justify-between gap-2">
           <span class="text-[11px] text-slateSoft/80 truncate"><%= r.proofName %></span>
-          <a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener"
+          <a href="<%= base %>/proof/<%= r.id %>" target="_blank" rel="noopener"
              class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> shrink-0">Open full size</a>
         </div>
       </div>
 
       <div class="grid gap-2">
-        <form method="POST" action="/admin/priority/<%= r.id %>/decide"
+        <form method="POST" action="<%= base %>/<%= r.id %>/decide"
               data-confirm
               data-confirm-title="Approve priority status"
               data-confirm-body="Approve <%= r.name %> for the <%= r.categoryLabel %> lane?"
@@ -74,7 +74,7 @@
         </form>
         <details>
           <summary class="cursor-pointer text-[12.5px] font-semibold text-slateSoft py-1.5">Reject with a reason</summary>
-          <form method="POST" action="/admin/priority/<%= r.id %>/decide" class="mt-2 space-y-2">
+          <form method="POST" action="<%= base %>/<%= r.id %>/decide" class="mt-2 space-y-2">
             <input type="hidden" name="decision" value="reject">
             <label for="reason<%= r.id %>" class="<%= UI.lbl %>">Reason (the student will see this)</label>
             <input id="reason<%= r.id %>" name="reason" class="<%= UI.input %>" required
@@ -109,10 +109,10 @@
         <td class="<%= UI.td %> text-[12px]"><%= r.reviewerName || '-' %></td>
         <td class="<%= UI.td %> font-mono text-[12px]"><%= r.reviewedAt ? new Date(r.reviewedAt).toLocaleDateString('en-PH') : '-' %></td>
         <td class="<%= UI.td %> text-[12px] text-slateSoft"><%= r.reason || '-' %></td>
-        <td class="<%= UI.td %>"><a href="/admin/priority/proof/<%= r.id %>" target="_blank" rel="noopener" class="text-[12px] font-semibold underline">View</a></td>
+        <td class="<%= UI.td %>"><a href="<%= base %>/proof/<%= r.id %>" target="_blank" rel="noopener" class="text-[12px] font-semibold underline">View</a></td>
         <td class="<%= UI.td %>">
-          <% if (r.status === 'approved') { %>
-          <form method="POST" action="/admin/priority/revoke/<%= r.userId %>"
+          <% if (r.status === 'approved' && canRevoke) { %>
+          <form method="POST" action="<%= base %>/revoke/<%= r.userId %>"
                 data-confirm
                 data-confirm-title="Revoke priority status"
                 data-confirm-body="Remove priority status from <%= r.name %>?"

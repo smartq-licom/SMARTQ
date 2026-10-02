@@ -43,6 +43,9 @@ const back = (req, res, msg, err) => {
   res.redirect('/staff/dashboard');
 };
 
+// Staff can approve or reject priority-lane requests too (routes/priority.js).
+router.use('/priority', require('./priority')('/staff/priority'));
+
 router.post('/call-next', async (req, res, next) => {
   try {
     const r = await db.callNext(req.session.user, deptOf(req.session.user));
@@ -73,6 +76,17 @@ router.post('/payment/:id', async (req, res, next) => {
     const r = await db.processPayment(req.session.user, req.params.id);
     if (r.error) return back(req, res, null, r.error);
     back(req, res, `Payment recorded. Receipt ${r.receiptNo} issued.`);
+  } catch (e) { next(e); }
+});
+
+// Cashier: payment + receipt + finish, in one click.
+router.post('/pay-complete/:id', async (req, res, next) => {
+  try {
+    const r = await db.payAndComplete(req.session.user, Number(req.params.id));
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, r.receiptNo
+      ? `${r.ticketNo} paid and completed. Receipt ${r.receiptNo} issued.`
+      : `${r.ticketNo} completed.`);
   } catch (e) { next(e); }
 });
 
