@@ -21,3 +21,6 @@ Thumbs.db
 
 # Settings file to paste into Render - never upload
 .env.render
+
+# Database backups (contain personal data) - never upload
+backups/
