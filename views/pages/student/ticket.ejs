@@ -62,24 +62,26 @@
     </div>
     <% } %>
 
-    <% if (requirements && requirements.length) { %>
-    <div class="mt-4 text-left <%= UI.card %>">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Bring these with you</h3></div>
-      <div class="<%= UI.body %>">
-        <ul class="space-y-2">
-          <% requirements.forEach(function(r){ %>
-          <li class="flex items-start gap-2.5 text-[13px]">
-            <span class="<%= r.submitted ? 'text-emerald-600' : 'text-slateSoft/40' %> mt-0.5">
-              <%= r.submitted ? '✓' : '☐' %>
-            </span>
-            <span class="<%= r.submitted ? 'text-slateSoft/60 line-through' : '' %>">
-              <%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %>
-            </span>
-          </li>
-          <% }) %>
-        </ul>
-        <p class="<%= UI.hint %>">Staff tick these off at the window as you hand them over.</p>
-      </div>
+    <%# A reminder of the requirements: on a Registrar ticket, what to bring to
+        the window now; on a Cashier ticket (e.g. the OTR), what to bring later
+        when claiming it at the Registrar. Nothing is ticked off any more. %>
+    <% var bring = (requirements && requirements.length) ? requirements : (claimRequirements || []); %>
+    <% if (bring.length) { %>
+    <div class="mt-4 text-left rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
+      <div class="text-[14px] font-bold text-amber-900">&#128203; Don't forget your requirements</div>
+      <p class="text-[12.5px] text-amber-900/85 mt-0.5">
+        <%= requirements && requirements.length
+              ? 'Bring these to the Registrar window:'
+              : 'When you claim this at the Registrar, bring:' %>
+      </p>
+      <ul class="mt-2 space-y-1.5">
+        <% bring.forEach(function(r){ %>
+        <li class="flex items-start gap-2 text-[13px] text-amber-950">
+          <span>&bull;</span>
+          <span><%= r.label %><% if (!r.isRequired) { %> <span class="text-amber-900/60">(optional)</span><% } %></span>
+        </li>
+        <% }) %>
+      </ul>
     </div>
     <% } %>
     <% if (['called','serving'].includes(t.ticketStatus)) { %>

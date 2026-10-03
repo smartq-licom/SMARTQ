@@ -150,33 +150,21 @@
         <% } %>
 
         <!-- requirements -->
+        <%# What the client was told to bring. Shown for reference only: staff no
+            longer tick items off. %>
         <% if (requirements.length) { %>
         <div class="mt-4 rounded-lg border border-hair">
-          <div class="px-3.5 py-2.5 border-b border-hair flex items-center justify-between">
-            <span class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Requirements</span>
-            <% const missing = requirements.filter(function(r){ return r.isRequired && !r.submitted }).length; %>
-            <span class="<%= pill %> <%= missing ? tone('waiting') : tone('paid') %>">
-              <%= missing ? missing + ' missing' : 'complete' %>
-            </span>
+          <div class="px-3.5 py-2.5 border-b border-hair">
+            <span class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Client should bring</span>
           </div>
-          <form method="POST" action="/staff/requirements/<%= current.id %>" class="p-3.5">
-            <div class="space-y-2">
-              <% requirements.forEach(function(r){ %>
-              <label class="flex items-start gap-2.5 text-[13px] cursor-pointer">
-                <input type="checkbox" name="submitted" value="<%= r.id %>" <%= r.submitted ? 'checked' : '' %>
-                       class="mt-0.5 rounded border-hair">
-                <span>
-                  <%= r.label %>
-                  <% if (!r.isRequired) { %><span class="text-slateSoft/60">(optional)</span><% } %>
-                  <% if (r.submitted && r.checkerName) { %>
-                  <span class="block text-[11px] text-slateSoft/60">recorded by <%= r.checkerName %></span>
-                  <% } %>
-                </span>
-              </label>
-              <% }) %>
-            </div>
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> w-full mt-3">Save requirements</button>
-          </form>
+          <ul class="p-3.5 space-y-1.5">
+            <% requirements.forEach(function(r){ %>
+            <li class="flex items-start gap-2 text-[13px]">
+              <span class="text-brand">&bull;</span>
+              <span><%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
+            </li>
+            <% }) %>
+          </ul>
         </div>
         <% } %>
 

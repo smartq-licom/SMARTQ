@@ -391,6 +391,21 @@ async function getTransactionRequirements(txId) {
     }));
 }
 
+/**
+ * For a Cashier ticket: the requirements the student will need later, when
+ * they claim its documents at the Registrar (e.g. the OTR's ID and clearance).
+ */
+async function getRequirementsForClaim(txId) {
+  return (await q(
+    `SELECT DISTINCT dr.id, dr.label, dr.is_required, dr.sort_order
+     FROM transaction_documents td
+     JOIN documents d ON d.id = td.document_id AND d.needs_requirements = 1
+     JOIN document_requirements dr ON dr.document_id = td.document_id
+     WHERE td.transaction_id = ?
+     ORDER BY dr.sort_order, dr.id`, [txId]))
+    .map(r => ({ id: r.id, label: r.label, isRequired: !!r.is_required }));
+}
+
 /** Staff record which requirements were actually handed over. */
 async function setTransactionRequirements(staff, txId, submittedIds) {
   const ids = (Array.isArray(submittedIds) ? submittedIds : submittedIds ? [submittedIds] : [])
@@ -2307,7 +2322,7 @@ module.exports = {
   getDocuments, getDocument, saveDocument, saveDocumentAsStaff,
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
-  getTransactionRequirements, setTransactionRequirements,
+  getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
   getServiceAverages, estimateMinutes, getEstimationTable,
   predict, peak,
   getWindows, createWindow, updateWindow,

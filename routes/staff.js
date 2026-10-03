@@ -104,17 +104,6 @@ router.post('/complete/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Staff tick off the requirements the client actually handed over
-router.post('/requirements/:id', async (req, res, next) => {
-  try {
-    const r = await db.setTransactionRequirements(req.session.user, req.params.id, req.body.submitted);
-    if (r.error) return back(req, res, null, r.error);
-    back(req, res, r.missing
-      ? `Saved. ${r.missing} required item${r.missing === 1 ? ' is' : 's are'} still missing.`
-      : 'All requirements recorded as submitted.');
-  } catch (e) { next(e); }
-});
-
 // Staff log a document that was submitted or released
 // ── Documents for this member's own office ───────────────────────────────────
 // The office comes from the session, never from the form, so a Cashier account

@@ -180,6 +180,8 @@ router.get('/ticket/:id', async (req, res, next) => {
       officeHours: officeHours(await db.getSettings()),
       isToday: t.serviceDate === db.today(),
       requirements: await db.getTransactionRequirements(t.id),
+      // Cashier tickets: what to bring later, when claiming at the Registrar
+      claimRequirements: t.department === 'Cashier' ? await db.getRequirementsForClaim(t.id) : [],
       announcement: await db.latestAnnouncementFor(t.id),
     });
   } catch (e) { next(e); }
