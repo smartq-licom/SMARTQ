@@ -43,7 +43,7 @@
           </td>
           <td class="<%= UI.td %> whitespace-nowrap">
             <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"
-                    onclick="editDoc(<%- JSON.stringify(d) %>)">Edit</button>
+                    data-doc="<%= JSON.stringify(d) %>" onclick="editDoc(JSON.parse(this.dataset.doc))">Edit</button>
             <form method="POST" action="/staff/documents/<%= d.id %>/delete" class="inline"
                   data-confirm data-confirm-danger="1"
                   data-confirm-title="Delete document?"
