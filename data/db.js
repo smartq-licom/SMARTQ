@@ -1331,19 +1331,36 @@ async function createRequest(user, b) {
         `INSERT INTO transaction_documents (transaction_id,document_id,document_name,unit_price,copies,price)
          VALUES (?,?,?,?,?,?)`,
         [txId, it.id, it.name, it.price, it.copies, it.lineTotal]);
-
-      // snapshot the requirements, for the documents that have any
-      const reqs = it.needsRequirements ? await conn.execute(
-        `SELECT id,label,is_required FROM document_requirements
-         WHERE document_id=? ORDER BY sort_order, id`, [it.id]) : [[]];
-      for (const rq of reqs[0]) {
-        await conn.execute(
-          `INSERT INTO transaction_requirements (transaction_id,requirement_id,label,is_required)
-           VALUES (?,?,?,?)`, [txId, rq.id, rq.label, rq.is_required]);
-      }
     }
     for (const lineId of claimLineIds) {
       await conn.execute('INSERT INTO claim_items (claim_tx_id,line_id) VALUES (?,?)', [txId, lineId]);
+    }
+
+    // Requirements (ID, request form, clearance...) are checked by the
+    // Registrar, never the Cashier: a Registrar ticket gets the requirements of
+    // its own documents and of the paid documents it is claiming (e.g. the OTR).
+    if (department === 'Registrar') {
+      const docIds = new Set(items.filter(i => i.needsRequirements).map(i => i.id));
+      if (claimLineIds.length) {
+        const [claimed] = await conn.query(
+          `SELECT DISTINCT td.document_id FROM transaction_documents td
+           JOIN documents d ON d.id = td.document_id
+           WHERE td.id IN (?) AND d.needs_requirements = 1`, [claimLineIds]);
+        claimed.forEach(c => docIds.add(c.document_id));
+      }
+      const seen = new Set();
+      for (const docId of docIds) {
+        const [reqs] = await conn.execute(
+          `SELECT id,label,is_required FROM document_requirements
+           WHERE document_id=? ORDER BY sort_order, id`, [docId]);
+        for (const rq of reqs) {
+          if (seen.has(rq.id)) continue;
+          seen.add(rq.id);
+          await conn.execute(
+            `INSERT INTO transaction_requirements (transaction_id,requirement_id,label,is_required)
+             VALUES (?,?,?,?)`, [txId, rq.id, rq.label, rq.is_required]);
+        }
+      }
     }
     await conn.execute(
       `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note)
