@@ -761,12 +761,33 @@ function mapDocument(s) {
     needsPurpose: !!s.needs_purpose,
     needsRequirements: !!s.needs_requirements, requiresClaim: !!s.requires_claim,
     guestAllowed: !!s.guest_allowed,
-    baselineMinutes: s.baseline_minutes, isActive: !!s.is_active,
+    baselineMinutes: s.baseline_minutes,
+    // a deleted document can never be requested again, whatever is_active says
+    isActive: !!s.is_active && !s.deleted_at, deleted: !!s.deleted_at,
   };
+}
+
+/**
+ * Delete a document. One that old tickets already use is hidden for good but
+ * kept, so their receipts and reports still show its name; an unused one is
+ * removed completely (its requirements go with it). Staff may only delete
+ * their own office's documents.
+ */
+async function deleteDocument(id, office = null) {
+  const d = await getDocument(id);
+  if (!d || d.deleted) return { error: 'Document not found.' };
+  if (office && d.office !== office) return { error: `Only the ${d.office} can delete that document.` };
+  const used = await q('SELECT COUNT(*) AS n FROM transaction_documents WHERE document_id=?', [id]);
+  if (Number(used[0].n)) {
+    await run('UPDATE documents SET deleted_at=NOW(), is_active=0 WHERE id=?', [id]);
+  } else {
+    await run('DELETE FROM documents WHERE id=?', [id]);
+  }
+  return { ok: true, name: d.name };
 }
 async function getDocuments({ activeOnly = true, guestOnly = false, office = null } = {}) {
   let sql = 'SELECT * FROM documents';
-  const w = [], p = [];
+  const w = ['deleted_at IS NULL'], p = [];      // deleted documents never appear
   if (activeOnly) w.push('is_active=1');
   if (office === 'Cashier' || office === 'Registrar') { w.push('office=?'); p.push(office); }
   if (guestOnly)  w.push('guest_allowed=1');
@@ -980,6 +1001,24 @@ async function updateWindow(id, b) {
     }
   }
   return { ok: true };
+}
+
+/**
+ * Delete a window. Old tickets keep the window's name (window_label), so it
+ * can go completely; staff posted there are simply unassigned. Refused while
+ * someone is being served at it, and for an office's last window.
+ */
+async function deleteWindow(id) {
+  const win = await q('SELECT * FROM windows WHERE id=?', [id]);
+  if (!win.length) return { error: 'Window not found.' };
+  const busy = await q(
+    `SELECT ticket_no FROM transactions WHERE window_id=? AND ticket_status IN ('called','serving') LIMIT 1`, [id]);
+  if (busy.length) return { error: `${win[0].label} is serving ${busy[0].ticket_no} right now. Finish or cancel it first.` };
+  const left = await q('SELECT COUNT(*) AS n FROM windows WHERE department=?', [win[0].department]);
+  if (Number(left[0].n) <= 1) return { error: `The ${win[0].department} needs at least one window.` };
+  await run('UPDATE users SET window_id=NULL WHERE window_id=?', [id]);
+  await run('DELETE FROM windows WHERE id=?', [id]);
+  return { ok: true, label: win[0].label };
 }
 
 // ── TICKET NUMBERING (daily reset, per office and lane) ──────────────────────
@@ -2052,20 +2091,21 @@ async function getReceipt(txId) {
 
 // ── ADMIN: USERS ─────────────────────────────────────────────────────────────
 async function getUsers() {
-  return (await q(`SELECT * FROM users ORDER BY FIELD(role,'admin','cashier','registrar','student','guest'), last_name`))
+  return (await q(`SELECT * FROM users WHERE deleted_at IS NULL
+                   ORDER BY FIELD(role,'admin','cashier','registrar','student','guest'), last_name`))
     .map(mapUser);
 }
 
 /** Staff and admin accounts only. */
 async function getStaffAccounts() {
   return (await q(
-    `SELECT * FROM users WHERE role IN ('admin','cashier','registrar')
+    `SELECT * FROM users WHERE role IN ('admin','cashier','registrar') AND deleted_at IS NULL
      ORDER BY FIELD(role,'admin','cashier','registrar'), last_name`)).map(mapUser);
 }
 
 /** Student and guest accounts only, with how many transactions each has made. */
 async function getClientAccounts({ search = '', role = '' } = {}) {
-  const where = ["u.role IN ('student','guest')"];
+  const where = ["u.role IN ('student','guest')", 'u.deleted_at IS NULL'];
   const params = [];
   if (role === 'student' || role === 'guest') { where.push('u.role = ?'); params.push(role); }
   if (search) {
@@ -2085,6 +2125,54 @@ async function getClientAccounts({ search = '', role = '' } = {}) {
     lastTx: r.last_tx || null,
   }));
 }
+/**
+ * Admin deletes an account (staff, student or guest; never an admin or
+ * themselves). An account with history (tickets, priority requests, or
+ * tickets served as staff) is kept as a deleted, nameless-to-login record so
+ * old receipts and reports stay whole: it can no longer sign in, and its
+ * username, email, Google link and student number are released for reuse.
+ * An account with no history is removed completely. Either way it is signed
+ * out at once.
+ */
+async function deleteAccount(admin, id) {
+  const r = await q('SELECT * FROM users WHERE id=? AND deleted_at IS NULL', [id]);
+  if (!r.length)                 return { error: 'Account not found.' };
+  const u = mapUser(r[0]);
+  if (u.id === admin.id)         return { error: 'You cannot delete your own account.' };
+  if (u.role === 'admin')        return { error: 'Admin accounts cannot be deleted here.' };
+
+  const staff = u.role === 'cashier' || u.role === 'registrar';
+  const busy = staff ? await q(
+    `SELECT ticket_no FROM transactions WHERE staff_id=? AND ticket_status IN ('called','serving') LIMIT 1`, [id]) : [];
+  if (busy.length) return { error: `${u.fullName} is serving ${busy[0].ticket_no} right now. Finish or cancel it first.` };
+
+  const hist = await q(
+    `SELECT (SELECT COUNT(*) FROM transactions WHERE user_id=? OR staff_id=?)
+          + (SELECT COUNT(*) FROM priority_requests WHERE user_id=?)
+          + (SELECT COUNT(*) FROM queue_history WHERE staff_id=?) AS n`, [id, id, id, id]);
+  if (Number(hist[0].n)) {
+    await run(
+      `UPDATE users SET deleted_at=NOW(), status='disabled', username=NULL, email=NULL, password=NULL,
+         google_id=NULL, student_no=NULL, window_id=NULL, priority_status='none' WHERE id=?`, [id]);
+  } else {
+    await run('DELETE FROM users WHERE id=?', [id]);
+  }
+  // sign them out everywhere (the session stores the user object as JSON)
+  await run(`DELETE FROM sessions WHERE data LIKE ? OR data LIKE ?`, [`%"user":{"id":${Number(id)},%`, `%"userId":${Number(id)},%`]);
+  return { ok: true, name: u.fullName, role: u.role };
+}
+
+/** Cashier/registrar edit their own name and contact number. */
+async function updateStaffProfile(id, b) {
+  const first = String(b.firstName || '').trim(), last = String(b.lastName || '').trim();
+  if (!first || !last) return { error: 'First and last name are required.' };
+  const contact = String(b.contactNo || '').trim();
+  if (contact && !/^[0-9+\-\s]{7,20}$/.test(contact)) return { error: 'Enter a valid contact number.' };
+  await run(`UPDATE users SET first_name=?, middle_name=?, last_name=?, contact_no=? WHERE id=?`,
+            [first, String(b.middleName || '').trim() || null, last, contact || null, id]);
+  return { ok: true, user: await getUser(id) };
+}
+
 async function setUserActive(id, active) {
   await run(`UPDATE users SET status=?, failed_logins=0, locked_until=NULL WHERE id=?`,
             [active ? 'active' : 'disabled', id]);
@@ -2211,6 +2299,7 @@ module.exports = {
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
   processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
   announcementPulse, announcementPulseFor, payAndComplete,
+  deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

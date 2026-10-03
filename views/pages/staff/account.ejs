@@ -1,0 +1,56 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/staff/account' }) %>
+<%# Cashier and registrar staff edit their own details. Their role, username
+    and window are set by the admin, so they are shown here but not editable. %>
+<div class="max-w-2xl">
+  <h2 class="text-xl font-extrabold mb-1">My account</h2>
+  <p class="text-[13px] text-slateSoft/80 mb-4">Update your details or change your password.</p>
+
+  <section class="<%= UI.card %> mb-4">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Profile</h3></div>
+    <div class="<%= UI.body %>">
+      <% if (profileError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= profileError %></div>
+      <% } %>
+      <dl class="grid sm:grid-cols-3 gap-3 mb-4 text-[12.5px]">
+        <div><dt class="text-slateSoft/75">Username</dt><dd class="font-mono font-semibold"><%= profile.username %></dd></div>
+        <div><dt class="text-slateSoft/75">Role</dt><dd class="font-semibold capitalize"><%= profile.role %></dd></div>
+        <div><dt class="text-slateSoft/75">Window</dt><dd class="font-semibold"><%= profile.windowLabel || 'Set by the admin' %></dd></div>
+      </dl>
+      <form method="POST" action="/staff/account/profile" class="space-y-3" data-once>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label for="firstName" class="<%= UI.lbl %>">First name *</label>
+            <input id="firstName" name="firstName" class="<%= UI.input %>" value="<%= profile.firstName %>" required></div>
+          <div><label for="middleName" class="<%= UI.lbl %>">Middle name</label>
+            <input id="middleName" name="middleName" class="<%= UI.input %>" value="<%= profile.middleName %>"></div>
+          <div><label for="lastName" class="<%= UI.lbl %>">Last name *</label>
+            <input id="lastName" name="lastName" class="<%= UI.input %>" value="<%= profile.lastName %>" required></div>
+        </div>
+        <div class="max-w-xs"><label for="contactNo" class="<%= UI.lbl %>">Contact number</label>
+          <input id="contactNo" name="contactNo" class="<%= UI.input %>" value="<%= profile.contactNo %>" placeholder="09XXXXXXXXX"></div>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save details</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Change password</h3></div>
+    <div class="<%= UI.body %>">
+      <% if (passwordError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= passwordError %></div>
+      <% } %>
+      <form method="POST" action="/staff/account/password" class="space-y-3 max-w-sm" data-once>
+        <div><label for="currentPassword" class="<%= UI.lbl %>">Current password *</label>
+          <input id="currentPassword" name="currentPassword" type="password" class="<%= UI.input %>" required autocomplete="current-password"></div>
+        <div><label for="newPassword" class="<%= UI.lbl %>">New password *</label>
+          <input id="newPassword" name="newPassword" type="password" class="<%= UI.input %>" required minlength="8" autocomplete="new-password">
+          <span class="<%= UI.hint %>">8+ characters with upper and lower case, a number and a symbol.</span></div>
+        <div><label for="confirmPassword" class="<%= UI.lbl %>">Confirm new password *</label>
+          <input id="confirmPassword" name="confirmPassword" type="password" class="<%= UI.input %>" required minlength="8" autocomplete="new-password"></div>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Change password</button>
+      </form>
+    </div>
+  </section>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

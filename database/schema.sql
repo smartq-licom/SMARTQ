@@ -42,6 +42,7 @@ CREATE TABLE users (
   locked_until  TIMESTAMP    NULL DEFAULT NULL,
   password_changed_at TIMESTAMP NULL DEFAULT NULL,
   last_login    TIMESTAMP    NULL DEFAULT NULL,
+  deleted_at    TIMESTAMP    NULL DEFAULT NULL,    -- deleted but kept for old tickets
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_student_no (student_no),
@@ -91,6 +92,7 @@ CREATE TABLE documents (
   guest_allowed    TINYINT(1)    NOT NULL DEFAULT 0,
   baseline_minutes INT           NOT NULL DEFAULT 8,
   is_active        TINYINT(1)    NOT NULL DEFAULT 1,
+  deleted_at       TIMESTAMP     NULL DEFAULT NULL,   -- deleted but kept for old tickets
   INDEX idx_active (is_active)
 ) ENGINE=InnoDB;
 

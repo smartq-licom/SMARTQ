@@ -41,9 +41,17 @@
               <%= d.isActive ? 'active' : 'disabled' %>
             </span>
           </td>
-          <td class="<%= UI.td %>">
+          <td class="<%= UI.td %> whitespace-nowrap">
             <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"
                     onclick="editDoc(<%- JSON.stringify(d) %>)">Edit</button>
+            <form method="POST" action="/staff/documents/<%= d.id %>/delete" class="inline"
+                  data-confirm data-confirm-danger="1"
+                  data-confirm-title="Delete document?"
+                  data-confirm-body="Delete &quot;<%= d.name %>&quot;? Students will no longer be able to request it."
+                  data-confirm-note="Old tickets and receipts that used it keep showing its name."
+                  data-confirm-ok="Delete" data-confirm-back="Keep it">
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnSm %> border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Delete</button>
+            </form>
           </td>
         </tr>
         <% }) %>

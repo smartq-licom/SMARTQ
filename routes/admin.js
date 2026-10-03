@@ -25,6 +25,15 @@ router.get('/documents', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Delete: a document used by old tickets is hidden but kept; an unused one is removed.
+router.post('/documents/:id/delete', async (req, res, next) => {
+  try {
+    const r = await db.deleteDocument(Number(req.params.id));
+    if (r.error) req.session.error = r.error; else req.session.flash = `"${r.name}" was deleted.`;
+    res.redirect('/admin/documents');
+  } catch (e) { next(e); }
+});
+
 router.post('/documents/:id?', async (req, res, next) => {
   try {
     const b = { ...req.body,
@@ -114,6 +123,17 @@ router.post('/users/staff', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Delete a staff, student or guest account (never an admin or yourself).
+router.post('/users/:id/delete', async (req, res, next) => {
+  try {
+    const r = await db.deleteAccount(req.session.user, Number(req.params.id));
+    if (r.error) req.session.error = r.error;
+    else req.session.flash = `${r.name}'s ${r.role} account was deleted.`;
+    const back = req.get('referer') || '';
+    res.redirect(back.includes('/admin/students') ? '/admin/students' : '/admin/users');
+  } catch (e) { next(e); }
+});
+
 router.post('/users/:id/active', async (req, res, next) => {
   try {
     await db.setUserActive(req.params.id, req.body.active === '1');
@@ -178,6 +198,14 @@ router.post('/windows', async (req, res, next) => {
     const r = await db.createWindow(req.body);
     if (r.error) req.session.error = r.error;
     else req.session.flash = `${r.label} added to the ${r.department} office.`;
+    res.redirect('/admin/windows');
+  } catch (e) { next(e); }
+});
+
+router.post('/windows/:id/delete', async (req, res, next) => {
+  try {
+    const r = await db.deleteWindow(Number(req.params.id));
+    if (r.error) req.session.error = r.error; else req.session.flash = `${r.label} was deleted.`;
     res.redirect('/admin/windows');
   } catch (e) { next(e); }
 });

@@ -131,6 +131,14 @@
           </div>
           <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Save window</button>
         </form>
+        <form method="POST" action="/admin/windows/<%= w.id %>/delete" class="mt-2"
+              data-confirm data-confirm-danger="1"
+              data-confirm-title="Delete window?"
+              data-confirm-body="Delete <%= w.label %>?<%= w.staffName ? ' ' + w.staffName + ' will no longer be posted to a window.' : '' %>"
+              data-confirm-note="Old tickets keep showing the window's name."
+              data-confirm-ok="Delete" data-confirm-back="Keep it">
+          <button type="submit" class="<%= UI.btn %> w-full border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Delete window</button>
+        </form>
       </div>
     </div>
     <% }) %>

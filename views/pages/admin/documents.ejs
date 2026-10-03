@@ -36,12 +36,25 @@
             <input type="checkbox" name="isActive" <%= s.isActive ? 'checked' : '' %> class="rounded border-hair">Active
           </label>
         </td>
-        <td class="<%= UI.td %>"><button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Save</button></td>
+        <td class="<%= UI.td %> whitespace-nowrap">
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Save</button>
+          <button type="submit" form="del-doc-<%= s.id %>" class="<%= UI.btn %> <%= UI.btnSm %> border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Delete</button>
+        </td>
         </form>
       </tr>
       <% }) %>
     </tbody>
   </table>
+  <%# Delete forms sit outside the table (a form cannot hold another form);
+      each row's Delete button points at its own one with form="…". %>
+  <% documents.forEach(function(s){ %>
+  <form id="del-doc-<%= s.id %>" method="POST" action="/admin/documents/<%= s.id %>/delete" hidden
+        data-confirm data-confirm-danger="1"
+        data-confirm-title="Delete document?"
+        data-confirm-body="Delete &quot;<%= s.name %>&quot;? Students will no longer be able to request it."
+        data-confirm-note="Old tickets and receipts that used it keep showing its name."
+        data-confirm-ok="Delete" data-confirm-back="Keep it"></form>
+  <% }) %>
 </div>
 <div class="<%= UI.card %> max-w-2xl">
   <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Add a new item</h3></div>

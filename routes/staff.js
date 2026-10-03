@@ -186,6 +186,51 @@ router.post('/documents', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Staff delete their own office's documents (same rule as the admin).
+router.post('/documents/:id/delete', async (req, res, next) => {
+  try {
+    const r = await db.deleteDocument(Number(req.params.id), officeOf(req.session.user));
+    if (r.error) req.session.error = r.error; else req.session.flash = `"${r.name}" was deleted.`;
+    res.redirect('/staff/documents');
+  } catch (e) { next(e); }
+});
+
+// ── My account: staff edit their own name, contact number and password ──────
+async function renderAccount(req, res, extra) {
+  const profile = await db.getUser(req.session.user.id);
+  const win = profile.windowId ? (await db.getWindows()).find(w => w.id === profile.windowId) : null;
+  profile.windowLabel = win ? win.label : '';
+  res.render('pages/staff/account', {
+    title: 'My Account', profile,
+    profileError: null, passwordError: null, ...extra,
+  });
+}
+router.get('/account', async (req, res, next) => {
+  try { await renderAccount(req, res); } catch (e) { next(e); }
+});
+router.post('/account/profile', async (req, res, next) => {
+  try {
+    const r = await db.updateStaffProfile(req.session.user.id, req.body);
+    if (r.error) return renderAccount(req, res, { profileError: r.error });
+    req.session.user = r.user;
+    req.session.flash = 'Your details were saved.';
+    res.redirect('/staff/account');
+  } catch (e) { next(e); }
+});
+router.post('/account/password', async (req, res, next) => {
+  try {
+    const me = req.session.user, b = req.body;
+    if (!(await db.checkCurrentPassword(me.id, b.currentPassword)))
+      return renderAccount(req, res, { passwordError: 'Your current password is incorrect.' });
+    if (b.newPassword !== b.confirmPassword)
+      return renderAccount(req, res, { passwordError: 'The new passwords do not match.' });
+    const r = await db.setPassword(me.id, b.newPassword);
+    if (r.error) return renderAccount(req, res, { passwordError: r.error });
+    req.session.flash = 'Your password was changed.';
+    res.redirect('/staff/account');
+  } catch (e) { next(e); }
+});
+
 router.post('/cancel/:id', async (req, res, next) => {
   try {
     const r = await db.cancelTicket(req.session.user, req.params.id, req.body.reason);

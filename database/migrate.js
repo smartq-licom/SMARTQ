@@ -45,6 +45,18 @@ const STEPS = [
             WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'uq_student_no'`,
     add:   'ALTER TABLE users ADD UNIQUE KEY uq_student_no (student_no)',
   },
+  {
+    name: 'documents can be deleted but kept for old tickets (deleted_at)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'documents' AND column_name = 'deleted_at'`,
+    add:   'ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL',
+  },
+  {
+    name: 'accounts can be deleted but kept for old tickets (deleted_at)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'deleted_at'`,
+    add:   'ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL',
+  },
 ];
 
 (async () => {

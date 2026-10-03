@@ -59,10 +59,18 @@
         <td class="<%= UI.td %>">
           <span class="<%= pill %> <%= u.isActive ? tone('paid') : tone('cancelled') %>"><%= u.isActive ? 'active' : 'disabled' %></span>
         </td>
-        <td class="<%= UI.td %>">
-          <form method="POST" action="/admin/students/<%= u.id %>/active">
+        <td class="<%= UI.td %> whitespace-nowrap">
+          <form method="POST" action="/admin/students/<%= u.id %>/active" class="inline">
             <input type="hidden" name="active" value="<%= u.isActive ? '0' : '1' %>">
             <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"><%= u.isActive ? 'Disable' : 'Enable' %></button>
+          </form>
+          <form method="POST" action="/admin/users/<%= u.id %>/delete" class="inline"
+                data-confirm data-confirm-danger="1"
+                data-confirm-title="Delete account?"
+                data-confirm-body="Delete <%= u.fullName %>'s <%= u.role %> account? They will be signed out and can no longer log in."
+                data-confirm-note="Their old tickets and receipts are kept. Their email and student number are freed, so they can register again."
+                data-confirm-ok="Delete account" data-confirm-back="Keep it">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnSm %> border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Delete</button>
           </form>
         </td>
       </tr>
