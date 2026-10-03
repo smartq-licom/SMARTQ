@@ -228,22 +228,22 @@ router.get('/reports', async (req, res, next) => {
     const from = req.query.from || db.today();
     const to   = req.query.to   || db.today();
 
-    // Peak hours read their own 30-day window and are deliberately NOT tied to
-    // the report's from/to dates: a one-day report would give a peak profile
-    // built from a single day, which is worse than no profile at all.
+    // Peak hours have their own period (today / this week / this month / this
+    // year / last 30 days / custom), separate from the report dates above, plus
+    // an optional day-of-week filter. Default: this week, every day.
     const s  = await db.getSettings();
-    const wd = req.query.weekday === 'all' ? 'all'
-             : req.query.weekday !== undefined && req.query.weekday !== ''
-               ? Number(req.query.weekday)
-               : new Date().getDay();
+    const wdq = req.query.weekday;
+    const wd = /^[0-6]$/.test(String(wdq)) ? Number(wdq) : 'all';
+    const period = db.peak.periodRange(req.query.pperiod, req.query.pfrom, req.query.pto);
     const peakOpts = db.peak.optsFromSettings(s);
-    const peakHours = await db.peak.bothOffices({ ...peakOpts, weekday: wd });
+    const peakHours = await db.peak.bothOffices({ ...peakOpts, weekday: wd, period });
 
     res.render('pages/admin/reports', {
       title: 'Reports', reports: await db.getReports(from, to),
       estimation: await db.getEstimationTable(), from, to,
       accuracy: await db.predict.getAccuracy(from, to),
       peakHours, peakWeekday: wd, dayNames: db.peak.DAY_NAMES,
+      peakPeriod: period, periods: db.peak.PERIODS,
     });
   } catch (e) { next(e); }
 });

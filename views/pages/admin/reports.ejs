@@ -79,24 +79,58 @@
   <div>
     <h3 class="text-[15px] font-extrabold">Peak hour detection</h3>
     <p class="text-[12px] text-slateSoft/80 mt-0.5">
-      Built from the last <%= peakHours.Cashier.lookback %> days of requests,
-      independent of the report dates above.
+      <strong><%= peakPeriod.label %></strong><%= peakWeekday !== 'all' ? ', ' + dayNames[peakWeekday] + 's only' : '' %>.
+      Independent of the report dates above.
     </p>
   </div>
-  <form method="GET" class="flex flex-wrap items-end gap-2 no-print">
+  <%# Period: today / this week / this month / this year / last 30 days /
+      custom range. Day of week narrows it further (e.g. Mondays this month). %>
+  <form method="GET" class="flex flex-wrap items-end gap-2 no-print" id="peakForm">
     <input type="hidden" name="from" value="<%= from %>">
     <input type="hidden" name="to" value="<%= to %>">
     <div>
-      <label for="weekday" class="<%= UI.lbl %>">Profile for</label>
-      <select id="weekday" name="weekday" class="<%= UI.input %>" onchange="this.form.submit()">
-        <% dayNames.forEach(function (d, i) { %>
-        <option value="<%= i %>" <%= peakWeekday === i ? 'selected' : '' %>><%= d %></option>
+      <label for="pperiod" class="<%= UI.lbl %>">Period</label>
+      <select id="pperiod" name="pperiod" class="<%= UI.input %>">
+        <% Object.keys(periods).forEach(function (k) { %>
+        <option value="<%= k %>" <%= peakPeriod.key === k ? 'selected' : '' %>><%= periods[k] %></option>
         <% }) %>
-        <option value="all" <%= peakWeekday === 'all' ? 'selected' : '' %>>Every day combined</option>
       </select>
     </div>
-    <noscript><button type="submit" class="<%= UI.btn %> <%= UI.btnGh %>">Show</button></noscript>
+    <div data-custom <%= peakPeriod.key === 'custom' ? '' : 'hidden' %>>
+      <label for="pfrom" class="<%= UI.lbl %>">From</label>
+      <input id="pfrom" name="pfrom" type="date" class="<%= UI.input %>" value="<%= peakPeriod.from %>">
+    </div>
+    <div data-custom <%= peakPeriod.key === 'custom' ? '' : 'hidden' %>>
+      <label for="pto" class="<%= UI.lbl %>">To</label>
+      <input id="pto" name="pto" type="date" class="<%= UI.input %>" value="<%= peakPeriod.to %>">
+    </div>
+    <div>
+      <label for="weekday" class="<%= UI.lbl %>">Day of week</label>
+      <select id="weekday" name="weekday" class="<%= UI.input %>">
+        <option value="all" <%= peakWeekday === 'all' ? 'selected' : '' %>>Every day</option>
+        <% [1,2,3,4,5,6,0].forEach(function (i) { %>
+        <option value="<%= i %>" <%= peakWeekday === i ? 'selected' : '' %>><%= dayNames[i] %>s</option>
+        <% }) %>
+      </select>
+    </div>
+    <div data-custom <%= peakPeriod.key === 'custom' ? '' : 'hidden' %>>
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %>">Show</button>
+    </div>
   </form>
+  <script>
+  (function () {
+    var f = document.getElementById('peakForm'), p = document.getElementById('pperiod');
+    // Custom shows the date boxes and waits for Show; the others apply at once.
+    p.addEventListener('change', function () {
+      var custom = p.value === 'custom';
+      f.querySelectorAll('[data-custom]').forEach(function (el) { el.hidden = !custom; });
+      if (!custom) f.submit();
+    });
+    document.getElementById('weekday').addEventListener('change', function () {
+      if (p.value !== 'custom') f.submit();
+    });
+  })();
+  </script>
 </div>
 <div class="grid lg:grid-cols-2 gap-4 mb-4">
   <%- include('../../partials/peak-hours', { p: peakHours.Cashier,   compact: false }) %>

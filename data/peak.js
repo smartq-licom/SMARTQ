@@ -113,8 +113,9 @@ function minutesBetween(a, b) {
  * The overlap arithmetic behind 'crowding' is also far easier and cheaper in JS
  * than as a grouped query.
  */
-async function loadHistory(department, lookback) {
-  const key = 'rows|' + (department || 'all') + '|' + lookback + '|' + ymd(new Date());
+async function loadHistory(department, lookback, range = null) {
+  const key = 'rows|' + (department || 'all') + '|' + lookback + '|' +
+              (range ? range.from + '~' + range.to : '') + '|' + ymd(new Date());
   const hit = cacheGet(key);
   if (hit) return hit;
 
@@ -122,7 +123,8 @@ async function loadHistory(department, lookback) {
   const since = new Date();
   since.setDate(since.getDate() - lookback);
 
-  const params = [ymd(since), ymd(until)];
+  // an explicit period (Reports: this week / month / year / custom) wins
+  const params = range ? [range.from, range.to] : [ymd(since), ymd(until)];
   let where = 'service_date BETWEEN ? AND ?';
   if (department) { where += ' AND department = ?'; params.push(department); }
 
@@ -157,15 +159,20 @@ async function hourlyProfile(department = null, opts = {}) {
     breakEnd   = 13,
   } = opts;
 
+  // A chosen period (opts.period from periodRange) reads exactly that range,
+  // filters strictly by the chosen weekday and reports even a single ticket:
+  // the admin asked about that period, so there is no silent fallback.
+  const period = opts.period || null;
+
   let weekday = opts.weekday;
-  if (weekday === undefined || weekday === null) weekday = new Date().getDay();
+  if (weekday === undefined || weekday === null) weekday = period ? 'all' : new Date().getDay();
 
   const key = [department || 'all', weekday, lookback, openHour, closeHour,
-               breakStart, breakEnd, ymd(new Date())].join('|');
+               breakStart, breakEnd, period ? period.from + '~' + period.to : '', ymd(new Date())].join('|');
   const cached = cacheGet(key);
   if (cached) return cached;
 
-  const rows = await loadHistory(department, lookback);
+  const rows = await loadHistory(department, lookback, period);
 
   const empty = {
     hours: [], busiest: null, quietest: null, basis: 'none',
@@ -173,7 +180,7 @@ async function hourlyProfile(department = null, opts = {}) {
     weekday: weekday === 'all' ? null : weekday,
     weekdayName: weekday === 'all' ? null : DAY_NAMES[weekday],
     department: department || 'All offices',
-    lookback,
+    lookback, period,
   };
   if (!rows.length) return cacheSet(key, empty);
 
@@ -185,7 +192,11 @@ async function hourlyProfile(department = null, opts = {}) {
   let basis = 'weekday';
   let used  = rows;
 
-  if (weekday !== 'all') {
+  if (period) {
+    basis = weekday === 'all' ? 'period' : 'period-weekday';
+    if (weekday !== 'all') used = rows.filter(r => dayOf(r) === weekday);
+    if (!used.length) return cacheSet(key, empty);
+  } else if (weekday !== 'all') {
     const sameDay = rows.filter(r => dayOf(r) === weekday);
     const days    = new Set(sameDay.map(r => ymd(new Date(r.service_date)))).size;
     if (days >= MIN_DAYS && sameDay.length >= MIN_TICKETS) {
@@ -197,7 +208,7 @@ async function hourlyProfile(department = null, opts = {}) {
     basis = 'all-days';
   }
 
-  if (used.length < MIN_TICKETS)
+  if (!period && used.length < MIN_TICKETS)
     return cacheSet(key, { ...empty, basis: 'insufficient' });
 
   const sampleDays = new Set(used.map(r => ymd(new Date(r.service_date)))).size || 1;
@@ -291,8 +302,86 @@ async function hourlyProfile(department = null, opts = {}) {
     weekday: weekday === 'all' ? null : weekday,
     weekdayName: weekday === 'all' ? null : DAY_NAMES[weekday],
     department: department || 'All offices',
-    lookback,
+    lookback, period,
+    // For a chosen period: which weekday and which month were busiest.
+    // Built from the whole period, whatever weekday filter is applied above.
+    byWeekday: period ? weekdayTotals(rows) : null,
+    // a month chart only means something for periods longer than a month
+    byMonth:   period && daysBetween(period.from, period.to) > 31 && monthsBetween(period.from, period.to) > 1
+                 ? monthTotals(rows, period) : null,
   });
+}
+
+/** Requests per weekday (Monday first) in total and per day that had traffic. */
+function weekdayTotals(rows) {
+  const days = [1, 2, 3, 4, 5, 6, 0].map(d => ({ day: d, name: DAY_NAMES[d], short: DAY_NAMES[d].slice(0, 3),
+                                                  total: 0, dates: new Set() }));
+  const at = Object.fromEntries(days.map(d => [d.day, d]));
+  for (const r of rows) {
+    const date = ymd(new Date(r.service_date));
+    const d = at[new Date(date + 'T00:00:00').getDay()];
+    d.total++; d.dates.add(date);
+  }
+  const out = days.map(d => ({ day: d.day, name: d.name, short: d.short, total: d.total,
+                               perDay: d.dates.size ? +(d.total / d.dates.size).toFixed(1) : 0, days: d.dates.size }));
+  const max = Math.max(...out.map(d => d.perDay), 0);
+  out.forEach(d => { d.share = max ? Math.round(d.perDay / max * 100) : 0; });
+  const busiest = out.filter(d => d.total).sort((a, b) => b.perDay - a.perDay)[0] || null;
+  return { days: out, busiest };
+}
+
+/** Requests per calendar month across the period, oldest first. */
+function monthTotals(rows, period) {
+  const months = [];
+  const cur = new Date(period.from.slice(0, 7) + '-01T00:00:00');
+  const end = new Date(period.to.slice(0, 7) + '-01T00:00:00');
+  while (cur <= end) {
+    months.push({ key: ymd(cur).slice(0, 7), label: cur.toLocaleDateString('en-PH', { month: 'short' }),
+                  year: cur.getFullYear(), total: 0 });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  const at = Object.fromEntries(months.map(m => [m.key, m]));
+  for (const r of rows) { const m = at[ymd(new Date(r.service_date)).slice(0, 7)]; if (m) m.total++; }
+  const max = Math.max(...months.map(m => m.total), 0);
+  months.forEach(m => { m.share = max ? Math.round(m.total / max * 100) : 0; });
+  const busiest = months.filter(m => m.total).sort((a, b) => b.total - a.total)[0] || null;
+  return { months, busiest };
+}
+
+function daysBetween(from, to) {
+  return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000) + 1;
+}
+
+function monthsBetween(from, to) {
+  const a = new Date(from + 'T00:00:00'), b = new Date(to + 'T00:00:00');
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+}
+
+/**
+ * Turn a Reports "Period" choice into dates: today, this week (Monday to
+ * today), this month, this year, the last 30 days, or a custom from/to.
+ * Returns { key, from, to, label }.
+ */
+const PERIODS = { today: 'Today', week: 'This week', month: 'This month', year: 'This year',
+                  last30: 'Last 30 days', custom: 'Custom' };
+function periodRange(key, from, to) {
+  const now = new Date(), t = ymd(now);
+  const back = n => { const d = new Date(now); d.setDate(d.getDate() - n); return ymd(d); };
+  const valid = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !isNaN(new Date(s + 'T00:00:00'));
+  if (!PERIODS[key]) key = 'week';
+  let f = t, e = t;
+  if (key === 'week')   f = back((now.getDay() + 6) % 7);           // back to Monday
+  if (key === 'month')  f = t.slice(0, 8) + '01';
+  if (key === 'year')   f = t.slice(0, 5) + '01-01';
+  if (key === 'last30') f = back(30);
+  if (key === 'custom') {
+    if (!valid(from) || !valid(to)) { key = 'week'; f = back((now.getDay() + 6) % 7); }
+    else { [f, e] = from <= to ? [from, to] : [to, from]; }
+  }
+  const fmt = s => new Date(s + 'T00:00:00').toLocaleDateString('en-PH',
+    { month: 'short', day: 'numeric', year: f.slice(0, 4) !== e.slice(0, 4) ? 'numeric' : undefined });
+  const label = PERIODS[key] + (f === e ? ' (' + fmt(f) + ')' : ' (' + fmt(f) + ' – ' + fmt(e) + ')');
+  return { key, from: f, to: e, label };
 }
 
 /**
@@ -365,7 +454,7 @@ async function adviceByWeekday(department, opts = {}) {
 
 module.exports = {
   hourlyProfile, bothOffices, advice, adviceByWeekday,
-  optsFromSettings, clearCache,
+  optsFromSettings, clearCache, periodRange, PERIODS,
   hourLabel, slotLabel, DAY_NAMES,
   LOOKBACK_DAYS,
 };

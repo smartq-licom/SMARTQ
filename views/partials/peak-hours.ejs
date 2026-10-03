@@ -28,9 +28,11 @@
     <h3 class="<%= UI.cardTtl %>"><%= ttl %></h3>
     <% if (pk && pk.hours.length) { %>
     <span class="<%= pill %> bg-mist text-slateSoft">
-      <%= pk.basis === 'weekday'
-            ? 'every ' + pk.weekdayName + ', last ' + pk.lookback + ' days'
-            : 'all days, last ' + pk.lookback + ' days' %>
+      <%= pk.period
+            ? (pk.weekdayName ? pk.weekdayName + 's, ' : '') + pk.period.label.replace(/ \(.*/, '').toLowerCase()
+            : pk.basis === 'weekday'
+              ? 'every ' + pk.weekdayName + ', last ' + pk.lookback + ' days'
+              : 'all days, last ' + pk.lookback + ' days' %>
     </span>
     <% } %>
   </div>
@@ -38,9 +40,14 @@
   <div class="<%= UI.body %>">
   <% if (!pk || !pk.hours.length) { %>
     <p class="text-[13px] text-slateSoft/80">
+      <% if (pk && pk.period) { %>
+      No requests <%= pk.weekdayName ? 'on ' + pk.weekdayName + 's ' : '' %>in this period
+      (<%= pk.period.label.replace(/^[^(]*\(|\)$/g, '') %>). Try a longer period.
+      <% } else { %>
       Not enough history yet. Peak hours appear once the office has served
       a few days of tickets — every request already records the time it was
       made, so nothing needs to be switched on.
+      <% } %>
     </p>
   <% } else { %>
 
@@ -61,14 +68,18 @@
         <div class="text-[15px] font-extrabold text-red-900 mt-0.5">
           <%= pk.busiest ? pk.busiest.label : '—' %></div>
         <div class="text-[11px] text-red-800/80">
-          <%= pk.busiest ? pk.busiest.arrivals + ' requests on average' : 'no traffic' %></div>
+          <%= !pk.busiest ? 'no traffic'
+              : pk.period ? pk.busiest.samples + ' total · ' + pk.busiest.arrivals + ' per day'
+              : pk.busiest.arrivals + ' requests on average' %></div>
       </div>
       <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3.5">
         <div class="text-[10.5px] font-bold uppercase tracking-wider text-emerald-800/80">Quietest hour</div>
         <div class="text-[15px] font-extrabold text-emerald-900 mt-0.5">
           <%= pk.quietest ? pk.quietest.label : '—' %></div>
         <div class="text-[11px] text-emerald-800/80">
-          <%= pk.quietest ? pk.quietest.arrivals + ' requests on average' : 'no traffic' %></div>
+          <%= !pk.quietest ? 'no traffic'
+              : pk.period ? pk.quietest.samples + ' total · ' + pk.quietest.arrivals + ' per day'
+              : pk.quietest.arrivals + ' requests on average' %></div>
       </div>
       <% if (!isCompact) { %>
       <div class="rounded-lg bg-mist border border-hair p-3.5">
@@ -129,6 +140,7 @@
       <table class="w-full border-collapse">
         <thead><tr>
           <th class="<%= UI.th %>">Hour</th>
+          <% if (pk.period) { %><th class="<%= UI.th %>">Total</th><% } %>
           <th class="<%= UI.th %>">Requests / day</th>
           <th class="<%= UI.th %>">Waiting at once</th>
           <th class="<%= UI.th %>">Average wait</th>
@@ -139,6 +151,7 @@
         <% pk.hours.forEach(function (h) { %>
           <tr class="<%= UI.tr %> <%= h.isBreak ? 'opacity-60' : '' %>">
             <td class="<%= UI.td %> font-semibold whitespace-nowrap"><%= h.label %></td>
+            <% if (pk.period) { %><td class="<%= UI.td %> font-semibold"><%= h.samples %></td><% } %>
             <td class="<%= UI.td %>"><%= h.arrivals %></td>
             <td class="<%= UI.td %>"><%= h.crowding %></td>
             <td class="<%= UI.td %>">
@@ -156,9 +169,65 @@
         </tbody>
       </table>
     </div>
+    <% if (pk.byWeekday) { %>
+    <%# Which day of the week is busiest in this period (per day that had
+        traffic, so a weekday that came up more often is not favoured). %>
+    <div class="mt-5">
+      <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+        <h4 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Busiest day of the week</h4>
+        <% if (pk.byWeekday.busiest) { %>
+        <span class="text-[12px] text-slateSoft"><strong><%= pk.byWeekday.busiest.name %></strong> &middot; <%= pk.byWeekday.busiest.perDay %> requests per day</span>
+        <% } %>
+      </div>
+      <div class="flex items-end gap-1.5 h-24">
+        <% pk.byWeekday.days.forEach(function (d) {
+             var top = pk.byWeekday.busiest && d.day === pk.byWeekday.busiest.day; %>
+        <div class="flex-1 flex flex-col justify-end items-center h-full"
+             title="<%= d.name %>: <%= d.total %> total over <%= d.days %> day<%= d.days === 1 ? '' : 's' %> (<%= d.perDay %> per day)">
+          <div class="text-[10px] font-bold text-slateSoft/70 mb-0.5"><%= d.total %></div>
+          <div class="w-full rounded-t <%= top ? 'bg-red-500' : d.total ? 'bg-brand' : 'bg-hair' %>"
+               style="height: <%= Math.max(d.share, d.total ? 4 : 1) %>%"></div>
+        </div>
+        <% }) %>
+      </div>
+      <div class="flex gap-1.5 mt-1">
+        <% pk.byWeekday.days.forEach(function (d) { %>
+        <div class="flex-1 text-center text-[10px] text-slateSoft/70"><%= d.short %></div>
+        <% }) %>
+      </div>
+    </div>
+    <% } %>
+
+    <% if (pk.byMonth) { %>
+    <div class="mt-5">
+      <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+        <h4 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Busiest month</h4>
+        <% if (pk.byMonth.busiest) { %>
+        <span class="text-[12px] text-slateSoft"><strong><%= pk.byMonth.busiest.label %> <%= pk.byMonth.busiest.year %></strong> &middot; <%= pk.byMonth.busiest.total %> requests</span>
+        <% } %>
+      </div>
+      <div class="flex items-end gap-1.5 h-24">
+        <% pk.byMonth.months.forEach(function (m) {
+             var top = pk.byMonth.busiest && m.key === pk.byMonth.busiest.key; %>
+        <div class="flex-1 flex flex-col justify-end items-center h-full" title="<%= m.label %> <%= m.year %>: <%= m.total %> requests">
+          <div class="text-[10px] font-bold text-slateSoft/70 mb-0.5"><%= m.total %></div>
+          <div class="w-full rounded-t <%= top ? 'bg-red-500' : m.total ? 'bg-brand' : 'bg-hair' %>"
+               style="height: <%= Math.max(m.share, m.total ? 4 : 1) %>%"></div>
+        </div>
+        <% }) %>
+      </div>
+      <div class="flex gap-1.5 mt-1">
+        <% pk.byMonth.months.forEach(function (m) { %>
+        <div class="flex-1 text-center text-[10px] text-slateSoft/70"><%= m.label %></div>
+        <% }) %>
+      </div>
+    </div>
+    <% } %>
+
     <p class="<%= UI.hint %> mt-3">
+      <% if (pk.period) { %><strong>Total</strong> is every number taken in that hour during the period. <% } %>
       <strong>Requests / day</strong> is demand — how many numbers were taken in
-      that hour on an average <%= pk.basis === 'weekday' ? pk.weekdayName : 'day' %>.
+      that hour on an average <%= pk.weekdayName && pk.basis !== 'all-days' ? pk.weekdayName : 'day' %>.
       <strong>Waiting at once</strong> is congestion — clients still holding an
       uncalled ticket during that hour, which is why it can exceed the requests
       made in the same hour. <strong>Average wait</strong> is what a client
