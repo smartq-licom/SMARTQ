@@ -804,13 +804,17 @@ async function saveDocument(id, b) {
   if (isNaN(price) || price < 0) return { error: 'Price must be zero or greater.' };
   const args = [ b.name.trim(), price, b.paymentRequired ? 1 : 0, b.requiresClaim ? 1 : 0,
                  b.guestAllowed ? 1 : 0, +b.baselineMinutes || 8, b.isActive ? 1 : 0 ];
-  if (id) await run(`UPDATE documents SET name=?,price=?,payment_required=?,requires_claim=?,
-                     guest_allowed=?,baseline_minutes=?,is_active=?,
-                     office=IF(payment_required=1,'Cashier','Registrar') WHERE id=?`, [...args, id]);
-  else    await run(`INSERT INTO documents (name,price,payment_required,requires_claim,
-                     guest_allowed,baseline_minutes,is_active) VALUES (?,?,?,?,?,?,?)`, args);
+  if (id) {
+    await run(`UPDATE documents SET name=?,price=?,payment_required=?,requires_claim=?,
+               guest_allowed=?,baseline_minutes=?,is_active=?,
+               office=IF(payment_required=1,'Cashier','Registrar') WHERE id=? AND deleted_at IS NULL`, [...args, id]);
+  } else {
+    const r = await run(`INSERT INTO documents (name,price,payment_required,requires_claim,
+                         guest_allowed,baseline_minutes,is_active) VALUES (?,?,?,?,?,?,?)`, args);
+    // a new document's office follows whether it needs payment
     await run(`UPDATE documents SET office=IF(payment_required=1,'Cashier','Registrar') WHERE id=?`,
               [r.insertId]);
+  }
   return { ok: true };
 }
 
