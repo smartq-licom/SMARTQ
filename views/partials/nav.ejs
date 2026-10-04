@@ -2,15 +2,18 @@
   const role = me.role;
   const links = role === 'admin' ? [
       ['/admin/dashboard','Dashboard'],['/admin/documents','Documents'],
-      ['/admin/students','Student Accounts'],['/admin/users','Staff Accounts'],
+      ['/admin/students','Student Accounts'],['/admin/users','Manage Staff Accounts'],
       ['/admin/requirements','Requirements'],
       ['/admin/priority','Priority Requests'],
       ['/admin/calendar','Booking Calendar'],
       ['/admin/windows','Service Windows'],
+      ['/admin/history','Queue History'],
       ['/admin/reports','Reports'],['/admin/settings','Settings']]
     : (role === 'cashier' || role === 'registrar') ? [
       ['/staff/dashboard', role === 'cashier' ? 'Cashier Counter' : 'Registrar Counter'],
       ['/staff/calendar', 'Booking Calendar'],
+      ['/staff/history', 'Queue History'],
+      ['/staff/reports', 'Reports'],
       ['/staff/priority', 'Priority Requests'],
       ['/staff/documents', 'Documents'],
       ['/staff/account', 'My Account']]

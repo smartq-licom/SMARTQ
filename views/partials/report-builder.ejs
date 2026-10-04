@@ -1,0 +1,241 @@
+<%#
+  Report builder card (admin Reports and staff Reports). Locals come from
+  routes/report-builder.js build(): reportTypes, rtype, rf, choices,
+  generated, result, criteria, reportOffice; plus rbase (the page URL) and
+  printView (true in the print-only page).
+%>
+<%
+  var isPrint = typeof printView !== 'undefined' && printView;
+  var statusLabel = { completed: 'Completed / served', cancelled: 'Cancelled', 'no-show': 'No-show', pending: 'Pending (waiting or serving)' };
+  // the current filters as a query string, for the Print / CSV links
+  var keep = [];
+  ['rtype','rfrom','rto','q','document','status','staff','lane','office'].forEach(function (k) {
+    if (query[k]) keep.push(k + '=' + encodeURIComponent(query[k]));
+  });
+  var qs = keep.join('&');
+  var d = function (s) { return new Date(s).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
+  var tm = function (s) { return new Date(s).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }); };
+%>
+<% if (!isPrint) { %>
+<form method="GET" action="<%= rbase %>" class="<%= UI.card %> p-4 mb-4 no-print">
+  <input type="hidden" name="generate" value="1">
+  <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+    <h3 class="text-[15px] font-extrabold">Generate Report</h3>
+    <span class="text-[12px] text-slateSoft/75">Choose what you need; only matching records are included.<%= reportOffice ? ' ' + reportOffice + ' transactions only.' : '' %></span>
+  </div>
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div>
+      <label for="rtype" class="<%= UI.lbl %>">Report Type</label>
+      <select id="rtype" name="rtype" class="<%= UI.input %>">
+        <% Object.keys(reportTypes).forEach(function (k) { %>
+        <option value="<%= k %>" <%= rtype === k ? 'selected' : '' %>><%= reportTypes[k] %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="rfrom" class="<%= UI.lbl %>">Start date</label>
+      <input id="rfrom" name="rfrom" type="date" value="<%= rf.from %>" class="<%= UI.input %>">
+    </div>
+    <div>
+      <label for="rto" class="<%= UI.lbl %>">End date</label>
+      <input id="rto" name="rto" type="date" value="<%= rf.to %>" class="<%= UI.input %>">
+    </div>
+    <div>
+      <label for="rstatus" class="<%= UI.lbl %>">Transaction status</label>
+      <select id="rstatus" name="status" class="<%= UI.input %>">
+        <option value="">Any status</option>
+        <% choices.statuses.forEach(function (s) { %>
+        <option value="<%= s %>" <%= rf.status === s ? 'selected' : '' %>><%= statusLabel[s] || s %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="rdoc" class="<%= UI.lbl %>">Transaction type</label>
+      <select id="rdoc" name="document" class="<%= UI.input %>">
+        <option value="">All transactions</option>
+        <% choices.documents.forEach(function (x) { %>
+        <option value="<%= x.id %>" <%= rf.documentId === x.id ? 'selected' : '' %>><%= x.name %><%= reportOffice ? '' : ' (' + x.office + ')' %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="rlane" class="<%= UI.lbl %>">Queue type</label>
+      <select id="rlane" name="lane" class="<%= UI.input %>">
+        <option value="">Regular and priority</option>
+        <option value="regular" <%= rf.lane === 'regular' ? 'selected' : '' %>>Regular</option>
+        <option value="priority" <%= rf.lane === 'priority' ? 'selected' : '' %>>Priority</option>
+      </select>
+    </div>
+    <div>
+      <label for="rstaff" class="<%= UI.lbl %>">Staff</label>
+      <select id="rstaff" name="staff" class="<%= UI.input %>">
+        <option value="">All staff</option>
+        <% choices.staff.forEach(function (s) { %>
+        <option value="<%= s.id %>" <%= rf.staffId === s.id ? 'selected' : '' %>><%= s.name %><%= reportOffice ? '' : ' (' + s.department + ')' %></option>
+        <% }) %>
+      </select>
+    </div>
+    <% if (!reportOffice) { %>
+    <div>
+      <label for="roffice" class="<%= UI.lbl %>">Office</label>
+      <select id="roffice" name="office" class="<%= UI.input %>">
+        <option value="">Both offices</option>
+        <option value="Cashier" <%= rf.office === 'Cashier' ? 'selected' : '' %>>Cashier</option>
+        <option value="Registrar" <%= rf.office === 'Registrar' ? 'selected' : '' %>>Registrar</option>
+      </select>
+    </div>
+    <% } %>
+    <div class="sm:col-span-2">
+      <label for="rq" class="<%= UI.lbl %>">Student / client</label>
+      <input id="rq" name="q" value="<%= rf.q %>" class="<%= UI.input %>" placeholder="All students &mdash; or type a name, student no., username, email or queue no.">
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2 mt-3">
+    <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Generate Report</button>
+    <a href="<%= rbase %>" class="<%= UI.btn %> <%= UI.btnGh %>">Reset Filters</a>
+  </div>
+</form>
+<% } %>
+
+<% if (generated && result) { var r = result, t = r.totals; %>
+<div class="<%= UI.card %> mb-6 report-out">
+  <div class="<%= UI.cardHd %> flex-wrap gap-2">
+    <h3 class="<%= UI.cardTtl %>"><%= reportTypes[rtype] %></h3>
+    <% if (!isPrint) { %>
+    <div class="flex flex-wrap gap-2 no-print">
+      <a href="<%= rbase %>/print?<%= qs %>" target="_blank" rel="noopener" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</a>
+      <a href="<%= rbase %>/export?<%= qs %>" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Download CSV</a>
+    </div>
+    <% } %>
+  </div>
+  <%# The criteria the report was built from, so a printout explains itself. %>
+  <dl class="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1.5 px-5 py-3 border-b border-hair text-[12px] bg-mist/40">
+    <% criteria.forEach(function (c) { %>
+    <div><dt class="text-slateSoft/70"><%= c[0] %></dt><dd class="font-semibold"><%= c[1] %></dd></div>
+    <% }) %>
+  </dl>
+
+  <% if (r.type === 'transactions') { %>
+  <div class="flex flex-wrap gap-4 px-5 py-3 text-[12.5px] border-b border-hair">
+    <span><strong><%= t.count %></strong> transactions</span>
+    <span><strong><%= t.completed %></strong> completed</span>
+    <span><strong><%= t.cancelled %></strong> cancelled / no-show</span>
+    <span><strong><%= t.pending %></strong> pending</span>
+    <span><strong><%= peso(t.paid) %></strong> paid</span>
+  </div>
+  <div class="overflow-x-auto"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Queue No.</th><th class="<%= UI.th %>">Date</th><th class="<%= UI.th %>">Time</th>
+      <th class="<%= UI.th %>">Client</th><th class="<%= UI.th %>">Transaction</th><th class="<%= UI.th %>">Office / Window</th>
+      <th class="<%= UI.th %>">Staff</th><th class="<%= UI.th %>">Amount</th><th class="<%= UI.th %>">Status</th>
+    </tr></thead>
+    <tbody>
+      <% r.rows.forEach(function (x) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> whitespace-nowrap"><span class="<%= chip %>"><%= x.ticketNo %></span>
+          <span class="block text-[10.5px] text-slateSoft/70 mt-1 capitalize"><%= x.queueCategory %></span></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= d(x.serviceDate + 'T00:00:00') %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= x.requestedAt ? tm(x.requestedAt) : '-' %></td>
+        <td class="<%= UI.td %> text-[12.5px]"><span class="font-semibold"><%= x.fullName %></span>
+          <% if (x.studentNo) { %><span class="block text-[10.5px] font-mono text-slateSoft/70"><%= x.studentNo %></span><% } %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= x.documents.map(function (y) { return y.label; }).join(', ') %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= x.department %><%= x.windowLabel ? ' · ' + x.windowLabel : '' %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= x.staffName || '-' %></td>
+        <td class="<%= UI.td %> font-mono text-[12px] whitespace-nowrap"><%= x.amountDue > 0 ? peso(x.amountDue) : '-' %>
+          <% if (x.receiptNo) { %><span class="block text-[10.5px] text-slateSoft/70"><%= x.receiptNo %></span><% } %></td>
+        <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(x.ticketStatus) %>"><%= x.ticketStatus %></span></td>
+      </tr>
+      <% }) %>
+      <% if (!r.rows.length) { %><tr><td colspan="9" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No transactions match these filters.</td></tr><% } %>
+    </tbody>
+  </table></div>
+
+  <% } else if (r.type === 'payments') { %>
+  <div class="flex flex-wrap gap-4 px-5 py-3 text-[12.5px] border-b border-hair">
+    <span><strong><%= t.count %></strong> payments</span>
+    <span><strong><%= peso(t.amount) %></strong> collected</span>
+  </div>
+  <div class="overflow-x-auto"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Receipt No.</th><th class="<%= UI.th %>">Paid</th><th class="<%= UI.th %>">Queue No.</th>
+      <th class="<%= UI.th %>">Client</th><th class="<%= UI.th %>">Transaction</th><th class="<%= UI.th %>">Cashier</th>
+      <th class="<%= UI.th %> text-right">Amount</th>
+    </tr></thead>
+    <tbody>
+      <% r.rows.forEach(function (x) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= x.receiptNo || '-' %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= d(x.paidAt) %> <%= tm(x.paidAt) %></td>
+        <td class="<%= UI.td %>"><span class="<%= chip %>"><%= x.ticketNo %></span></td>
+        <td class="<%= UI.td %> text-[12.5px]"><span class="font-semibold"><%= x.client %></span>
+          <% if (x.studentNo) { %><span class="block text-[10.5px] font-mono text-slateSoft/70"><%= x.studentNo %></span><% } %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= x.documents %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= x.cashier %><%= x.window ? ' · ' + x.window : '' %></td>
+        <td class="<%= UI.td %> font-mono text-[12.5px] text-right"><%= peso(x.amount) %></td>
+      </tr>
+      <% }) %>
+      <% if (!r.rows.length) { %><tr><td colspan="7" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No payments match these filters.</td></tr><% } %>
+    </tbody>
+    <% if (r.rows.length) { %>
+    <tfoot><tr><td colspan="6" class="<%= UI.td %> text-right font-bold">Total</td>
+      <td class="<%= UI.td %> font-mono font-extrabold text-right"><%= peso(t.amount) %></td></tr></tfoot>
+    <% } %>
+  </table></div>
+
+  <% } else if (r.type === 'documents') { %>
+  <div class="overflow-x-auto"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Document</th><th class="<%= UI.th %>">Office</th><th class="<%= UI.th %>">Requests</th>
+      <th class="<%= UI.th %>">Copies</th><th class="<%= UI.th %>">Completed</th><th class="<%= UI.th %>">Cancelled / No-show</th>
+      <th class="<%= UI.th %> text-right">Collected</th>
+    </tr></thead>
+    <tbody>
+      <% r.rows.forEach(function (x) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= x.name %></td><td class="<%= UI.td %> text-[12px]"><%= x.department %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.requests %></td><td class="<%= UI.td %> font-mono"><%= x.copies %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.completed %></td><td class="<%= UI.td %> font-mono"><%= x.cancelled %></td>
+        <td class="<%= UI.td %> font-mono text-right"><%= peso(x.collected) %></td>
+      </tr>
+      <% }) %>
+      <% if (!r.rows.length) { %><tr><td colspan="7" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No documents match these filters.</td></tr><% } %>
+    </tbody>
+    <% if (r.rows.length) { %>
+    <tfoot><tr><td colspan="2" class="<%= UI.td %> text-right font-bold">Total</td>
+      <td class="<%= UI.td %> font-mono font-extrabold"><%= t.requests %></td><td colspan="3"></td>
+      <td class="<%= UI.td %> font-mono font-extrabold text-right"><%= peso(t.collected) %></td></tr></tfoot>
+    <% } %>
+  </table></div>
+
+  <% } else { %>
+  <div class="overflow-x-auto"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Staff</th><th class="<%= UI.th %>">Office</th><th class="<%= UI.th %>">Handled</th>
+      <th class="<%= UI.th %>">Completed</th><th class="<%= UI.th %>">Cancelled / No-show</th>
+      <th class="<%= UI.th %>">Avg service</th><th class="<%= UI.th %> text-right">Collected</th>
+    </tr></thead>
+    <tbody>
+      <% r.rows.forEach(function (x) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= x.name %></td><td class="<%= UI.td %> text-[12px]"><%= x.department %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.handled %></td><td class="<%= UI.td %> font-mono"><%= x.completed %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.cancelled %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.avgMin === null ? '-' : x.avgMin + ' min' %></td>
+        <td class="<%= UI.td %> font-mono text-right"><%= peso(x.collected) %></td>
+      </tr>
+      <% }) %>
+      <% if (!r.rows.length) { %><tr><td colspan="7" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No staff activity matches these filters.</td></tr><% } %>
+    </tbody>
+    <% if (r.rows.length) { %>
+    <tfoot><tr><td colspan="2" class="<%= UI.td %> text-right font-bold">Total</td>
+      <td class="<%= UI.td %> font-mono font-extrabold"><%= t.handled %></td><td colspan="3"></td>
+      <td class="<%= UI.td %> font-mono font-extrabold text-right"><%= peso(t.collected) %></td></tr></tfoot>
+    <% } %>
+  </table></div>
+  <% } %>
+
+  <% if (r.pg && !isPrint) { %><%- include('pagination', { pg: r.pg, label: r.type === 'payments' ? 'payments' : 'transactions' }) %><% } %>
+</div>
+<% } else if (!isPrint) { %>
+<p class="mb-6 text-[12.5px] text-slateSoft/75">Choose a report type and filters, then press <strong>Generate Report</strong>. Nothing is loaded until you do.</p>
+<% } %>

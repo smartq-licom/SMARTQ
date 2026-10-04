@@ -2,6 +2,8 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../data/db');
+const paging  = require('../data/paging');
+const reportBuilder = require('./report-builder');
 
 router.get('/dashboard', async (req, res, next) => {
   try {
@@ -81,12 +83,52 @@ router.post('/requirements/:id/delete', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ── Manage Staff Accounts: list (searchable, 20 per page), edit, reset password
 router.get('/users', async (req, res, next) => {
   try {
+    const filters = { search: String(req.query.q || '').trim(), role: req.query.role || '', status: req.query.status || '' };
+    const { rows, pg } = await db.getStaffPage({ ...filters, page: paging.pageFrom(req.query) });
+    const tempPassword = req.session.tempPassword || null;   // shown once after a reset
+    delete req.session.tempPassword;
     res.render('pages/admin/users', {
-      title: 'Staff Accounts',
-      users: await db.getStaffAccounts(), windows: await db.getWindows(),
+      title: 'Manage Staff Accounts', users: rows, pg, filters, tempPassword,
+      windows: await db.getWindows(),
     });
+  } catch (e) { next(e); }
+});
+
+router.get('/users/:id/edit', async (req, res, next) => {
+  try {
+    const u = await db.getUser(Number(req.params.id));
+    if (!u || u.deleted || !['cashier', 'registrar'].includes(u.role)) {
+      req.session.error = 'Only cashier and registrar accounts can be edited here.';
+      return res.redirect('/admin/users');
+    }
+    res.render('pages/admin/user-edit', { title: 'Edit Account', u, form: null, windows: await db.getWindows(), formError: null });
+  } catch (e) { next(e); }
+});
+
+router.post('/users/:id/edit', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await db.updateStaffAccount(req.session.user, id, req.body);
+    if (r.error) {
+      return res.status(400).render('pages/admin/user-edit', {
+        title: 'Edit Account', u: await db.getUser(id), form: req.body,
+        windows: await db.getWindows(), formError: r.error,
+      });
+    }
+    req.session.flash = `${r.user.fullName}'s account was updated. They will need to sign in again.`;
+    res.redirect('/admin/users');
+  } catch (e) { next(e); }
+});
+
+router.post('/users/:id/reset-password', async (req, res, next) => {
+  try {
+    const r = await db.resetStaffPassword(req.session.user, Number(req.params.id));
+    if (r.error) req.session.error = r.error;
+    else req.session.tempPassword = { name: r.name, username: r.username, temp: r.temp };
+    res.redirect('/admin/users');
   } catch (e) { next(e); }
 });
 
@@ -95,14 +137,8 @@ router.get('/students', async (req, res, next) => {
   try {
     const search = req.query.search || '';
     const role   = req.query.role   || '';
-    const list   = await db.getClientAccounts({ search, role });
-    res.render('pages/admin/students', {
-      title: 'Student Accounts', list, search, role,
-      counts: {
-        students: list.filter(u => u.role === 'student').length,
-        guests:   list.filter(u => u.role === 'guest').length,
-      },
-    });
+    const { list, pg, counts } = await db.getClientAccounts({ search, role, page: paging.pageFrom(req.query) });
+    res.render('pages/admin/students', { title: 'Student Accounts', list, pg, search, role, counts });
   } catch (e) { next(e); }
 });
 
@@ -220,8 +256,21 @@ router.post('/windows/:id', async (req, res, next) => {
 });
 
 // ── Priority lane review ─────────────────────────────────────────────────────
+// Queue History: every client's tickets, all offices (routes/history.js).
+router.use('/history', require('./history')('/admin/history'));
+
 // Priority requests: shared with the Cashier and Registrar (routes/priority.js).
 router.use('/priority', require('./priority')('/admin/priority', { canRevoke: true }));
+
+// Report builder: print view (all matching rows) and CSV download.
+router.get('/reports/print', async (req, res, next) => {
+  try {
+    res.render('pages/shared/report-print', { title: 'Report', rbase: '/admin/reports', ...(await reportBuilder.buildAll(req.query, null)) });
+  } catch (e) { next(e); }
+});
+router.get('/reports/export', async (req, res, next) => {
+  try { await reportBuilder.sendCsv(req.query, null, res); } catch (e) { next(e); }
+});
 
 router.get('/reports', async (req, res, next) => {
   try {
@@ -244,6 +293,7 @@ router.get('/reports', async (req, res, next) => {
       accuracy: await db.predict.getAccuracy(from, to),
       peakHours, peakWeekday: wd, dayNames: db.peak.DAY_NAMES,
       peakPeriod: period, periods: db.peak.PERIODS,
+      ...(await reportBuilder.build(req.query, null)),
     });
   } catch (e) { next(e); }
 });

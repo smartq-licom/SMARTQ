@@ -1,36 +1,107 @@
 <%- include('../../partials/head') %>
 <%- include('../../partials/nav', { active: '/admin/users' }) %>
 <div class="mb-4">
-  <h2 class="text-xl font-extrabold">Staff accounts</h2>
+  <h2 class="text-xl font-extrabold">Manage Staff Accounts</h2>
   <p class="text-[13px] text-slateSoft/80 mt-0.5">
     Cashier, Registrar and Admin accounts. Student and guest accounts are on the
     <a href="/admin/students" class="underline font-semibold">Student Accounts</a> page.
   </p>
 </div>
-<div class="<%= UI.card %> overflow-x-auto mb-5">
+
+<% if (tempPassword) { %>
+<%# Shown once, right after Reset Password. It is never stored in plain text. %>
+<div role="status" class="mb-4 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
+  <div class="text-[14px] font-bold text-amber-900">Temporary password for <%= tempPassword.name %> (<%= tempPassword.username %>)</div>
+  <div class="mt-2 flex flex-wrap items-center gap-2">
+    <code id="tempPw" class="rounded-lg bg-white border border-amber-300 px-3 py-1.5 font-mono text-[17px] font-bold tracking-wider"><%= tempPassword.temp %></code>
+    <button type="button" id="copyTemp" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Copy</button>
+  </div>
+  <p class="text-[12px] text-amber-900/85 mt-2">
+    Give this to them privately. It is shown only once. When they sign in with it,
+    SmartQ will ask them to choose their own password.
+  </p>
+</div>
+<script>
+document.getElementById('copyTemp').addEventListener('click', function () {
+  var b = this;
+  if (navigator.clipboard) navigator.clipboard.writeText(document.getElementById('tempPw').textContent)
+    .then(function () { b.textContent = 'Copied'; }).catch(function () {});
+});
+</script>
+<% } %>
+
+<form method="GET" class="flex flex-wrap items-end gap-2 mb-3 no-print">
+  <div class="flex-1 min-w-[12rem]">
+    <label for="q" class="<%= UI.lbl %>">Search</label>
+    <input id="q" name="q" value="<%= filters.search %>" class="<%= UI.input %>" placeholder="Name, username or contact">
+  </div>
+  <div>
+    <label for="role" class="<%= UI.lbl %>">Role</label>
+    <select id="role" name="role" class="<%= UI.input %>">
+      <option value="">All roles</option>
+      <option value="admin" <%= filters.role === 'admin' ? 'selected' : '' %>>Admin</option>
+      <option value="cashier" <%= filters.role === 'cashier' ? 'selected' : '' %>>Cashier</option>
+      <option value="registrar" <%= filters.role === 'registrar' ? 'selected' : '' %>>Registrar</option>
+    </select>
+  </div>
+  <div>
+    <label for="status" class="<%= UI.lbl %>">Status</label>
+    <select id="status" name="status" class="<%= UI.input %>">
+      <option value="">Any status</option>
+      <option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active</option>
+      <option value="disabled" <%= filters.status === 'disabled' ? 'selected' : '' %>>Disabled</option>
+    </select>
+  </div>
+  <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Filter</button>
+  <a href="/admin/users" class="<%= UI.btn %> <%= UI.btnGh %>">Reset Filters</a>
+</form>
+
+<div class="<%= UI.card %> mb-5">
+  <div class="overflow-x-auto">
   <table class="w-full">
     <thead><tr>
-      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Login</th>
-      <th class="<%= UI.th %>">Role</th><th class="<%= UI.th %>">Window</th>
-      <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>"></th>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Username</th>
+      <th class="<%= UI.th %>">Password</th><th class="<%= UI.th %>">Role</th>
+      <th class="<%= UI.th %>">Window</th><th class="<%= UI.th %>">Contact</th>
+      <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>">Created</th>
+      <th class="<%= UI.th %>">Last login</th><th class="<%= UI.th %>"></th>
     </tr></thead>
     <tbody>
       <% users.forEach(function(u){ %>
       <tr class="<%= UI.tr %>">
         <td class="<%= UI.td %> font-semibold"><%= u.fullName %></td>
-        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.email || u.username %></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.username || u.email %></td>
+        <td class="<%= UI.td %> font-mono text-[12px] text-slateSoft">
+          <%# Passwords are stored only as hashes, so they can never be shown. %>
+          <span title="Hidden for security. Use Reset Password if it is forgotten.">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+          <% if (u.mustChangePassword) { %><span class="block text-[10.5px] font-sans font-semibold text-amber-700">reset &middot; must change</span><% } %>
+        </td>
         <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(u.role) %> capitalize"><%= u.role %></span></td>
         <td class="<%= UI.td %> text-[12px] text-slateSoft">
-          <% if (u.windowId) { %>
-            <% const w = windows.find(function(x){ return x.id === u.windowId }); %>
-            <%= w ? w.label : 'window ' + u.windowId %>
+          <% if (u.windowLabel) { %><%= u.windowLabel %>
           <% } else if (u.role === 'admin') { %>Full access
-          <% } else { %><span class="text-amber-700">not posted to a window</span><% } %>
+          <% } else { %><span class="text-amber-700">not posted</span><% } %>
         </td>
-        <td class="<%= UI.td %>"><span class="<%= pill %> <%= u.isActive ? tone('paid') : tone('cancelled') %>"><%= u.isActive ? 'active' : 'disabled' %></span></td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= u.contactNo || '-' %></td>
+        <td class="<%= UI.td %>"><span class="<%= pill %> <%= u.isActive ? tone('paid') : tone('cancelled') %>"><%= u.status === 'locked' ? 'locked' : (u.isActive ? 'active' : 'disabled') %></span></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-' %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= u.lastLogin ? new Date(u.lastLogin).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never' %></td>
         <td class="<%= UI.td %> whitespace-nowrap">
           <% if (u.role !== 'admin') { %>
-          <form method="POST" action="/admin/users/<%= u.id %>/active" class="inline">
+          <a href="/admin/users/<%= u.id %>/edit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Edit Account</a>
+          <form method="POST" action="/admin/users/<%= u.id %>/reset-password" class="inline"
+                data-confirm
+                data-confirm-title="Reset password?"
+                data-confirm-body="Are you sure you want to reset <%= u.fullName %>'s password? Their current password will stop working and they will be signed out."
+                data-confirm-note="You will see a temporary password once. They must choose a new password when they sign in."
+                data-confirm-ok="Reset Password" data-confirm-back="Cancel">
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Reset Password</button>
+          </form>
+          <form method="POST" action="/admin/users/<%= u.id %>/active" class="inline"
+                data-confirm
+                data-confirm-title="<%= u.isActive ? 'Disable' : 'Enable' %> account?"
+                data-confirm-body="<%= u.isActive ? 'Disable ' + u.fullName + '? They will not be able to sign in until it is enabled again.' : 'Enable ' + u.fullName + ' so they can sign in again?' %>"
+                data-confirm-ok="<%= u.isActive ? 'Disable' : 'Enable' %>" data-confirm-back="Cancel">
             <input type="hidden" name="active" value="<%= u.isActive ? '0' : '1' %>">
             <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>"><%= u.isActive ? 'Disable' : 'Enable' %></button>
           </form>
@@ -46,9 +117,15 @@
         </td>
       </tr>
       <% }) %>
+      <% if (!users.length) { %>
+      <tr><td colspan="10" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No staff accounts match.</td></tr>
+      <% } %>
     </tbody>
   </table>
+  </div>
+  <%- include('../../partials/pagination', { pg: pg, label: 'accounts' }) %>
 </div>
+
 <div class="<%= UI.card %> max-w-2xl">
   <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Create a staff account</h3></div>
   <div class="<%= UI.body %>">

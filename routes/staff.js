@@ -43,6 +43,27 @@ const back = (req, res, msg, err) => {
   res.redirect('/staff/dashboard');
 };
 
+// Reports for this member's own office (routes/report-builder.js).
+const reportBuilder = require('./report-builder');
+router.get('/reports', async (req, res, next) => {
+  try {
+    const office = officeOf(req.session.user);
+    res.render('pages/staff/reports', { title: office + ' Reports', ...(await reportBuilder.build(req.query, office)) });
+  } catch (e) { next(e); }
+});
+router.get('/reports/print', async (req, res, next) => {
+  try {
+    res.render('pages/shared/report-print', { title: 'Report', rbase: '/staff/reports',
+      ...(await reportBuilder.buildAll(req.query, officeOf(req.session.user))) });
+  } catch (e) { next(e); }
+});
+router.get('/reports/export', async (req, res, next) => {
+  try { await reportBuilder.sendCsv(req.query, officeOf(req.session.user), res); } catch (e) { next(e); }
+});
+
+// Queue History for this member's own office only (routes/history.js).
+router.use('/history', require('./history')('/staff/history', { officeOf: u => officeOf(u) }));
+
 // Staff can approve or reject priority-lane requests too (routes/priority.js).
 router.use('/priority', require('./priority')('/staff/priority'));
 
@@ -213,8 +234,11 @@ router.post('/account/password', async (req, res, next) => {
       return renderAccount(req, res, { passwordError: 'Your current password is incorrect.' });
     if (b.newPassword !== b.confirmPassword)
       return renderAccount(req, res, { passwordError: 'The new passwords do not match.' });
+    if (b.newPassword === b.currentPassword)
+      return renderAccount(req, res, { passwordError: 'Choose a password different from the current one.' });
     const r = await db.setPassword(me.id, b.newPassword);
     if (r.error) return renderAccount(req, res, { passwordError: r.error });
+    req.session.user = await db.getUser(me.id);   // clears "must change password"
     req.session.flash = 'Your password was changed.';
     res.redirect('/staff/account');
   } catch (e) { next(e); }

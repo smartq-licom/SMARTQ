@@ -1,0 +1,74 @@
+<%#
+  Search + filter bar for Queue History. Locals: f (current filters),
+  choices (documents, staff, statuses), office (forced for staff),
+  action (form URL), showSearch (true on the client list).
+%>
+<% var statusLabel = { completed: 'Completed / served', cancelled: 'Cancelled', 'no-show': 'No-show', pending: 'Pending (waiting or serving)' }; %>
+<form method="GET" action="<%= action %>" class="<%= UI.card %> p-4 mb-4 no-print">
+  <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <% if (showSearch) { %>
+    <div class="sm:col-span-2">
+      <label for="hq" class="<%= UI.lbl %>">Search Student</label>
+      <input id="hq" name="q" value="<%= f.q %>" class="<%= UI.input %>" placeholder="Name, student no., username, email or queue no.">
+    </div>
+    <% } %>
+    <div>
+      <label for="hfrom" class="<%= UI.lbl %>">Start date</label>
+      <input id="hfrom" name="from" type="date" value="<%= f.from %>" class="<%= UI.input %>">
+    </div>
+    <div>
+      <label for="hto" class="<%= UI.lbl %>">End date</label>
+      <input id="hto" name="to" type="date" value="<%= f.to %>" class="<%= UI.input %>">
+    </div>
+    <div>
+      <label for="hdoc" class="<%= UI.lbl %>">Transaction type</label>
+      <select id="hdoc" name="document" class="<%= UI.input %>">
+        <option value="">All transactions</option>
+        <% choices.documents.forEach(function (d) { %>
+        <option value="<%= d.id %>" <%= f.documentId === d.id ? 'selected' : '' %>><%= d.name %><%= office ? '' : ' (' + d.office + ')' %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="hstatus" class="<%= UI.lbl %>">Status</label>
+      <select id="hstatus" name="status" class="<%= UI.input %>">
+        <option value="">Any status</option>
+        <% choices.statuses.forEach(function (s) { %>
+        <option value="<%= s %>" <%= f.status === s ? 'selected' : '' %>><%= statusLabel[s] || s %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="hstaff" class="<%= UI.lbl %>">Staff member</label>
+      <select id="hstaff" name="staff" class="<%= UI.input %>">
+        <option value="">All staff</option>
+        <% choices.staff.forEach(function (s) { %>
+        <option value="<%= s.id %>" <%= f.staffId === s.id ? 'selected' : '' %>><%= s.name %><%= office ? '' : ' (' + s.department + ')' %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label for="hlane" class="<%= UI.lbl %>">Queue type</label>
+      <select id="hlane" name="lane" class="<%= UI.input %>">
+        <option value="">Regular and priority</option>
+        <option value="regular" <%= f.lane === 'regular' ? 'selected' : '' %>>Regular</option>
+        <option value="priority" <%= f.lane === 'priority' ? 'selected' : '' %>>Priority</option>
+      </select>
+    </div>
+    <% if (!office) { %>
+    <div>
+      <label for="hoffice" class="<%= UI.lbl %>">Office</label>
+      <select id="hoffice" name="office" class="<%= UI.input %>">
+        <option value="">Both offices</option>
+        <option value="Cashier" <%= f.office === 'Cashier' ? 'selected' : '' %>>Cashier</option>
+        <option value="Registrar" <%= f.office === 'Registrar' ? 'selected' : '' %>>Registrar</option>
+      </select>
+    </div>
+    <% } %>
+  </div>
+  <div class="flex flex-wrap gap-2 mt-3">
+    <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Search</button>
+    <a href="<%= action %>" class="<%= UI.btn %> <%= UI.btnGh %>">Reset Filters</a>
+    <% if (office) { %><span class="self-center text-[12px] text-slateSoft/75">Showing <%= office %> transactions only.</span><% } %>
+  </div>
+</form>

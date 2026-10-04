@@ -1,7 +1,14 @@
 <%- include('../../partials/head') %>
 <%- include('../../partials/nav', { active: '/admin/reports' }) %>
-<div class="flex flex-wrap items-end justify-between gap-3 mb-4">
-  <div><h2 class="text-xl font-extrabold">Reports</h2>
+<div class="mb-4">
+  <h2 class="text-xl font-extrabold">Reports</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">Generate exactly the report you need, or scroll down for the overview and peak hours.</p>
+</div>
+
+<%- include('../../partials/report-builder', { rbase: '/admin/reports' }) %>
+
+<div class="flex flex-wrap items-end justify-between gap-3 mb-4 pt-2 border-t border-hair">
+  <div><h3 class="text-[15px] font-extrabold mt-3">Overview</h3>
     <p class="text-[13px] text-slateSoft/80 mt-0.5"><%= reports.from %> to <%= reports.to %></p></div>
   <form method="GET" class="flex flex-wrap items-end gap-2 no-print">
     <div><label for="from" class="<%= UI.lbl %>">From</label><input id="from" type="date" name="from" value="<%= from %>" class="<%= UI.input %>"></div>

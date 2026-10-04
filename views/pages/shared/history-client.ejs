@@ -1,0 +1,77 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: base }) %>
+<%# One student's/client's tickets, newest first, with the same filters. %>
+<% var u = h.user, tot = h.totals; %>
+<div class="mb-4">
+  <a href="<%= base %>" class="text-[12.5px] font-semibold text-brand no-print">&larr; Back to Queue History</a>
+  <div class="flex flex-wrap items-end justify-between gap-3 mt-2">
+    <div>
+      <h2 class="text-xl font-extrabold"><%= u.fullName %></h2>
+      <p class="text-[13px] text-slateSoft/80 mt-0.5">
+        <span class="capitalize"><%= u.role %></span>
+        <%= u.studentNo ? ' · ' + u.studentNo : '' %><%= u.course ? ' · ' + u.course : '' %>
+        <%= u.username || u.email ? ' · ' + (u.username || u.email) : '' %>
+        <% if (u.deleted) { %> · <span class="text-slateSoft/60">deleted account</span><% } %>
+      </p>
+    </div>
+    <button type="button" onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> no-print">Print</button>
+  </div>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= tot.completed %></div>
+    <div class="text-[11.5px] text-slateSoft/80">Total Served Transactions</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= tot.cancelled %></div>
+    <div class="text-[11.5px] text-slateSoft/80">Cancelled / No-show</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold"><%= tot.pending %></div>
+    <div class="text-[11.5px] text-slateSoft/80">Pending</div></div>
+  <div class="<%= UI.card %> p-4"><div class="text-2xl font-extrabold font-mono"><%= peso(tot.paid) %></div>
+    <div class="text-[11.5px] text-slateSoft/80">Paid</div></div>
+</div>
+
+<%- include('../../partials/history-filters', { f: f, choices: choices, office: office, action: base + '/' + u.id, showSearch: false }) %>
+
+<div class="<%= UI.card %>">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Transaction History</h3></div>
+  <div class="overflow-x-auto">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Queue No.</th><th class="<%= UI.th %>">Transaction</th>
+      <th class="<%= UI.th %>">Date</th><th class="<%= UI.th %>">Time</th>
+      <th class="<%= UI.th %>">Office / Window</th><th class="<%= UI.th %>">Staff</th>
+      <th class="<%= UI.th %>">Amount</th><th class="<%= UI.th %>">Status</th>
+      <th class="<%= UI.th %>">Completed</th>
+    </tr></thead>
+    <tbody>
+      <% h.rows.forEach(function (t) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> whitespace-nowrap">
+          <span class="<%= chip %>"><%= t.ticketNo %></span>
+          <span class="block text-[10.5px] text-slateSoft/70 mt-1 capitalize"><%= t.queueCategory %><%= t.isScheduled ? ' · booked' : '' %></span>
+        </td>
+        <td class="<%= UI.td %> text-[12.5px]"><%= t.documents.map(function (d) { return d.label; }).join(', ') || '-' %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= new Date(t.serviceDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= t.requestedAt ? new Date(t.requestedAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '-' %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= t.department %><%= t.windowLabel ? ' · ' + t.windowLabel : '' %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= t.staffName || '-' %></td>
+        <td class="<%= UI.td %> font-mono text-[12px] whitespace-nowrap">
+          <%= t.amountDue > 0 ? peso(t.amountDue) : '-' %>
+          <% if (t.receiptNo) { %><span class="block text-[10.5px] text-slateSoft/70"><%= t.receiptNo %></span><% } %>
+        </td>
+        <td class="<%= UI.td %>">
+          <span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
+          <% if (t.cancelReason) { %><span class="block text-[10.5px] text-slateSoft/70 mt-1"><%= t.cancelReason %></span><% } %>
+        </td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= t.completedAt && t.ticketStatus === 'completed' ? new Date(t.completedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-' %></td>
+      </tr>
+      <% }) %>
+      <% if (!h.rows.length) { %>
+      <tr><td colspan="9" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No transactions match these filters.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  </div>
+  <%- include('../../partials/pagination', { pg: h.pg, label: 'transactions' }) %>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

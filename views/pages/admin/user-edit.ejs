@@ -1,0 +1,86 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/admin/users' }) %>
+<%# Admin edits a cashier/registrar account. Saving signs the member out so the
+    change applies everywhere from their next login. Passwords are not edited
+    here: use Reset Password on the staff list. %>
+<% var v = form || { firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, username: u.username,
+                     role: u.role, windowId: u.windowId, contactNo: u.contactNo, status: u.isActive ? 'active' : 'disabled' }; %>
+<div class="max-w-2xl">
+  <a href="/admin/users" class="text-[12.5px] font-semibold text-brand">&larr; Back to Manage Staff Accounts</a>
+  <h2 class="text-xl font-extrabold mt-2">Edit Account</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5 mb-4"><%= u.fullName %> &middot; <span class="capitalize"><%= u.role %></span></p>
+
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.body %>">
+      <% if (formError) { %>
+      <div role="alert" class="mb-3.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-2.5 text-[12.5px] text-red-800"><%= formError %></div>
+      <% } %>
+      <form method="POST" action="/admin/users/<%= u.id %>/edit" class="space-y-3"
+            data-confirm
+            data-confirm-title="Save changes?"
+            data-confirm-body="Are you sure you want to save these account changes for <%= u.fullName %>?"
+            data-confirm-note="They will be signed out and must sign in again for the changes to apply."
+            data-confirm-ok="Save Changes" data-confirm-back="Cancel">
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label for="firstName" class="<%= UI.lbl %>">First name *</label>
+            <input id="firstName" name="firstName" class="<%= UI.input %>" value="<%= v.firstName %>" required></div>
+          <div><label for="middleName" class="<%= UI.lbl %>">Middle name</label>
+            <input id="middleName" name="middleName" class="<%= UI.input %>" value="<%= v.middleName %>"></div>
+          <div><label for="lastName" class="<%= UI.lbl %>">Last name *</label>
+            <input id="lastName" name="lastName" class="<%= UI.input %>" value="<%= v.lastName %>" required></div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div><label for="username" class="<%= UI.lbl %>">Username *</label>
+            <input id="username" name="username" class="<%= UI.input %> font-mono" value="<%= v.username %>" required pattern="[A-Za-z0-9._\-]{3,60}">
+            <span class="<%= UI.hint %>">They sign in with this.</span></div>
+          <div><label for="contactNo" class="<%= UI.lbl %>">Contact number</label>
+            <input id="contactNo" name="contactNo" class="<%= UI.input %>" value="<%= v.contactNo %>" placeholder="09XXXXXXXXX"></div>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label for="role" class="<%= UI.lbl %>">Role *</label>
+            <select id="role" name="role" class="<%= UI.input %>">
+              <option value="cashier" <%= v.role === 'cashier' ? 'selected' : '' %>>Cashier</option>
+              <option value="registrar" <%= v.role === 'registrar' ? 'selected' : '' %>>Registrar</option>
+            </select></div>
+          <div><label for="windowId" class="<%= UI.lbl %>">Window</label>
+            <select id="windowId" name="windowId" class="<%= UI.input %>">
+              <option value="">Not posted</option>
+              <% windows.forEach(function (w) { %>
+              <option value="<%= w.id %>" data-dept="<%= w.department.toLowerCase() %>" <%= String(v.windowId || '') === String(w.id) ? 'selected' : '' %>><%= w.label %></option>
+              <% }) %>
+            </select>
+            <span class="<%= UI.hint %>">Only windows of the chosen role.</span></div>
+          <div><label for="status" class="<%= UI.lbl %>">Status</label>
+            <select id="status" name="status" class="<%= UI.input %>">
+              <option value="active" <%= v.status === 'active' ? 'selected' : '' %>>Active</option>
+              <option value="disabled" <%= v.status === 'disabled' ? 'selected' : '' %>>Disabled</option>
+            </select></div>
+        </div>
+        <div class="rounded-lg bg-mist border border-hair px-3.5 py-2.5 text-[12.5px] text-slateSoft">
+          Password: <span class="font-mono">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+          &mdash; passwords are never shown. Use <strong>Reset Password</strong> on the staff list if it is forgotten.
+        </div>
+        <div class="flex flex-wrap gap-2.5">
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save Changes</button>
+          <a href="/admin/users" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+<script>
+// show only the windows that belong to the chosen role
+(function () {
+  var role = document.getElementById('role'), win = document.getElementById('windowId');
+  function sync() {
+    [].forEach.call(win.options, function (o) {
+      if (!o.dataset.dept) return;
+      o.hidden = o.dataset.dept !== role.value;
+      if (o.hidden && o.selected) win.value = '';
+    });
+  }
+  role.addEventListener('change', sync); sync();
+})();
+</script>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

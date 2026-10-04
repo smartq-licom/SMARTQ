@@ -1,0 +1,57 @@
+<%#
+  Pager for a paginated table. Locals:
+    pg     paging object from data/paging.js
+    label  optional noun, e.g. 'accounts' (default 'records')
+  Every link keeps the current search and filter values (res.locals.query)
+  and only changes ?page=.
+%>
+<%
+  var noun = (typeof label !== 'undefined' && label) || 'records';
+  var q = (typeof query !== 'undefined' && query) || {};
+  function href(n) {
+    var parts = [];
+    Object.keys(q).forEach(function (k) {
+      if (k === 'page') return;
+      [].concat(q[k]).forEach(function (v) {
+        if (v !== undefined && v !== null && v !== '') parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(v));
+      });
+    });
+    if (n > 1) parts.push('page=' + n);
+    return (typeof pagePath !== 'undefined' ? pagePath : '') + (parts.length ? '?' + parts.join('&') : '?');
+  }
+  // page numbers: first, last, and two either side of the current page
+  var nums = [];
+  for (var n = 1; n <= pg.pages; n++) {
+    if (n === 1 || n === pg.pages || Math.abs(n - pg.page) <= 2) nums.push(n);
+    else if (nums[nums.length - 1] !== '…') nums.push('…');
+  }
+  var btn = 'inline-flex items-center justify-center min-w-[2.25rem] h-9 px-3 rounded-lg border text-[12.5px] font-semibold';
+%>
+<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-hair no-print">
+  <div class="text-[12px] text-slateSoft/80">
+    <% if (pg.total) { %>Showing <strong><%= pg.from %>–<%= pg.to %></strong> of <strong><%= pg.total %></strong> <%= noun %>
+    <% } else { %>No <%= noun %><% } %>
+  </div>
+  <% if (pg.pages > 1) { %>
+  <nav class="flex flex-wrap items-center gap-1.5" aria-label="Pages">
+    <% if (pg.page > 1) { %>
+    <a href="<%= href(pg.page - 1) %>" class="<%= btn %> border-hair bg-white hover:bg-mist">Previous</a>
+    <% } else { %>
+    <span class="<%= btn %> border-hair bg-mist/60 text-slateSoft/40">Previous</span>
+    <% } %>
+    <% nums.forEach(function (n) { %>
+      <% if (n === '…') { %><span class="px-1 text-slateSoft/60">…</span>
+      <% } else if (n === pg.page) { %>
+      <span class="<%= btn %> border-brand bg-brand text-white" aria-current="page"><%= n %></span>
+      <% } else { %>
+      <a href="<%= href(n) %>" class="<%= btn %> border-hair bg-white hover:bg-mist"><%= n %></a>
+      <% } %>
+    <% }) %>
+    <% if (pg.page < pg.pages) { %>
+    <a href="<%= href(pg.page + 1) %>" class="<%= btn %> border-hair bg-white hover:bg-mist">Next</a>
+    <% } else { %>
+    <span class="<%= btn %> border-hair bg-mist/60 text-slateSoft/40">Next</span>
+    <% } %>
+  </nav>
+  <% } %>
+</div>

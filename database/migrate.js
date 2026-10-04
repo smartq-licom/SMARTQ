@@ -57,6 +57,18 @@ const STEPS = [
             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'deleted_at'`,
     add:   'ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL',
   },
+  {
+    name: 'staff must change a password the admin reset (must_change_password)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'must_change_password'`,
+    add:   'ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0',
+  },
+  {
+    name: 'fast filtering of history and reports by staff member (index)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.statistics
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND index_name = 'idx_staff'`,
+    add:   'ALTER TABLE transactions ADD INDEX idx_staff (staff_id)',
+  },
 ];
 
 (async () => {

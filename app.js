@@ -76,8 +76,26 @@ app.use((req, res, next) => {
   res.locals.perms = req.session.perms || [];
   res.locals.flash = req.session.flash || null;
   res.locals.error = req.session.error || null;
+  // for pagers: links keep the current search/filters and change only ?page=
+  res.locals.query    = req.query;
+  res.locals.pagePath = req.originalUrl.split('?')[0];
   delete req.session.flash;
   delete req.session.error;
+  next();
+});
+
+// A staff member whose password the admin reset must choose a new one before
+// using anything else (only My Account and logging out stay open).
+app.use((req, res, next) => {
+  const u = req.session.user;
+  if (u && u.mustChangePassword && ['cashier', 'registrar'].includes(u.role)
+      && !req.path.startsWith('/staff/account') && req.path !== '/logout') {
+    if (req.method === 'GET') {
+      req.session.error = 'Your password was reset. Please choose a new password to continue.';
+      return res.redirect('/staff/account');
+    }
+    return res.status(403).send('Change your password first.');
+  }
   next();
 });
 

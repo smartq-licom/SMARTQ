@@ -1,0 +1,21 @@
+<%- include('../../partials/head') %>
+<%# Print view of a generated report: every matching row (up to 5000), no
+    menus, and the print dialog opens by itself (Save as PDF works there too). %>
+<main class="p-6 max-w-6xl mx-auto">
+  <div class="flex items-center gap-3 mb-4">
+    <img src="/img/lcc-seal.jpg" alt="" width="44" height="44" class="rounded-full">
+    <div>
+      <div class="text-[18px] font-extrabold">SmartQ &mdash; <%= reportTypes[rtype] %></div>
+      <div class="text-[12px] text-slateSoft/80">Libon Community College &middot; generated
+        <%= new Date().toLocaleString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) %>
+        by <%= me.fullName || me.name %></div>
+    </div>
+    <button type="button" onclick="window.print()" class="<%= UI.btn %> <%= UI.btnMain %> ml-auto no-print">Print</button>
+  </div>
+  <%- include('../../partials/report-builder', { printView: true }) %>
+  <% if (result && result.pg && result.pg.total > result.rows.length) { %>
+  <p class="text-[12px] text-amber-800">Showing the first <%= result.rows.length %> of <%= result.pg.total %> records. Narrow the filters, or use Download CSV for everything.</p>
+  <% } %>
+</main>
+<script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });</script>
+</body></html>

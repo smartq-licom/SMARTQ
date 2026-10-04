@@ -4,6 +4,7 @@ const pool   = require('../database/connection');
 const auth   = require('./auth');
 const predict = require('./prediction');
 const peak    = require('./peak');
+const paging  = require('./paging');
 
 const q   = async (sql, p = []) => (await pool.execute(sql, p))[0];
 const run = async (sql, p = []) => (await pool.execute(sql, p))[0];
@@ -122,6 +123,9 @@ function mapUser(u) {
     googleId: u.google_id || null,
     priorityStatus: u.priority_status || 'none',
     priorityApprovedAt: u.priority_approved_at || null,
+    mustChangePassword: !!u.must_change_password,
+    createdAt: u.created_at || null,
+    deleted: !!u.deleted_at,
   };
 }
 
@@ -752,7 +756,7 @@ async function setPassword(userId, plain) {
   if (pwError) return { error: pwError };
   const hash = await auth.hashPassword(plain);
   await run(`UPDATE users SET password=?, password_changed_at=NOW(),
-             failed_logins=0, locked_until=NULL,
+             failed_logins=0, locked_until=NULL, must_change_password=0,
              auth_provider = CASE WHEN google_id IS NOT NULL THEN 'local_google' ELSE 'local' END
              WHERE id=?`, [hash, userId]);
   await auth.invalidateOtps(userId);
@@ -2140,7 +2144,7 @@ async function getStaffAccounts() {
 }
 
 /** Student and guest accounts only, with how many transactions each has made. */
-async function getClientAccounts({ search = '', role = '' } = {}) {
+async function getClientAccounts({ search = '', role = '', page = 1 } = {}) {
   const where = ["u.role IN ('student','guest')", 'u.deleted_at IS NULL'];
   const params = [];
   if (role === 'student' || role === 'guest') { where.push('u.role = ?'); params.push(role); }
@@ -2149,17 +2153,23 @@ async function getClientAccounts({ search = '', role = '' } = {}) {
     const like = `%${search}%`;
     params.push(like, like, like, like);
   }
+  // one page at a time; the cards above the table still count every match
+  const w = where.join(' AND ');
+  const [c] = await q(
+    `SELECT COUNT(*) AS n, SUM(u.role='student') AS students, SUM(u.role='guest') AS guests
+     FROM users u WHERE ${w}`, params);
+  const pg = paging.paging(c.n, page);
   const rows = await q(
     `SELECT u.*,
             (SELECT COUNT(*) FROM transactions t WHERE t.user_id = u.id) AS tx_count,
             (SELECT MAX(t.requested_at) FROM transactions t WHERE t.user_id = u.id) AS last_tx
-     FROM users u WHERE ${where.join(' AND ')}
-     ORDER BY u.last_name, u.first_name`, params);
-  return rows.map(r => ({
-    ...mapUser(r),
-    txCount: Number(r.tx_count) || 0,
-    lastTx: r.last_tx || null,
-  }));
+     FROM users u WHERE ${w}
+     ORDER BY u.last_name, u.first_name
+     LIMIT ${pg.perPage} OFFSET ${pg.offset}`, params);
+  return {
+    list: rows.map(r => ({ ...mapUser(r), txCount: Number(r.tx_count) || 0, lastTx: r.last_tx || null })),
+    pg, counts: { students: Number(c.students) || 0, guests: Number(c.guests) || 0 },
+  };
 }
 /**
  * Admin deletes an account (staff, student or guest; never an admin or
@@ -2193,9 +2203,331 @@ async function deleteAccount(admin, id) {
   } else {
     await run('DELETE FROM users WHERE id=?', [id]);
   }
-  // sign them out everywhere (the session stores the user object as JSON)
-  await run(`DELETE FROM sessions WHERE data LIKE ? OR data LIKE ?`, [`%"user":{"id":${Number(id)},%`, `%"userId":${Number(id)},%`]);
+  await signOutUser(id);
   return { ok: true, name: u.fullName, role: u.role };
+}
+
+/** End every saved login of one account (the session stores the user as JSON). */
+async function signOutUser(id) {
+  await run(`DELETE FROM sessions WHERE data LIKE ? OR data LIKE ?`,
+            [`%"user":{"id":${Number(id)},%`, `%"userId":${Number(id)},%`]);
+}
+
+// ── QUEUE HISTORY (admin: everything; staff: their own office) ──────────────
+// Built straight from the transaction records; nothing is copied or kept twice.
+// Statuses are preserved as they are (completed, cancelled, no-show, pending).
+const HISTORY_STATUS = {
+  completed: "t.ticket_status='completed'",
+  cancelled: "t.ticket_status='cancelled'",
+  'no-show': "t.ticket_status='no-show'",
+  pending:   "t.ticket_status IN ('waiting','called','serving')",
+};
+
+/** Clean the filter values from a query string. office is forced for staff. */
+function historyFilters(qs = {}, office = null) {
+  const date = s => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '');
+  const f = {
+    q: String(qs.q || '').trim().slice(0, 80),
+    from: date(qs.from), to: date(qs.to),
+    documentId: /^\d+$/.test(qs.document || '') ? Number(qs.document) : null,
+    status: HISTORY_STATUS[qs.status] ? qs.status : '',
+    staffId: /^\d+$/.test(qs.staff || '') ? Number(qs.staff) : null,
+    lane: qs.lane === 'priority' || qs.lane === 'regular' ? qs.lane : '',
+    office: office || (qs.office === 'Cashier' || qs.office === 'Registrar' ? qs.office : ''),
+  };
+  if (f.from && f.to && f.from > f.to) [f.from, f.to] = [f.to, f.from];
+  return f;
+}
+
+/** SQL conditions on transactions t for the given filters (not the search). */
+function historyWhere(f) {
+  const w = [], p = [];
+  if (f.office)     { w.push('t.department=?'); p.push(f.office); }
+  if (f.from)       { w.push('t.service_date>=?'); p.push(f.from); }
+  if (f.to)         { w.push('t.service_date<=?'); p.push(f.to); }
+  if (f.status)     w.push(HISTORY_STATUS[f.status]);
+  if (f.lane)       { w.push('t.queue_category=?'); p.push(f.lane); }
+  if (f.staffId)    { w.push('t.staff_id=?'); p.push(f.staffId); }
+  if (f.documentId) { w.push('EXISTS (SELECT 1 FROM transaction_documents td WHERE td.transaction_id=t.id AND td.document_id=?)'); p.push(f.documentId); }
+  return { w, p };
+}
+
+/**
+ * Students/clients with their transaction counts, one page at a time.
+ * The search finds people by name, student no., username, email, or any of
+ * their queue numbers; the counts then cover all their tickets that match the
+ * filters.
+ */
+async function getHistoryClients(f, page = 1) {
+  const { w, p } = historyWhere(f);
+  if (f.q) {
+    const like = `%${f.q}%`;
+    w.push(`(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name) LIKE ? OR u.student_no LIKE ?
+             OR u.username LIKE ? OR u.email LIKE ?
+             OR EXISTS (SELECT 1 FROM transactions x WHERE x.user_id=u.id AND x.ticket_no LIKE ?))`);
+    p.push(like, like, like, like, like);
+  }
+  const where = w.length ? 'WHERE ' + w.join(' AND ') : '';
+  const from = 'FROM transactions t JOIN users u ON u.id=t.user_id ' + where;
+  const [c] = await q(`SELECT COUNT(DISTINCT t.user_id) AS n ${from}`, p);
+  const pg = paging.paging(c.n, page);
+  const rows = await q(
+    `SELECT u.id, u.first_name, u.middle_name, u.last_name, u.student_no, u.username, u.email,
+            u.role, u.course, u.deleted_at,
+            SUM(t.ticket_status='completed') AS completed,
+            SUM(t.ticket_status IN ('cancelled','no-show')) AS cancelled,
+            SUM(t.ticket_status IN ('waiting','called','serving')) AS pending,
+            COUNT(*) AS total, MAX(t.requested_at) AS last_at
+     ${from}
+     GROUP BY u.id
+     ORDER BY u.last_name, u.first_name, u.id
+     LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p);
+  return {
+    pg,
+    rows: rows.map(r => ({
+      id: r.id, role: r.role, deleted: !!r.deleted_at,
+      fullName: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' '),
+      studentNo: r.student_no || '', login: r.username || r.email || '', course: r.course || '',
+      completed: Number(r.completed) || 0, cancelled: Number(r.cancelled) || 0,
+      pending: Number(r.pending) || 0, total: Number(r.total) || 0, lastAt: r.last_at,
+    })),
+  };
+}
+
+/** One person's tickets (newest first) with the same filters, plus their totals. */
+async function getHistoryForClient(userId, f, page = 1) {
+  const u = await q('SELECT * FROM users WHERE id=?', [userId]);
+  if (!u.length) return null;
+  const { w, p } = historyWhere(f);
+  w.unshift('t.user_id=?'); p.unshift(userId);
+  const where = 'WHERE ' + w.join(' AND ');
+  const [c] = await q(
+    `SELECT COUNT(*) AS n, SUM(t.ticket_status='completed') AS completed,
+            SUM(t.ticket_status IN ('cancelled','no-show')) AS cancelled,
+            SUM(t.ticket_status IN ('waiting','called','serving')) AS pending,
+            IFNULL(SUM(CASE WHEN t.payment_status='paid' THEN t.amount_due END),0) AS paid
+     FROM transactions t ${where}`, p);
+  const pg = paging.paging(c.n, page);
+  const rows = (await q(
+    `${TX_SELECT} ${where} ORDER BY t.requested_at DESC, t.id DESC LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p)).map(mapTx);
+  await attachDocuments(rows);
+  return {
+    user: mapUser(u[0]), pg, rows,
+    totals: { all: Number(c.n) || 0, completed: Number(c.completed) || 0, cancelled: Number(c.cancelled) || 0,
+              pending: Number(c.pending) || 0, paid: Number(c.paid) || 0 },
+  };
+}
+
+// ── REPORT BUILDER ───────────────────────────────────────────────────────────
+// The user picks a report type and filters; only matching records are read,
+// filtered in SQL (historyWhere), one page at a time unless exporting.
+const REPORT_TYPES = {
+  transactions: 'Transactions',
+  payments:     'Payments & receipts',
+  documents:    'Summary by document',
+  staff:        'Summary by staff',
+};
+
+/** Filters for the builder: the history filters plus a client search on the ticket. */
+function reportWhere(f) {
+  const { w, p } = historyWhere(f);
+  if (f.q) {
+    const like = `%${f.q}%`;
+    w.push(`(CONCAT_WS(' ', t.first_name, t.middle_name, t.last_name) LIKE ? OR t.student_no LIKE ? OR t.ticket_no LIKE ?
+             OR EXISTS (SELECT 1 FROM users ru WHERE ru.id=t.user_id AND (ru.username LIKE ? OR ru.email LIKE ?)))`);
+    p.push(like, like, like, like, like);
+  }
+  return { where: w.length ? 'WHERE ' + w.join(' AND ') : '', p };
+}
+
+/**
+ * Run one report. limit = { page } for the screen, or { all: true } for print
+ * and CSV (capped at 5000 rows so a careless export cannot exhaust the server).
+ */
+async function runReport(type, f, { page = 1, all = false } = {}) {
+  if (!REPORT_TYPES[type]) type = 'transactions';
+  const { where, p } = reportWhere(f);
+  const cap = 5000;
+
+  if (type === 'transactions') {
+    const [c] = await q(
+      `SELECT COUNT(*) AS n, SUM(t.ticket_status='completed') AS completed,
+              SUM(t.ticket_status IN ('cancelled','no-show')) AS cancelled,
+              SUM(t.ticket_status IN ('waiting','called','serving')) AS pending,
+              IFNULL(SUM(CASE WHEN t.payment_status='paid' THEN t.amount_due END),0) AS paid
+       FROM transactions t ${where}`, p);
+    const pg = paging.paging(c.n, all ? 1 : page, all ? Math.min(cap, Math.max(1, c.n)) : paging.PER_PAGE);
+    const rows = (await q(`${TX_SELECT} ${where} ORDER BY t.requested_at DESC, t.id DESC
+                           LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p)).map(mapTx);
+    await attachDocuments(rows);
+    return { type, rows, pg, totals: { count: Number(c.n) || 0, completed: Number(c.completed) || 0,
+             cancelled: Number(c.cancelled) || 0, pending: Number(c.pending) || 0, paid: Number(c.paid) || 0 } };
+  }
+
+  if (type === 'payments') {
+    const pw = `${where ? where + ' AND' : 'WHERE'} pa.status='paid'`;
+    const [c] = await q(
+      `SELECT COUNT(*) AS n, IFNULL(SUM(pa.amount),0) AS amount
+       FROM payments pa JOIN transactions t ON t.id=pa.transaction_id ${pw}`, p);
+    const pg = paging.paging(c.n, all ? 1 : page, all ? Math.min(cap, Math.max(1, c.n)) : paging.PER_PAGE);
+    const rows = await q(
+      `SELECT pa.amount, pa.paid_at, pa.staff_name AS cashier, pa.window_label, r.receipt_no,
+              t.id, t.ticket_no, t.first_name, t.middle_name, t.last_name, t.student_no,
+              (SELECT GROUP_CONCAT(td.document_name ORDER BY td.id SEPARATOR ', ')
+                 FROM transaction_documents td WHERE td.transaction_id=t.id) AS documents
+       FROM payments pa JOIN transactions t ON t.id=pa.transaction_id
+       LEFT JOIN receipts r ON r.payment_id=pa.id
+       ${pw} ORDER BY pa.paid_at DESC, pa.id DESC LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p);
+    return { type, pg, totals: { count: Number(c.n) || 0, amount: Number(c.amount) || 0 },
+      rows: rows.map(r => ({ receiptNo: r.receipt_no || '', paidAt: r.paid_at, amount: Number(r.amount),
+        cashier: r.cashier || '', window: r.window_label || '', ticketNo: r.ticket_no, txId: r.id,
+        client: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' '),
+        studentNo: r.student_no || '', documents: r.documents || '' })) };
+  }
+
+  if (type === 'documents') {
+    const rows = await q(
+      `SELECT td.document_name AS name, t.department,
+              COUNT(*) AS requests, SUM(td.copies) AS copies,
+              SUM(t.ticket_status='completed') AS completed,
+              SUM(t.ticket_status IN ('cancelled','no-show')) AS cancelled,
+              IFNULL(SUM(CASE WHEN t.payment_status='paid' THEN td.price END),0) AS collected
+       FROM transaction_documents td JOIN transactions t ON t.id=td.transaction_id
+       ${where} GROUP BY td.document_name, t.department ORDER BY requests DESC, name`, p);
+    const list = rows.map(r => ({ name: r.name, department: r.department, requests: Number(r.requests),
+      copies: Number(r.copies) || 0, completed: Number(r.completed) || 0, cancelled: Number(r.cancelled) || 0,
+      collected: Number(r.collected) || 0 }));
+    return { type, rows: list, pg: null, totals: {
+      requests: list.reduce((s, r) => s + r.requests, 0), collected: list.reduce((s, r) => s + r.collected, 0) } };
+  }
+
+  // staff
+  const sw = `${where ? where + ' AND' : 'WHERE'} t.staff_id IS NOT NULL`;
+  const rows = await q(
+    `SELECT t.staff_id, MAX(t.staff_name) AS name, t.department,
+            COUNT(*) AS handled, SUM(t.ticket_status='completed') AS completed,
+            SUM(t.ticket_status IN ('cancelled','no-show')) AS cancelled,
+            ROUND(AVG(CASE WHEN t.ticket_status='completed' THEN t.actual_minutes END),1) AS avg_min,
+            IFNULL(SUM(CASE WHEN t.payment_status='paid' THEN t.amount_due END),0) AS collected
+     FROM transactions t ${sw} GROUP BY t.staff_id, t.department ORDER BY handled DESC, name`, p);
+  const list = rows.map(r => ({ name: r.name || 'Staff #' + r.staff_id, department: r.department,
+    handled: Number(r.handled), completed: Number(r.completed) || 0, cancelled: Number(r.cancelled) || 0,
+    avgMin: r.avg_min === null ? null : Number(r.avg_min), collected: Number(r.collected) || 0 }));
+  return { type, rows: list, pg: null, totals: {
+    handled: list.reduce((s, r) => s + r.handled, 0), collected: list.reduce((s, r) => s + r.collected, 0) } };
+}
+
+/** Choices for the history/report filter menus (documents and staff seen in tickets). */
+async function getHistoryChoices(office = null) {
+  const docs = await q(
+    `SELECT id, name, office, deleted_at FROM documents ${office ? 'WHERE office=?' : ''} ORDER BY office, name`,
+    office ? [office] : []);
+  const staff = await q(
+    `SELECT DISTINCT t.staff_id AS id, t.staff_name AS name, t.department
+     FROM transactions t WHERE t.staff_id IS NOT NULL ${office ? 'AND t.department=?' : ''}
+     ORDER BY t.staff_name`, office ? [office] : []);
+  return {
+    documents: docs.map(d => ({ id: d.id, name: d.name + (d.deleted_at ? ' (deleted)' : ''), office: d.office })),
+    staff: staff.map(s => ({ id: s.id, name: s.name || 'Staff #' + s.id, department: s.department })),
+  };
+}
+
+// ── ADMIN: MANAGE STAFF ACCOUNTS ─────────────────────────────────────────────
+/**
+ * One page of staff accounts (admin, cashier, registrar), searchable by name,
+ * username or contact, filterable by role and status. Passwords are never
+ * returned: only whether one is set and whether a reset is pending.
+ */
+async function getStaffPage({ search = '', role = '', status = '', page = 1 } = {}) {
+  const where = ["u.role IN ('admin','cashier','registrar')", 'u.deleted_at IS NULL'], p = [];
+  if (['admin', 'cashier', 'registrar'].includes(role)) { where.push('u.role=?'); p.push(role); }
+  if (status === 'active' || status === 'disabled') { where.push('u.status=?'); p.push(status); }
+  if (search) {
+    where.push(`(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name) LIKE ? OR u.username LIKE ? OR u.contact_no LIKE ?)`);
+    const like = `%${search}%`; p.push(like, like, like);
+  }
+  const w = where.join(' AND ');
+  const [{ n }] = await q(`SELECT COUNT(*) AS n FROM users u WHERE ${w}`, p);
+  const pg = paging.paging(n, page);
+  const rows = await q(
+    `SELECT u.*, w.label AS window_label FROM users u LEFT JOIN windows w ON w.id = u.window_id
+     WHERE ${w} ORDER BY FIELD(u.role,'admin','cashier','registrar'), u.last_name, u.first_name
+     LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p);
+  return { rows: rows.map(r => ({ ...mapUser(r), windowLabel: r.window_label || '' })), pg };
+}
+
+/**
+ * Admin edits a cashier/registrar account: name, username, role, window,
+ * contact and status. The member is signed out so the change (a new role or
+ * window especially) applies from their next login, everywhere.
+ */
+async function updateStaffAccount(admin, id, b) {
+  const r = await q("SELECT * FROM users WHERE id=? AND role IN ('cashier','registrar') AND deleted_at IS NULL", [id]);
+  if (!r.length) return { error: 'Staff account not found.' };
+  const first = String(b.firstName || '').trim(), last = String(b.lastName || '').trim();
+  const username = String(b.username || '').trim();
+  if (!first || !last) return { error: 'First and last name are required.' };
+  if (!/^[A-Za-z0-9._-]{3,60}$/.test(username))
+    return { error: 'Username must be 3-60 letters, numbers, dots, dashes or underscores.' };
+  if ((await q('SELECT id FROM users WHERE username=? AND id<>?', [username, id])).length)
+    return { error: 'That username is already used by another account.' };
+  const role = b.role === 'registrar' ? 'registrar' : b.role === 'cashier' ? 'cashier' : null;
+  if (!role) return { error: 'Choose Cashier or Registrar.' };
+  const status = b.status === 'disabled' ? 'disabled' : 'active';
+  const contact = String(b.contactNo || '').trim();
+  if (contact && !/^[0-9+\-\s]{7,20}$/.test(contact)) return { error: 'Enter a valid contact number.' };
+
+  let windowId = b.windowId ? Number(b.windowId) : null;
+  if (windowId) {
+    const win = await q('SELECT department FROM windows WHERE id=?', [windowId]);
+    if (!win.length) return { error: 'That window does not exist.' };
+    if (win[0].department.toLowerCase() !== role)
+      return { error: `A ${role} can only be posted to a ${role === 'cashier' ? 'Cashier' : 'Registrar'} window.` };
+  }
+  const busy = await q(`SELECT ticket_no FROM transactions WHERE staff_id=? AND ticket_status IN ('called','serving') LIMIT 1`, [id]);
+  if (busy.length && (role !== r[0].role || status === 'disabled'))
+    return { error: `They are serving ${busy[0].ticket_no} right now. Finish or cancel it first.` };
+
+  if (windowId) await run('UPDATE users SET window_id=NULL WHERE window_id=? AND id<>?', [windowId, id]);
+  await run(
+    `UPDATE users SET first_name=?, middle_name=?, last_name=?, username=?, role=?, window_id=?,
+       contact_no=?, status=?, failed_logins=IF(?='active',0,failed_logins), locked_until=IF(?='active',NULL,locked_until)
+     WHERE id=?`,
+    [first, String(b.middleName || '').trim() || null, last, username, role, windowId,
+     contact || null, status, status, status, id]);
+  await signOutUser(id);
+  return { ok: true, user: await getUser(id) };
+}
+
+/** A random password that meets the password rules (upper, lower, digit, symbol). */
+function temporaryPassword() {
+  const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '#@$%&*!?'];
+  const pick = s => s[crypto.randomInt(s.length)];
+  const chars = sets.map(pick);                       // one of each kind
+  const all = sets.join('');
+  while (chars.length < 10) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {        // shuffle
+    const j = crypto.randomInt(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
+/**
+ * Admin resets a cashier/registrar password: a temporary password is set
+ * (stored only as a hash), returned once for the admin to hand over, and the
+ * member must choose their own at the next login. Any lockout is cleared and
+ * the member is signed out everywhere.
+ */
+async function resetStaffPassword(admin, id) {
+  const r = await q("SELECT * FROM users WHERE id=? AND role IN ('cashier','registrar') AND deleted_at IS NULL", [id]);
+  if (!r.length) return { error: 'Staff account not found.' };
+  const temp = temporaryPassword();
+  await run(
+    `UPDATE users SET password=?, must_change_password=1, password_changed_at=NOW(),
+       failed_logins=0, locked_until=NULL, status=IF(status='locked','active',status) WHERE id=?`,
+    [await auth.hashPassword(temp), id]);
+  await signOutUser(id);
+  return { ok: true, temp, name: mapUser(r[0]).fullName, username: r[0].username };
 }
 
 /** Cashier/registrar edit their own name and contact number. */
@@ -2336,6 +2668,9 @@ module.exports = {
   processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
+  signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,
+  historyFilters, getHistoryClients, getHistoryForClient, getHistoryChoices, HISTORY_STATUS,
+  REPORT_TYPES, runReport,
   getReceipt, getUsers, getStaffAccounts, getClientAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,

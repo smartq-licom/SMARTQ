@@ -1,0 +1,57 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: base }) %>
+<%# Queue History: one row per student/client, counted from their tickets. %>
+<div class="mb-4">
+  <h2 class="text-xl font-extrabold">Queue History</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">
+    Every student and client with how many of their transactions were served.
+    Open <strong>View History</strong> to see each ticket.
+  </p>
+</div>
+
+<%- include('../../partials/history-filters', { f: f, choices: choices, office: office, action: base, showSearch: true }) %>
+
+<div class="<%= UI.card %>">
+  <div class="overflow-x-auto">
+  <table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Student / Client</th>
+      <th class="<%= UI.th %>">Student no.</th>
+      <th class="<%= UI.th %>">Total Transactions<span class="block font-normal normal-case tracking-normal text-[10.5px]">completed / served</span></th>
+      <th class="<%= UI.th %>">Cancelled / No-show</th>
+      <th class="<%= UI.th %>">Pending</th>
+      <th class="<%= UI.th %>">Last ticket</th>
+      <th class="<%= UI.th %>"></th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(function (r) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %>">
+          <span class="font-semibold"><%= r.fullName %></span>
+          <% if (r.deleted) { %><span class="<%= pill %> bg-mist text-slateSoft ml-1">deleted account</span><% } %>
+          <span class="block text-[11.5px] text-slateSoft/75"><span class="capitalize"><%= r.role %></span><%= r.login ? ' · ' + r.login : '' %></span>
+        </td>
+        <td class="<%= UI.td %> font-mono text-[12px]"><%= r.studentNo || '-' %></td>
+        <td class="<%= UI.td %> text-[16px] font-extrabold"><%= r.completed %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.cancelled %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.pending %></td>
+        <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= r.lastAt ? new Date(r.lastAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '-' %></td>
+        <td class="<%= UI.td %>">
+          <%
+            var keep = [];
+            ['from','to','document','status','staff','lane','office'].forEach(function (k) { if (query[k]) keep.push(k + '=' + encodeURIComponent(query[k])); });
+          %>
+          <a href="<%= base %>/<%= r.id %><%= keep.length ? '?' + keep.join('&') : '' %>" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">View History</a>
+        </td>
+      </tr>
+      <% }) %>
+      <% if (!rows.length) { %>
+      <tr><td colspan="7" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No students or clients match these filters.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  </div>
+  <%- include('../../partials/pagination', { pg: pg, label: 'students / clients' }) %>
+</div>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

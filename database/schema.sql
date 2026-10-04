@@ -43,6 +43,7 @@ CREATE TABLE users (
   password_changed_at TIMESTAMP NULL DEFAULT NULL,
   last_login    TIMESTAMP    NULL DEFAULT NULL,
   deleted_at    TIMESTAMP    NULL DEFAULT NULL,    -- deleted but kept for old tickets
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0, -- set by an admin password reset
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_student_no (student_no),
@@ -174,6 +175,7 @@ CREATE TABLE transactions (
   cancel_reason   VARCHAR(120) DEFAULT NULL,
 
   UNIQUE KEY uq_ticket_day (ticket_no, department, service_date),
+  INDEX idx_staff (staff_id),
   INDEX idx_dept_status (department, ticket_status),
   INDEX idx_user (user_id),
   INDEX idx_service_date (service_date),

@@ -1,0 +1,10 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: '/staff/reports' }) %>
+<%# Staff reports: the same builder as the admin's, limited to this office. %>
+<div class="mb-4">
+  <h2 class="text-xl font-extrabold"><%= reportOffice %> Reports</h2>
+  <p class="text-[13px] text-slateSoft/80 mt-0.5">Generate a report of your office's transactions. Only records matching your choices are included.</p>
+</div>
+<%- include('../../partials/report-builder', { rbase: '/staff/reports' }) %>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>
