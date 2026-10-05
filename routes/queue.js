@@ -115,6 +115,7 @@ async function renderForm(req, res, form, formError) {
   res.status(formError ? 400 : 200).render('pages/queue/new', {
     title: 'Get a Queue Number', documents, settings, requirements, activeBy,
     purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, priorityLabels: db.PRIORITY_LABELS,
+    courses: db.COURSES,
     today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
     firstBookable: db.addDays(db.today(), 1), sameDay: sameDayStatus(settings),
     peakAdvice: await peakAdvice(settings),

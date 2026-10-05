@@ -1278,11 +1278,12 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   // ---- validate student info ------------------------------------------------
   if (!String(b.firstName || '').trim() || !String(b.lastName || '').trim())
     return { error: 'First name and last name are required.' };
-  // Walk-in (QR) tickets ask only for the name and student number.
-  if (!walkIn && user.role === 'student' && (!b.course || !b.yearLevel))
+  if (user.role === 'student' && (!b.course || !b.yearLevel))
     return { error: 'Course and year level are required.' };
-  if (!walkIn && user.role === 'student' && !isCourse(b.course))
+  if (user.role === 'student' && !isCourse(b.course))
     return { error: 'Please choose one of the courses offered by the college.' };
+  if (user.role === 'student' && !(+b.yearLevel >= 1 && +b.yearLevel <= 5))
+    return { error: 'Please choose your year level.' };
 
   // ---- queue category -------------------------------------------------------
   // Priority can no longer be self-selected. It comes from the approved status
@@ -1545,14 +1546,19 @@ async function findOrCreateWalkIn(b) {
 
   const no = String(b.studentNo || '').trim();
   if (!STUDENT_NO_RE.test(no)) return { error: 'Enter your 9-digit student number (numbers only).' };
+  // latest course and year, kept on the record for the admin's Students page
+  const course = isCourse(b.course) ? b.course : null;
+  const year   = +b.yearLevel >= 1 && +b.yearLevel <= 5 ? +b.yearLevel : null;
+  // checked before a record is made, so a rejected form leaves nothing behind
+  if (!course || !year) return { error: 'Course and year level are required.' };
 
   const existing = async () => (await q('SELECT * FROM users WHERE student_no=? LIMIT 1', [no]))[0];
   let u = await existing();
   if (!u) {
     try {
       const r = await run(
-        `INSERT INTO users (first_name,middle_name,last_name,role,status,student_no)
-         VALUES (?,?,?,'student','active',?)`, [first, middle || null, last, no]);
+        `INSERT INTO users (first_name,middle_name,last_name,role,status,student_no,course,year_level)
+         VALUES (?,?,?,'student','active',?,?,?)`, [first, middle || null, last, no, course, year]);
       return { user: await getUser(r.insertId) };
     } catch (e) {
       if (e.code !== 'ER_DUP_ENTRY') throw e;
@@ -1566,6 +1572,10 @@ async function findOrCreateWalkIn(b) {
   if (normName(u.last_name) !== normName(last))
     return { error: 'That student number is on record under a different last name. ' +
                     'Check what you typed, or ask the Registrar to correct the record.' };
+  if (course && year && (u.course !== course || Number(u.year_level) !== year)) {
+    await run('UPDATE users SET course=?, year_level=? WHERE id=?', [course, year, u.id]);
+    return { user: await getUser(u.id) };
+  }
   return { user: mapUser(u) };
 }
 

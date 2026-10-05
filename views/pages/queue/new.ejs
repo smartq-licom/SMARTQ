@@ -107,6 +107,7 @@
                            onchange="recalc()" oninput="recalc()">
                   </span>
                 </label>
+                <% if (sv.needsPurpose) { %><div data-purpose-slot="<%= sv.id %>"></div><% } %>
                 <% if (isClaim) { %>
                 <p class="mt-2 ml-7 text-[12px] text-slateSoft/80" data-claim-panel="<%= sv.id %>" hidden>
                   We will find the documents you already paid for at the Cashier using your student number.
@@ -146,12 +147,12 @@
       </section>
 
 
-      <!-- purpose, only for documents that ask for one -->
-      <section class="<%= UI.card %> step" id="purposeSection" hidden>
-        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Purpose of request</h3></div>
-        <div class="<%= UI.body %>">
-          <label for="purpose" class="<%= UI.lbl %>">Purpose *</label>
-          <select id="purpose" name="purpose" class="<%= UI.input %> max-w-sm" required onchange="toggleOther()">
+      <%# Purpose belongs to the document that asks for it (e.g. the OTR), so it
+          sits inside that document's box (moved there by recalc), never at the
+          bottom where it would look like every document needs one. %>
+      <div id="purposeSection" class="mt-3 ml-7 rounded-lg bg-white border border-brand-line px-3 py-3" hidden>
+          <label for="purpose" class="<%= UI.lbl %>">Purpose of this document *</label>
+          <select id="purpose" name="purpose" class="<%= UI.input %>" required onchange="toggleOther()">
             <option value="">Select purpose</option>
             <% purposes.forEach(function(p){ %>
             <option value="<%= p %>" <%= form.purpose === p ? 'selected' : '' %>><%= p %></option>
@@ -159,10 +160,9 @@
           </select>
           <div id="otherBox" class="hidden mt-3">
             <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
-            <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %> max-w-lg" value="<%= form.otherPurpose || '' %>">
+            <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %>" value="<%= form.otherPurpose || '' %>">
           </div>
-        </div>
-      </section>
+      </div>
 
       <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
       <div class="flex flex-wrap items-center gap-2.5">
@@ -319,7 +319,7 @@
                 <input type="radio" name="clientType" value="student" class="sr-only"
                        <%= form.clientType !== 'guest' ? 'checked' : '' %> onchange="toggleClient()">
                 <div class="text-[14px] font-bold">I am a student</div>
-                <div class="text-[12px] text-slateSoft/80 mt-0.5">Enrolled or former LCC student</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Enrolled or former LICOM student</div>
               </label>
               <label class="rounded-lg border-2 px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
                 <input type="radio" name="clientType" value="guest" class="sr-only"
@@ -334,12 +334,32 @@
                 lastName: form.lastName || '',
                 lblClass: UI.lbl, inputClass: UI.input
               } }) %>
-          <div id="studentNoBox" class="mt-3 max-w-xs">
+          <div id="studentNoBox" class="mt-3 grid sm:grid-cols-3 gap-3">
+            <div>
             <label for="studentNo" class="<%= UI.lbl %>">Student number *</label>
             <input id="studentNo" name="studentNo" class="<%= UI.input %> font-mono" value="<%= form.studentNo || '' %>"
                    inputmode="numeric" pattern="\d{9}" maxlength="9" autocomplete="off" placeholder="9 digits"
                    title="Your 9-digit student number, numbers only">
             <span class="<%= UI.hint %>">Used to find your records and the documents you paid for.</span>
+            </div>
+            <div>
+              <label for="course" class="<%= UI.lbl %>">Course *</label>
+              <select id="course" name="course" class="<%= UI.input %>">
+                <option value="">Select</option>
+                <% courses.forEach(function (c) { %>
+                <option value="<%= c %>" <%= form.course === c ? 'selected' : '' %>><%= c %></option>
+                <% }) %>
+              </select>
+            </div>
+            <div>
+              <label for="yearLevel" class="<%= UI.lbl %>">Year level *</label>
+              <select id="yearLevel" name="yearLevel" class="<%= UI.input %>">
+                <option value="">Select</option>
+                <% [1, 2, 3, 4, 5].forEach(function (y) { %>
+                <option value="<%= y %>" <%= String(form.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
+                <% }) %>
+              </select>
+            </div>
           </div>
         </div>
       </section>
@@ -466,14 +486,16 @@ function toggleOther(){
   box.classList.toggle('hidden', v !== 'Others');
   document.getElementById('otherPurpose').required = (v === 'Others');
 }
-// Visitors give no student number (and can only pick documents open to them).
+// Visitors give no student number, course or year (and can only pick
+// documents open to them).
 function toggleClient(){
   var guest = document.querySelector('input[name=clientType][value=guest]').checked;
-  var box = document.getElementById('studentNoBox');
-  var no  = document.getElementById('studentNo');
-  box.hidden = guest;
-  no.required = !guest;
-  no.disabled = guest;
+  document.getElementById('studentNoBox').hidden = guest;
+  ['studentNo', 'course', 'yearLevel'].forEach(function (id) {
+    var f = document.getElementById(id);
+    f.required = !guest;
+    f.disabled = guest;
+  });
 }
 // Priority needs a photo of the ID or proof (checked by staff before the
 // ticket moves to the priority lane).
@@ -561,6 +583,10 @@ function recalc(){
   var ps = document.getElementById('purposeSection');
   var pf = document.getElementById('purpose');
   if (ps) {
+    // sit inside the box of the (first) ticked document that asks for a purpose
+    var owner = picked.filter(function (b) { return b.dataset.purpose === '1'; })[0];
+    var slot = owner && document.querySelector('[data-purpose-slot="' + owner.dataset.row + '"]');
+    if (slot && ps.parentNode !== slot) slot.appendChild(ps);
     ps.hidden = !wantsPurpose;
     if (pf) {
       pf.required = wantsPurpose;
@@ -733,7 +759,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     var purpose = document.getElementById('purpose');
     if (purpose && shown(purpose) && purpose.value) {
       var other = document.getElementById('otherPurpose');
-      out.push(row('Purpose', esc(purpose.value === 'Others' && other.value ? other.value : purpose.value)));
+      var ownerRow = purpose.closest('.doc-row');
+      var ownerName = ownerRow ? text(ownerRow.querySelector('label .block')) : '';
+      out.push(row(ownerName ? 'Purpose (' + esc(ownerName) + ')' : 'Purpose',
+                   esc(purpose.value === 'Others' && other.value ? other.value : purpose.value)));
     }
     var sched = form.querySelector('input[name=mode][value=schedule]');
     var date = document.getElementById('scheduledDate');
@@ -741,11 +770,14 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       ? esc(new Date(date.value + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))
       : 'Today, join the queue now'));
     var name = ['firstName', 'middleName', 'lastName'].map(function (id) {
-      var f = form.querySelector('[name=' + id + ']'); return f ? f.value.trim() : '';
+      var f = form.querySelector('[name=' + id + ']'); var v = f ? f.value.trim() : ''; return /^n\/a$/i.test(v) ? '' : v;
     }).filter(Boolean).join(' ');
     out.push(row('Name', esc(name)));
     var no = document.getElementById('studentNo');
     out.push(row('Student number', no.disabled ? 'Visitor (not a student)' : '<span class="font-mono">' + esc(no.value) + '</span>'));
+    var course = document.getElementById('course'), year = document.getElementById('yearLevel');
+    if (!course.disabled && course.value)
+      out.push(row('Course', esc(course.value + (year.value ? ', Year ' + year.value : ''))));
     var lane = form.querySelector('input[name=priorityType]:checked');
     out.push(row('Lane', lane && lane.value
       ? 'Regular until your ' + esc(text(lane.closest('label'))) + ' proof is approved'
