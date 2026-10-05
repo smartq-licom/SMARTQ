@@ -1,0 +1,121 @@
+<%- include('../../partials/head') %>
+<%
+  const about = {
+    Cashier:   { what: 'Pay for documents', eg: 'Transcript of Records, certifications, other paid documents' },
+    Registrar: { what: 'Free requests and claiming', eg: 'Claim a paid document, submit or request free documents' },
+  };
+  const mins = m => m == null ? null : (m < 1 ? 'less than a minute' : m === 1 ? 'about 1 minute' : 'about ' + m + ' minutes');
+  const mineAt = {};
+  active.forEach(function (t) { if (!mineAt[t.department]) mineAt[t.department] = t; });
+%>
+<%- include('../../partials/queue-welcome', {
+      offices: offices, mineAt: mineAt,
+      waitText: function (m) { return m == null ? 'Wait unknown' : (m < 1 ? 'Under a minute' : '~' + m + ' min wait'); }
+    }) %>
+<%- include('../../partials/public-nav') %>
+
+<% if (active.length) { %>
+<section class="mb-6" aria-labelledby="mineTitle">
+  <h2 id="mineTitle" class="text-[13px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2">Your ticket<%= active.length > 1 ? 's' : '' %> on this phone</h2>
+  <div class="grid gap-2.5 sm:grid-cols-2">
+    <% active.forEach(function (t) { %>
+    <a href="/queue/t/<%= t.accessToken %>" class="<%= UI.card %> flex items-center gap-4 px-4 py-3.5 hover:border-brand transition-colors">
+      <span class="font-mono text-2xl font-extrabold text-ink whitespace-nowrap"><%= t.ticketNo %></span>
+      <span class="min-w-0">
+        <span class="block text-[13.5px] font-bold text-ink"><%= t.department %></span>
+        <span class="block text-[12px] text-slateSoft/80"><%= t.visitDateText %> &middot; <%= label(t.ticketStatus) %></span>
+      </span>
+      <span class="ml-auto text-brand text-[13px] font-semibold">Open &rarr;</span>
+    </a>
+    <% }) %>
+  </div>
+</section>
+<% } %>
+
+<div class="mb-4">
+  <h2 class="text-2xl font-extrabold tracking-tight">What are your transactions today?</h2>
+  <p class="text-[13.5px] text-slateSoft/80 mt-1">
+    Choose an office to get a queue number. No account or login needed.
+    Office hours: <%= officeHours %>.
+  </p>
+</div>
+
+<% if (!sameDay.open) { %>
+<p class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-[13px] text-amber-900">
+  <%= sameDay.why.replace(', so please pick a date.', '.').replace(', so please pick a working day.', '.') %>
+  You can still book a number for a later date.
+</p>
+<% } %>
+
+<div class="grid gap-4 sm:grid-cols-2">
+  <% ['Cashier', 'Registrar'].forEach(function (off) { const o = offices[off]; const mine = mineAt[off]; %>
+  <section class="<%= UI.card %> flex flex-col" aria-labelledby="off-<%= off %>">
+    <div class="px-5 pt-5">
+      <h3 id="off-<%= off %>" class="text-[18px] font-extrabold text-ink"><%= off %></h3>
+      <p class="text-[13px] font-semibold text-slateSoft mt-0.5"><%= about[off].what %></p>
+      <p class="text-[12px] text-slateSoft/70 mt-0.5"><%= about[off].eg %></p>
+    </div>
+
+    <dl class="grid grid-cols-2 gap-3 px-5 py-4">
+      <div class="rounded-lg bg-mist px-3 py-3">
+        <dt class="text-[11px] uppercase tracking-wider text-slateSoft/75">In the queue</dt>
+        <dd class="font-mono text-3xl font-extrabold text-ink mt-0.5"><%= o.waiting %></dd>
+        <dd class="text-[11.5px] text-slateSoft/75"><%= o.waiting === 1 ? 'student waiting' : 'students waiting' %></dd>
+      </div>
+      <div class="rounded-lg bg-brand-wash px-3 py-3">
+        <dt class="text-[11px] uppercase tracking-wider text-brand-deep/80">Estimated wait</dt>
+        <% if (o.closed) { %>
+        <dd class="text-[15px] font-bold text-brand-deep mt-1.5">No window open</dd>
+        <dd class="text-[11.5px] text-brand-deep/75">right now</dd>
+        <% } else { %>
+        <dd class="text-[15px] font-extrabold text-brand-deep mt-1.5 leading-tight"><%= mins(o.minutes) %></dd>
+        <dd class="text-[11.5px] text-brand-deep/75">if you queue now</dd>
+        <% } %>
+      </div>
+    </dl>
+
+    <% if (o.nowServing.length) { %>
+    <div class="px-5 pb-3 text-[12px] text-slateSoft/80 flex flex-wrap items-center gap-1.5">
+      Now serving:
+      <% o.nowServing.forEach(function (w) { %>
+      <span class="<%= chip %>"><%= w.ticket %></span><span class="text-slateSoft/60"><%= w.label %></span>
+      <% }) %>
+    </div>
+    <% } %>
+
+    <div class="mt-auto px-5 pb-5">
+      <% if (mine) { %>
+      <a href="/queue/t/<%= mine.accessToken %>" class="<%= UI.btn %> <%= UI.btnGh %> w-full py-3">You have <%= mine.ticketNo %> here &rarr;</a>
+      <% } else { %>
+      <a href="/queue/new?office=<%= off %>" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3 text-[14px]">Get a <%= off %> number</a>
+      <% } %>
+    </div>
+  </section>
+  <% }) %>
+</div>
+
+<p class="mt-5 text-[12px] text-slateSoft/70 text-center">
+  The wait is an estimate from how fast the windows have been serving today. It updates every 30 seconds.
+</p>
+
+<% if (past.length) { %>
+<section class="mt-6">
+  <h2 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/70 mb-2">Recent on this phone</h2>
+  <ul class="<%= UI.card %> divide-y divide-hair">
+    <% past.forEach(function (t) { %>
+    <li><a href="/queue/t/<%= t.accessToken %>" class="flex items-center gap-3 px-4 py-2.5 text-[13px] hover:bg-brand-wash/40">
+      <span class="font-mono font-bold"><%= t.ticketNo %></span>
+      <span class="text-slateSoft/80"><%= t.department %> &middot; <%= t.visitDateText %></span>
+      <span class="ml-auto <%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
+    </a></li>
+    <% }) %>
+  </ul>
+</section>
+<% } %>
+
+<script>
+// Live counts: reload every 30 s, but not while the welcome screen is open.
+setInterval(function () { if (!document.getElementById('welcome')) location.reload(); }, 30000);
+</script>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

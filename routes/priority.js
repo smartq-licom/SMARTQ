@@ -25,11 +25,22 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
     } catch (e) { next(e); }
   });
 
+  // How many are waiting: the red dot on the menu checks this every few seconds.
+  router.get('/count', async (req, res, next) => {
+    try {
+      res.set('Cache-Control', 'no-store');
+      res.json({ pending: await db.countPendingPriority() });
+    } catch (e) { next(e); }
+  });
+
   router.get('/proof/:id', async (req, res, next) => {
     try {
-      const pr = await db.getPriorityRequest(req.params.id);
-      if (!pr) return res.status(404).render('pages/error', { title: 'Not found', code: 404, message: 'File not found.' });
-      res.type(pr.proofMime).sendFile(path.join(DIR, pr.proofFile));
+      const pr = await db.getPriorityProof(req.params.id);
+      if (!pr || (!pr.data && !pr.file))
+        return res.status(404).render('pages/error', { title: 'Not found', code: 404, message: 'File not found.' });
+      res.set('Cache-Control', 'private, no-store');
+      if (pr.data) return res.type(pr.mime).send(pr.data);     // walk-in proof, kept in the database
+      res.type(pr.mime).sendFile(path.join(DIR, pr.file));
     } catch (e) { next(e); }
   });
 
@@ -43,9 +54,11 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
         try { await mailer.sendPriorityDecision(pr.email, pr.name, pr.category, approve, pr.reason); }
         catch (e) { console.error('[MAIL]', e.message); }
       }
-      req.session.flash = approve
-        ? `${pr.name} is now approved for the ${pr.categoryLabel} priority lane.`
-        : `Request from ${pr.name} was rejected. They can upload new proof.`;
+      req.session.flash = !approve
+        ? `Request from ${pr.name} was rejected. Their ticket stays in the regular line.`
+        : r.moved
+          ? `${pr.name} approved: ${r.moved.from} is now ${r.moved.to} in the priority lane.`
+          : `${pr.name} is now approved for the ${pr.categoryLabel} priority lane.`;
       res.redirect(base);
     } catch (e) { next(e); }
   });

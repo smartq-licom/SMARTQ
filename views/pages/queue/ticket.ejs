@@ -1,6 +1,6 @@
 <%- include('../../partials/head') %>
 <% if (['waiting','called','serving'].includes(t.ticketStatus)) { %><meta http-equiv="refresh" content="10"><% } %>
-<%- include('../../partials/nav', { active: '/student/dashboard' }) %>
+<%- include('../../partials/public-nav') %>
 <div class="max-w-lg mx-auto">
   <div class="<%= UI.card %> text-center p-8">
     <div class="text-[11px] uppercase tracking-widest text-slateSoft/80">Your queue number</div>
@@ -10,6 +10,36 @@
       <span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
       <span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span>
     </div>
+
+    <%# No account: this phone remembers the ticket. The code finds it on
+        any other phone, together with the student number or last name. %>
+    <% if (t.bookingCode && !['completed','cancelled'].includes(t.overallStatus)) { %>
+    <div class="mt-5 rounded-lg border-2 border-dashed border-brand-line bg-brand-wash px-4 py-3">
+      <div class="text-[11px] uppercase tracking-widest text-brand-deep/80">Booking code</div>
+      <div class="font-mono text-2xl font-extrabold tracking-[.25em] text-brand-deep mt-0.5"><%= t.bookingCode %></div>
+      <p class="text-[11.5px] text-brand-deep/80 mt-1">
+        This phone remembers your ticket. Take a screenshot too: with this code and your
+        <%= t.studentNo ? 'student number' : 'last name' %> you can open it on any phone under "Find my ticket".
+      </p>
+    </div>
+    <% } %>
+    <%# Priority proof sent with this ticket: where its review stands. %>
+    <% if (priorityRequest) { var pr = priorityRequest; %>
+    <div class="mt-3 rounded-lg border px-3.5 py-2.5 text-[12.5px] text-left
+                <%= pr.status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-violet-50 border-violet-200 text-violet-900' %>">
+      <% if (pr.status === 'pending') { %>
+      <div class="font-bold">&#9203; <%= pr.categoryLabel %> proof is being reviewed</div>
+      <div class="mt-0.5">You are in the regular line for now. Once staff approve your proof, this page
+        moves you to the priority lane with a new number.</div>
+      <% } else if (pr.status === 'approved') { %>
+      <div class="font-bold">&#10003; <%= pr.categoryLabel %> priority approved</div>
+      <div class="mt-0.5">Bring the same ID to the window.</div>
+      <% } else { %>
+      <div class="font-bold">Priority not approved</div>
+      <div class="mt-0.5"><%= pr.reason %> You stay in the regular line.</div>
+      <% } %>
+    </div>
+    <% } %>
 
     <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
         a vibration and (if allowed) a phone notification at 5 ahead and when
@@ -94,9 +124,9 @@
     </div>
     <% } %>
     <div class="flex flex-wrap justify-center gap-2 mt-6 no-print">
-      <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
+      <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
       <% if (t.paymentStatus === 'paid') { %>
-      <a href="/student/receipt/<%= t.id %>" class="<%= UI.btn %> <%= UI.btnOk %> <%= UI.btnSm %>">View receipt</a>
+      <a href="<%= base %>/receipt" class="<%= UI.btn %> <%= UI.btnOk %> <%= UI.btnSm %>">View receipt</a>
       <% } %>
       <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</button>
     </div>
@@ -107,7 +137,7 @@
     <% if (t.isScheduled && t.ticketStatus === 'waiting' && t.paymentStatus !== 'paid') { %>
     <details class="mt-6 pt-4 border-t border-mist no-print">
       <summary class="cursor-pointer text-center text-[12.5px] font-semibold text-red-700">Can't make it? Cancel this booking</summary>
-      <form method="POST" action="/student/ticket/<%= t.id %>/cancel" class="mt-3 space-y-2.5"
+      <form method="POST" action="<%= base %>/cancel" class="mt-3 space-y-2.5"
             data-confirm data-confirm-danger="1"
             data-confirm-title="Cancel ticket <%= t.ticketNo %>?"
             data-confirm-body="Your number <%= t.ticketNo %> for <%= t.visitDateText %> will be released. This cannot be undone."
@@ -118,6 +148,12 @@
         <button type="submit" class="<%= UI.btn %> w-full border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Cancel ticket <%= t.ticketNo %></button>
       </form>
     </details>
+    <% } %>
+
+    <% if (['completed','cancelled'].includes(t.overallStatus)) { %>
+    <form method="POST" action="<%= base %>/forget" class="mt-5 no-print">
+      <button type="submit" class="text-[12px] text-slateSoft/70 underline">Remove this ticket from this phone</button>
+    </form>
     <% } %>
   </div>
 </div>
@@ -170,7 +206,7 @@
   function notify(t) {
     if (!canNotify || Notification.permission !== 'granted') return;
     var opts = { body: t.body, tag: 'smartq-' + TX, renotify: true, icon: '/img/lcc-seal.jpg',
-                 vibrate: [200, 100, 200], data: { url: '/student/ticket/' + TX } };
+                 vibrate: [200, 100, 200], data: { url: location.pathname } };
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(function (r) { r.showNotification(t.title, opts); })
         .catch(function () { try { new Notification(t.title, opts); } catch (e) {} });
@@ -213,6 +249,6 @@
 <%- include('../../partials/chime', {
       chimeScope: 'ticket' + t.id,
       chimeId: announcement ? announcement.id : '',
-      pulseUrl: ['waiting','called','serving'].includes(t.ticketStatus) ? '/student/ticket/' + t.id + '/pulse' : ''
+      pulseUrl: ['waiting','called','serving'].includes(t.ticketStatus) ? base + '/pulse' : ''
     }) %>
 <%- include('../../partials/scripts') %>

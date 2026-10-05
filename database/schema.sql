@@ -162,6 +162,8 @@ CREATE TABLE transactions (
   claimed_at      TIMESTAMP NULL DEFAULT NULL,
 
   submit_token    CHAR(36) DEFAULT NULL UNIQUE,      -- duplicate-submit guard
+  access_token    CHAR(32) DEFAULT NULL,             -- opens the ticket from the phone (no login)
+  booking_code    CHAR(6)  DEFAULT NULL,             -- finds the ticket again on another phone
 
   requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   called_at       TIMESTAMP NULL DEFAULT NULL,
@@ -175,6 +177,7 @@ CREATE TABLE transactions (
   cancel_reason   VARCHAR(120) DEFAULT NULL,
 
   UNIQUE KEY uq_ticket_day (ticket_no, department, service_date),
+  UNIQUE KEY uq_access_token (access_token),
   INDEX idx_staff (staff_id),
   INDEX idx_dept_status (department, ticket_status),
   INDEX idx_user (user_id),
@@ -359,7 +362,9 @@ CREATE TABLE priority_requests (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   user_id      INT NOT NULL,
   category     ENUM('pwd','senior','pregnant') NOT NULL,
-  proof_file   VARCHAR(160) NOT NULL,          -- stored filename under /uploads/priority
+  transaction_id INT DEFAULT NULL,             -- the ticket waiting on this review (QR walk-ins)
+  proof_file   VARCHAR(160) NOT NULL,          -- stored filename under /uploads/priority ('' when in proof_data)
+  proof_data   MEDIUMBLOB   DEFAULT NULL,      -- the proof itself, for walk-ins (survives server restarts)
   proof_mime   VARCHAR(60)  NOT NULL,
   proof_name   VARCHAR(160) NOT NULL,          -- original filename, for display
   status       ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
@@ -370,7 +375,9 @@ CREATE TABLE priority_requests (
   created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_user (user_id),
   INDEX idx_status (status),
-  CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  INDEX idx_tx (transaction_id),
+  CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pr_tx   FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ============================================================================

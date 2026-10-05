@@ -17,9 +17,7 @@
       ['/staff/priority', 'Priority Requests'],
       ['/staff/documents', 'Documents'],
       ['/staff/account', 'My Account']]
-    : [ ['/student/dashboard','Dashboard'],['/student/request','Request a Ticket'],
-        ['/student/history','History'],['/student/priority','Priority Lane'],
-        ['/student/account','Account'] ];
+    : [];   // students have no account any more; they use /queue
   const boards = role === 'cashier' ? [['/display/cashier','Cashier Board']]
                : role === 'registrar' ? [['/display/registrar','Registrar Board']]
                : [['/display/cashier','Cashier Board'],['/display/registrar','Registrar Board']];
@@ -40,11 +38,17 @@
   </div>
 
   <nav class="flex-1 py-3 overflow-y-auto">
-    <% links.forEach(function(l){ %>
-    <a href="<%= l[0] %>" class="block px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] transition-colors <%=
+    <% links.forEach(function(l){ var isPr = /\/priority$/.test(l[0]); %>
+    <a href="<%= l[0] %>" class="flex items-center gap-2 px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] transition-colors <%=
       activePath === l[0]
         ? 'bg-white text-brand-deep border-white font-semibold'
-        : 'border-transparent text-white/75 hover:text-white hover:bg-white/12' %>"><%= l[1] %></a>
+        : 'border-transparent text-white/75 hover:text-white hover:bg-white/12' %>"><%= l[1] %>
+      <% if (isPr) { %>
+      <%# Red dot: priority proofs waiting for review (kept live by the script below). %>
+      <span data-priority-dot data-priority-count class="pr-dot ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center"
+            <%= priorityPending ? '' : 'hidden' %> aria-label="<%= priorityPending %> waiting for review"><%= priorityPending %></span>
+      <% } %>
+    </a>
     <% }) %>
 
     <div class="px-5 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/45">Public Display</div>
@@ -68,7 +72,42 @@
 
 <div class="lg:ml-60 flex flex-col min-h-screen">
 <header class="bg-white border-b border-hair h-14 flex items-center gap-3 px-5 sticky top-0 z-30 no-print">
-  <button id="menuBtn" class="lg:hidden rounded-lg border border-hair px-3 py-1.5 text-[12.5px] text-slateSoft" aria-label="Open menu">Menu</button>
+  <button id="menuBtn" class="lg:hidden relative rounded-lg border border-hair px-3 py-1.5 text-[12.5px] text-slateSoft" aria-label="Open menu">Menu
+    <% if (priorityPending != null) { %>
+    <span data-priority-dot class="pr-dot absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-red-600 ring-2 ring-white" <%= priorityPending ? '' : 'hidden' %>></span>
+    <% } %>
+  </button>
+  <% if (priorityPending != null) { %>
+  <style>
+    .pr-dot:not([hidden]){ animation:pr-ping 1.6s ease-out infinite }
+    @keyframes pr-ping{ 0%{box-shadow:0 0 0 0 rgba(220,38,38,.55)} 80%,100%{box-shadow:0 0 0 7px rgba(220,38,38,0)} }
+    @media (prefers-reduced-motion:reduce){ .pr-dot{ animation:none !important } }
+  </style>
+  <script>
+  // Keep the red dot live: a new priority proof shows up within seconds,
+  // without reloading. On the Priority Requests page itself, reload to list it.
+  (function () {
+    var url = '<%= me.role === "admin" ? "/admin/priority" : "/staff/priority" %>';
+    var last = <%= priorityPending %>;
+    function paint(n) {
+      document.querySelectorAll('[data-priority-dot]').forEach(function (d) { d.hidden = !n; });
+      document.querySelectorAll('[data-priority-count]').forEach(function (d) { d.textContent = n; });
+    }
+    setInterval(function () {
+      fetch(url + '/count', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || d.pending === last) return;
+          var more = d.pending > last;
+          last = d.pending;
+          paint(last);
+          if (more && location.pathname === url) location.reload();
+        })
+        .catch(function () {});
+    }, 8000);
+  })();
+  </script>
+  <% } %>
   <img src="/img/lcc-seal.jpg" alt="" width="26" height="26" class="rounded-full lg:hidden">
   <h1 class="text-[15px] font-bold text-ink"><%= title %></h1>
   <span class="<%= pill %> <%= tone(me.role) %> ml-auto capitalize"><%= me.role %></span>

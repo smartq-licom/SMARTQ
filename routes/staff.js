@@ -84,6 +84,16 @@ router.post('/recall/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// A self-declared priority client without a valid ID goes to the end of the
+// regular line with a new number (db.moveToRegular).
+router.post('/move-regular/:id', async (req, res, next) => {
+  try {
+    const r = await db.moveToRegular(req.session.user, Number(req.params.id));
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `${r.from} moved to the regular line as ${r.to}.`);
+  } catch (e) { next(e); }
+});
+
 router.post('/accept/:id', async (req, res, next) => {
   try {
     const r = await db.acceptTicket(req.session.user, req.params.id);

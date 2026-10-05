@@ -2,9 +2,10 @@
 <%- include('../../partials/nav', { active: '/admin/students' }) %>
 
 <div class="mb-4">
-  <h2 class="text-xl font-extrabold">Student accounts</h2>
+  <h2 class="text-xl font-extrabold">Students &amp; visitors</h2>
   <p class="text-[13px] text-slateSoft/80 mt-0.5">
-    Students and guests register themselves. Disable an account to block it from logging in.
+    Students no longer register: a record is added the first time someone queues with their student number
+    (visitors get one per ticket). Disable a student to stop that student number from getting tickets.
   </p>
 </div>
 
@@ -39,7 +40,7 @@
 <div class="<%= UI.card %> overflow-x-auto">
   <table class="w-full">
     <thead><tr>
-      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Email (login)</th>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Email</th>
       <th class="<%= UI.th %>">Type</th><th class="<%= UI.th %>">Student no.</th>
       <th class="<%= UI.th %>">Course</th><th class="<%= UI.th %>">Year</th>
       <th class="<%= UI.th %>">Contact</th><th class="<%= UI.th %>">Transactions</th>
@@ -68,8 +69,8 @@
           <form method="POST" action="/admin/users/<%= u.id %>/delete" class="inline"
                 data-confirm data-confirm-danger="1"
                 data-confirm-title="Delete account?"
-                data-confirm-body="Delete <%= u.fullName %>'s <%= u.role %> account? They will be signed out and can no longer log in."
-                data-confirm-note="Their old tickets and receipts are kept. Their email and student number are freed, so they can register again."
+                data-confirm-body="Delete <%= u.fullName %>'s <%= u.role %> account? Their record is removed from this list."
+                data-confirm-note="Their old tickets and receipts are kept. Their student number is freed, so it can be used again."
                 data-confirm-ok="Delete account" data-confirm-back="Keep it">
             <button type="submit" class="<%= UI.btn %> <%= UI.btnSm %> border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Delete</button>
           </form>

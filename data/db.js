@@ -21,6 +21,10 @@ function addMinutes(base, mins) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** First, middle and last name; a middle name of "N/A" (none) is left out. */
+const fullName = r => [r.first_name, /^n\/a$/i.test(String(r.middle_name || '').trim()) ? '' : r.middle_name, r.last_name]
+  .filter(Boolean).join(' ');
+
 const PURPOSES = ['Transfer','Personal Reference','Job Purposes',
                   'Board Examination',"Graduation / Dean's List",'Others'];
 const PRIORITY_TYPES = ['pwd','senior','pregnant'];
@@ -107,7 +111,7 @@ function mapUser(u) {
     id: u.id, email: u.email, username: u.username, role: u.role,
     firstName: u.first_name, middleName: u.middle_name || '', lastName: u.last_name,
     name: `${u.first_name} ${u.last_name}`,
-    fullName: [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(' '),
+    fullName: fullName(u),
     contactNo: u.contact_no || '', studentNo: u.student_no || '',
     course: u.course || '', yearLevel: u.year_level || null,
     academicYear: u.academic_year || '',
@@ -625,11 +629,26 @@ function mapPriorityRequest(r) {
     status: r.status, reason: r.reason || '',
     reviewerName: r.reviewer_name || '', reviewedAt: r.reviewed_at,
     createdAt: r.created_at,
-    name: r.first_name ? [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' ') : '',
+    name: r.first_name ? fullName(r) : '',
     email: r.email || '', role: r.role || '', studentNo: r.student_no || '',
     course: r.course || '', yearLevel: r.year_level || null,
+    // the walk-in ticket waiting on this review, if any
+    transactionId: r.transaction_id || null, ticketNo: r.ticket_no || '',
+    department: r.department || '', ticketStatus: r.ticket_status || '',
+    serviceDate: r.service_date ? ymd(new Date(r.service_date)) : null,
   };
 }
+
+// Never the proof itself (proof_data): lists stay light.
+const PR_SELECT = `
+  SELECT p.id, p.user_id, p.transaction_id, p.category, p.proof_file, p.proof_mime, p.proof_name,
+         p.status, p.reason, p.reviewer_name, p.reviewed_at, p.created_at,
+         u.first_name, u.middle_name, u.last_name, u.email, u.role,
+         u.student_no, u.course, u.year_level,
+         t.ticket_no, t.department, t.ticket_status, t.service_date
+  FROM priority_requests p
+  JOIN users u ON u.id = p.user_id
+  LEFT JOIN transactions t ON t.id = p.transaction_id`;
 
 async function createPriorityRequest(userId, category, file) {
   if (!['pwd','senior','pregnant'].includes(category))
@@ -648,11 +667,43 @@ async function createPriorityRequest(userId, category, file) {
   return { ok: true };
 }
 
+/**
+ * A walk-in's proof, sent with the ticket. The file is kept in the database
+ * (the server's own disk is wiped whenever the free host restarts).
+ */
+async function createTicketPriorityRequest(t, category, file) {
+  await run(
+    `INSERT INTO priority_requests (user_id,transaction_id,category,proof_file,proof_mime,proof_name,proof_data)
+     VALUES (?,?,?,'',?,?,?)`,
+    [t.userId, t.id, category, file.mimetype, String(file.originalname || 'proof').slice(0, 160), file.buffer]);
+  await run(
+    `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note)
+     VALUES (?,?,'priority_requested',?,?)`,
+    [t.id, t.ticketNo, t.department, `Asked for the ${PRIORITY_LABELS[category]} priority lane; proof waiting for review`]);
+}
+
+/** The newest priority request for one ticket (shown on the student's ticket). */
+async function getTicketPriorityRequest(txId) {
+  const r = await q(`${PR_SELECT} WHERE p.transaction_id=? ORDER BY p.id DESC LIMIT 1`, [txId]);
+  return r.length ? mapPriorityRequest(r[0]) : null;
+}
+
+/** For the red dot on the Priority Requests menu. */
+async function countPendingPriority() {
+  const r = await q(`SELECT COUNT(*) AS n FROM priority_requests WHERE status='pending'`);
+  return Number(r[0].n) || 0;
+}
+
+/** The proof to show a reviewer: from the database, or the old upload folder. */
+async function getPriorityProof(id) {
+  const r = await q('SELECT proof_file, proof_mime, proof_data FROM priority_requests WHERE id=?', [id]);
+  if (!r.length) return null;
+  return { mime: r[0].proof_mime, data: r[0].proof_data || null, file: r[0].proof_file || null };
+}
+
 async function getPriorityRequests(status) {
   const rows = await q(
-    `SELECT p.*, u.first_name, u.middle_name, u.last_name, u.email, u.role,
-            u.student_no, u.course, u.year_level
-     FROM priority_requests p JOIN users u ON u.id = p.user_id
+    `${PR_SELECT}
      ${status ? 'WHERE p.status = ?' : ''}
      ORDER BY FIELD(p.status,'pending','approved','rejected'), p.created_at DESC`,
     status ? [status] : []);
@@ -660,26 +711,26 @@ async function getPriorityRequests(status) {
 }
 
 async function getPriorityRequest(id) {
-  const r = await q(
-    `SELECT p.*, u.first_name, u.middle_name, u.last_name, u.email, u.role,
-            u.student_no, u.course, u.year_level
-     FROM priority_requests p JOIN users u ON u.id = p.user_id WHERE p.id=?`, [id]);
+  const r = await q(`${PR_SELECT} WHERE p.id=?`, [id]);
   return r.length ? mapPriorityRequest(r[0]) : null;
 }
 
 async function getUserPriorityRequests(userId) {
-  return (await q(
-    `SELECT * FROM priority_requests WHERE user_id=? ORDER BY created_at DESC`, [userId]))
+  return (await q(`${PR_SELECT} WHERE p.user_id=? ORDER BY p.created_at DESC`, [userId]))
     .map(mapPriorityRequest);
 }
 
-/** Admin decision. Approving stamps the category onto the user's profile. */
+/**
+ * Staff or admin decision. Approving stamps the category onto the person's
+ * record and, for a walk-in ticket still waiting in the regular lane, moves it
+ * to the priority lane with a priority number, keeping its original time.
+ */
 async function decidePriorityRequest(reviewer, id, approve, reason) {
   const pr = await getPriorityRequest(id);
   if (!pr)                       return { error: 'Request not found.' };
   if (pr.status !== 'pending')   return { error: 'This request has already been reviewed.' };
   if (!approve && !String(reason || '').trim())
-    return { error: 'Give a reason so the student knows what to fix.' };
+    return { error: 'Give a reason so the student knows what was wrong.' };
 
   await run(
     `UPDATE priority_requests SET status=?, reason=?, reviewed_by=?, reviewer_name=?, reviewed_at=NOW()
@@ -687,11 +738,42 @@ async function decidePriorityRequest(reviewer, id, approve, reason) {
     [approve ? 'approved' : 'rejected', approve ? null : String(reason).trim(),
      reviewer.id, reviewer.fullName, id]);
 
+  let moved = null;
   if (approve) {
     await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW() WHERE id=?`,
               [pr.category, pr.userId]);
+    if (pr.transactionId) moved = await moveToPriority(reviewer, pr.transactionId, pr.category);
   }
-  return { ok: true, request: await getPriorityRequest(id) };
+  return { ok: true, moved, request: await getPriorityRequest(id) };
+}
+
+/** Approved proof: a waiting regular ticket becomes a priority ticket. */
+async function moveToPriority(reviewer, txId, category) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      `SELECT id, ticket_no, department, service_date FROM transactions
+       WHERE id=? AND queue_category='regular' AND ticket_status='waiting' FOR UPDATE`, [txId]);
+    if (!rows.length) { await conn.rollback(); return null; }     // already called, done or cancelled
+    const t = rows[0];
+    const newNo = await nextTicketNo(conn, t.department, ymd(new Date(t.service_date)), 'priority');
+    await conn.execute(
+      `UPDATE transactions SET ticket_no=?, queue_category='priority', priority_type=? WHERE id=?`,
+      [newNo, category, t.id]);
+    await conn.execute(
+      `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,note)
+       VALUES (?,?,'moved_to_priority',?,?,?,?)`,
+      [t.id, newNo, reviewer.id, reviewer.fullName, t.department,
+       `${PRIORITY_LABELS[category]} proof approved; ${t.ticket_no} became ${newNo}`]);
+    await conn.commit();
+    return { from: t.ticket_no, to: newNo };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
 /** Remove an approved status (e.g. an ID expired). */
@@ -1146,7 +1228,7 @@ async function slotsUsed(department, dateStr) {
  * Documents that need no payment are routed straight to the Registrar.
  * submitToken makes repeated submits idempotent.
  */
-async function createRequest(user, b) {
+async function createRequest(user, b, { walkIn = false } = {}) {
   const s = await getSettings();
 
 
@@ -1196,9 +1278,10 @@ async function createRequest(user, b) {
   // ---- validate student info ------------------------------------------------
   if (!String(b.firstName || '').trim() || !String(b.lastName || '').trim())
     return { error: 'First name and last name are required.' };
-  if (user.role === 'student' && (!b.course || !b.yearLevel))
+  // Walk-in (QR) tickets ask only for the name and student number.
+  if (!walkIn && user.role === 'student' && (!b.course || !b.yearLevel))
     return { error: 'Course and year level are required.' };
-  if (user.role === 'student' && !isCourse(b.course))
+  if (!walkIn && user.role === 'student' && !isCourse(b.course))
     return { error: 'Please choose one of the courses offered by the college.' };
 
   // ---- queue category -------------------------------------------------------
@@ -1216,7 +1299,13 @@ async function createRequest(user, b) {
   let category = 'regular';
   let pType    = 'none';
 
-  if (b.queueCategory === 'priority') {
+  if (walkIn) {
+    // A walk-in asking for priority uploads proof with the request. The ticket
+    // starts in the regular lane and moves up only when staff or the admin
+    // approve the proof (decidePriorityRequest).
+    if (b.queueCategory === 'priority' && !PRIORITY_TYPES.includes(b.priorityType))
+      return { error: 'Choose which priority group you belong to (PWD, Senior Citizen or Pregnant).' };
+  } else if (b.queueCategory === 'priority') {
     if (granted === 'none') {
       return { error: 'Your account is not approved for the priority lane. ' +
                       'Submit proof from your dashboard and wait for approval.' };
@@ -1276,6 +1365,9 @@ async function createRequest(user, b) {
     }
     let picked = b.claimLines;
     if (!Array.isArray(picked)) picked = picked ? [picked] : [];
+    // Walk-ins do not see a list to tick: they collect everything paid for
+    // under their student number (staff check the ID before releasing).
+    if (walkIn && !picked.length) picked = available.map(a => a.id);
     picked = [...new Set(picked.map(Number).filter(Boolean))];
     if (!picked.length) return { error: 'Tick which paid document(s) you are claiming.' };
     const ok = new Set(available.map(a => a.id));
@@ -1326,8 +1418,9 @@ async function createRequest(user, b) {
          claimant,rep_name,rep_relationship,rep_contact,rep_auth_file,
          purpose,other_purpose,amount_due,ticket_status,payment_status,overall_status,
          is_scheduled,scheduled_date,service_date,submit_token,requires_claim,
-         predicted_wait,predicted_service,prediction_source)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?)`,
+         predicted_wait,predicted_service,prediction_source,
+         access_token,booking_code)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?)`,
       [ ticketNo, department, category, pType, user.id,
         user.role === 'guest' ? 'guest' : 'student',
         String(b.firstName).trim(), String(b.middleName || '').trim() || null,
@@ -1341,7 +1434,8 @@ async function createRequest(user, b) {
         department === 'Cashier' ? 'pending' : 'waiting_registrar',
         sched.isScheduled, sched.isScheduled ? sched.serviceDate : null,
         sched.serviceDate, token, items.some(i => i.requiresClaim) ? 1 : 0,
-        forecast.wait, forecast.service, forecast.source ]
+        forecast.wait, forecast.service, forecast.source,
+        crypto.randomBytes(16).toString('hex'), bookingCode() ]
     );
     const txId = ins.insertId;
 
@@ -1426,14 +1520,138 @@ async function getBlockingTransaction(userId, department = null) {
   return t;
 }
 
+// ── WALK-IN (QR) CLIENTS: no registration, no login ──────────────────────────
+// Students scan the QR code and give their name and student number. Behind the
+// scenes each student number still has one record in `users` (no email, no
+// password, cannot log in), so claims, one-ticket-per-office, Queue History and
+// reports keep working exactly as before. Visitors get a record per ticket.
+
+/** "Dela Cruz" == "dela cruz" == "Dela  Cruz" == "Déla Cruz" */
+const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[^a-z]/g, '');
+const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+async function findOrCreateWalkIn(b) {
+  const first = cleanName(b.firstName), middle = cleanName(b.middleName), last = cleanName(b.lastName);
+  if (!first || !last) return { error: 'Enter your first name and last name.' };
+  if ([first, middle, last].some(n => n.length > 60)) return { error: 'Each name can be up to 60 characters.' };
+
+  if (b.clientType === 'guest') {
+    const r = await run(
+      `INSERT INTO users (first_name,middle_name,last_name,role,status) VALUES (?,?,?,'guest','active')`,
+      [first, middle || null, last]);
+    return { user: await getUser(r.insertId) };
+  }
+
+  const no = String(b.studentNo || '').trim();
+  if (!STUDENT_NO_RE.test(no)) return { error: 'Enter your 9-digit student number (numbers only).' };
+
+  const existing = async () => (await q('SELECT * FROM users WHERE student_no=? LIMIT 1', [no]))[0];
+  let u = await existing();
+  if (!u) {
+    try {
+      const r = await run(
+        `INSERT INTO users (first_name,middle_name,last_name,role,status,student_no)
+         VALUES (?,?,?,'student','active',?)`, [first, middle || null, last, no]);
+      return { user: await getUser(r.insertId) };
+    } catch (e) {
+      if (e.code !== 'ER_DUP_ENTRY') throw e;
+      u = await existing();                 // two phones, same number, same instant
+    }
+  }
+  if (u.role !== 'student') return { error: 'That student number cannot be used here. Please ask the Registrar.' };
+  if (u.status === 'disabled') return { error: 'This student number is blocked. Please see the Registrar.' };
+  // Someone typing another student's number would otherwise see and claim
+  // that student's paid documents, so the last name must match the record.
+  if (normName(u.last_name) !== normName(last))
+    return { error: 'That student number is on record under a different last name. ' +
+                    'Check what you typed, or ask the Registrar to correct the record.' };
+  return { user: mapUser(u) };
+}
+
+/** Short code to find a ticket again on another phone (no 0/O or 1/I). */
+function bookingCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += A[crypto.randomInt(A.length)];
+  return s;
+}
+
+/** The ticket behind a phone's secret link, or null. */
+async function getTransactionByToken(token) {
+  if (!/^[a-f0-9]{32}$/.test(String(token || ''))) return null;
+  const r = await q(`${TX_SELECT} WHERE t.access_token=?`, [token]);
+  if (!r.length) return null;
+  const t = mapTx(r[0]);
+  await attachDocuments([t]);
+  return t;
+}
+
+/**
+ * Find a ticket by booking code plus the student number (or, for visitors,
+ * the last name). Only tickets from the last 60 days are searched.
+ */
+async function findTicketByCode(code, who) {
+  code = String(code || '').trim().toUpperCase();
+  who  = String(who || '').trim();
+  if (!/^[A-Z0-9]{6}$/.test(code) || !who) return null;
+  const rows = await q(
+    `SELECT id, student_no, last_name, access_token FROM transactions
+     WHERE booking_code=? AND service_date >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
+     ORDER BY id DESC`, [code]);
+  const hit = rows.find(r => (r.student_no && r.student_no === who) ||
+                             (!r.student_no && normName(r.last_name) === normName(who)));
+  return hit && hit.access_token ? hit.access_token : null;
+}
+
+/**
+ * A priority client whose ID at the window does not match the approved proof
+ * goes to the END of the regular line with a new regular number. One click
+ * for staff at the window.
+ */
+async function moveToRegular(staff, txId) {
+  const t = await getTransaction(txId);
+  const dept = staff.role === 'cashier' ? 'Cashier' : 'Registrar';
+  if (!t || t.department !== dept)              return { error: 'Ticket not found.' };
+  if (t.queueCategory !== 'priority')           return { error: `${t.ticketNo} is already in the regular lane.` };
+  if (!['waiting','called','serving'].includes(t.ticketStatus))
+    return { error: `${t.ticketNo} is no longer in the queue.` };
+  if (t.paymentStatus === 'paid')               return { error: `${t.ticketNo} is already paid.` };
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const newNo = await nextTicketNo(conn, dept, t.serviceDate, 'regular');
+    await conn.execute(
+      `UPDATE transactions SET ticket_no=?, queue_category='regular', priority_type='none',
+         ticket_status='waiting', staff_id=NULL, staff_name=NULL, window_id=NULL, window_label=NULL,
+         called_at=NULL, started_at=NULL, warned_at=NULL, requested_at=NOW(),
+         overall_status=CASE WHEN department='Cashier' THEN 'pending' ELSE 'waiting_registrar' END
+       WHERE id=?`, [newNo, t.id]);
+    await conn.execute(
+      `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,note)
+       VALUES (?,?,'moved_to_regular',?,?,?,?)`,
+      [t.id, newNo, staff.id, staff.fullName, dept,
+       `Priority (${PRIORITY_LABELS[t.priorityType] || t.priorityType}) not verified; ${t.ticketNo} became ${newNo}`]);
+    await conn.commit();
+    return { ok: true, from: t.ticketNo, to: newNo };
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 // ── READ TRANSACTIONS ────────────────────────────────────────────────────────
 function mapTx(t) {
   return {
     id: t.id, ticketNo: t.ticket_no, department: t.department,
     queueCategory: t.queue_category, priorityType: t.priority_type,
     userId: t.user_id, clientType: t.client_type,
+    accessToken: t.access_token || null, bookingCode: t.booking_code || null,
     firstName: t.first_name, middleName: t.middle_name || '', lastName: t.last_name,
-    fullName: [t.first_name, t.middle_name, t.last_name].filter(Boolean).join(' '),
+    fullName: fullName(t),
     name: `${t.first_name} ${t.last_name}`,
     studentNo: t.student_no || '', course: t.course || '', yearLevel: t.year_level,
     academicYear: t.academic_year || '',
@@ -2286,7 +2504,7 @@ async function getHistoryClients(f, page = 1) {
     pg,
     rows: rows.map(r => ({
       id: r.id, role: r.role, deleted: !!r.deleted_at,
-      fullName: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' '),
+      fullName: fullName(r),
       studentNo: r.student_no || '', login: r.username || r.email || '', course: r.course || '',
       completed: Number(r.completed) || 0, cancelled: Number(r.cancelled) || 0,
       pending: Number(r.pending) || 0, total: Number(r.total) || 0, lastAt: r.last_at,
@@ -2651,6 +2869,7 @@ module.exports = {
   findOrCreateGoogleUser, needsProfile, completeProfile, setInitialPassword,
   createPriorityRequest, getPriorityRequests, getPriorityRequest,
   getUserPriorityRequests, decidePriorityRequest, revokePriority, PRIORITY_LABELS,
+  createTicketPriorityRequest, getTicketPriorityRequest, countPendingPriority, getPriorityProof,
   getDocuments, getDocument, saveDocument, saveDocumentAsStaff,
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
@@ -2662,6 +2881,7 @@ module.exports = {
   validateSchedule, createRequest,
   getTransaction, getUserTransactions, getQueue, getBlockingTransaction,
   getActiveByDepartment,
+  findOrCreateWalkIn, getTransactionByToken, findTicketByCode, moveToRegular,
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,

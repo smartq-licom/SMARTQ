@@ -1,17 +1,17 @@
 <%- include('../../partials/head') %>
-<%- include('../../partials/nav', { active: '/student/request' }) %>
+<%- include('../../partials/public-nav') %>
 
-<div class="max-w-3xl">
+<div>
   <div class="mb-5">
-    <h2 class="text-xl font-extrabold">Request a queue ticket</h2>
-    <p class="text-[13px] text-slateSoft/80 mt-0.5">The amount is set by the office. You never type a price yourself.</p>
+    <h2 class="text-xl font-extrabold">Get a queue number</h2>
+    <p class="text-[13px] text-slateSoft/80 mt-0.5">No account needed. The amount is set by the office.</p>
   </div>
 
   <% if (formError) { %>
   <div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= formError %></div>
   <% } %>
 
-  <form method="POST" action="/student/request" data-once class="space-y-4">
+  <form method="POST" action="/queue/new" enctype="multipart/form-data" data-once class="space-y-4">
     <input type="hidden" name="submitToken" value="<%= submitToken %>">
 
     <%# Stepper: one step shown at a time. Finished steps can be revisited;
@@ -34,9 +34,19 @@
     <!-- STEP 1 of 4: office and documents -->
     <div class="wiz-pane space-y-4" data-pane="1">
       <!-- which office -->
+      <%# Chosen already on the queue page: show it, with a way to change it,
+          instead of asking again. The radios stay in the form either way. %>
+      <% const preset = form.office && !activeBy[form.office] ? form.office : null; %>
       <section class="<%= UI.card %> step">
-        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Which office?</h3></div>
-        <div class="<%= UI.body %>">
+        <% if (preset) { %>
+        <div class="px-5 py-3.5 flex items-center gap-3" data-office-summary>
+          <span class="text-[12.5px] text-slateSoft/80">Office</span>
+          <span class="text-[15px] font-extrabold text-brand-deep"><%= preset %></span>
+          <button type="button" class="ml-auto text-[12.5px] font-semibold text-brand underline" onclick="changeOffice()">Change</button>
+        </div>
+        <% } %>
+        <div class="<%= UI.cardHd %>" <%= preset ? 'hidden' : '' %> data-office-choice><h3 class="<%= UI.cardTtl %>">Which office?</h3></div>
+        <div class="<%= UI.body %>" <%= preset ? 'hidden' : '' %> data-office-choice>
           <fieldset>
             <legend class="sr-only">Office</legend>
             <div class="grid sm:grid-cols-2 gap-2.5">
@@ -48,7 +58,7 @@
                        <%= form.office === off ? 'checked' : '' %> onchange="pickOffice()">
                 <div class="text-[14px] font-bold"><%= off %></div>
                 <div class="text-[12px] text-slateSoft/80 mt-0.5">
-                  <% if (busy) { %>You already have <%= activeBy[off].ticketNo %> here
+                  <% if (busy) { %>You already have <%= activeBy[off].ticketNo %> here (on this phone)
                   <% } else { %><%= off === 'Cashier' ? 'Documents you pay for' : 'Free requests and claiming' %><% } %>
                 </div>
               </label>
@@ -71,16 +81,17 @@
             <div class="grid gap-2" id="docList" data-max="<%= settings.maxBatchDocuments %>">
               <% documents.forEach(function(sv){ %>
               <%# A Registrar document that collects something paid for at the Cashier.
-                  It is locked until there is a paid, unclaimed document to collect. %>
+                  The paid documents are found from the student number when the
+                  ticket is made (the Registrar checks the ID before releasing). %>
               <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
-                 const claimLocked = isClaim && !claimable.length; %>
+                 const picked = [].concat(form.documentIds || []).map(String).includes(String(sv.id)); %>
               <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
                    data-office="<%= sv.office %>" hidden>
-                <label class="flex items-start gap-3 <%= claimLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer' %>">
-                  <input type="checkbox" name="documentIds" value="<%= sv.id %>"
+                <label class="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" name="documentIds" value="<%= sv.id %>" <%= picked ? 'checked' : '' %>
                          data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
-                         data-purpose="<%= sv.needsPurpose ? 1 : 0 %>"
-                         <%= isClaim ? 'data-claim=1' : '' %> <%= claimLocked ? 'data-locked=1 disabled' : '' %>
+                         data-purpose="<%= sv.needsPurpose ? 1 : 0 %>" data-guest="<%= sv.guestAllowed ? 1 : 0 %>"
+                         <%= isClaim ? 'data-claim=1' : '' %>
                          class="mt-0.5 rounded border-hair" onchange="recalc()">
                   <span class="min-w-0 flex-1">
                     <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
@@ -96,29 +107,13 @@
                            onchange="recalc()" oninput="recalc()">
                   </span>
                 </label>
-                <% if (isClaim && claimable.length) { %>
-                <% const ticked = [].concat(form.claimLines || []).map(String); %>
-                <fieldset class="mt-2.5 ml-7" data-claim-panel="<%= sv.id %>" hidden>
-                  <legend class="text-[12px] font-semibold text-ink mb-1">What are you claiming?</legend>
-                  <% claimable.forEach(function(c){ %>
-                  <label class="flex items-start gap-2.5 py-1 cursor-pointer">
-                    <input type="checkbox" name="claimLines" value="<%= c.id %>" disabled
-                           <%= ticked.includes(String(c.id)) ? 'checked' : '' %> class="mt-0.5 rounded border-hair">
-                    <span>
-                      <span class="block text-[13px] font-semibold leading-tight"><%= c.copies > 1 ? c.name + ' x' + c.copies : c.name %></span>
-                      <span class="block text-[11px] text-slateSoft/75"><%= c.receiptNo || c.paidTicket %><% if (c.paidAt) { %> &middot; paid <%= c.paidAt %><% } %></span>
-                    </span>
-                  </label>
-                  <% }) %>
-                </fieldset>
-                <% } else if (claimLocked) { %>
-                <p class="mt-2 ml-7 text-[12px] text-amber-800">
-                  <% if (activeBy.Cashier && activeBy.Cashier.paymentStatus !== 'paid') { %>
-                  Finish your payment at the Cashier first (<%= activeBy.Cashier.ticketNo %>). You can queue here to claim it right after.
-                  <% } else { %>
-                  Nothing to claim yet. Pay for the document at the Cashier first.
-                  <% } %>
+                <% if (isClaim) { %>
+                <p class="mt-2 ml-7 text-[12px] text-slateSoft/80" data-claim-panel="<%= sv.id %>" hidden>
+                  We will find the documents you already paid for at the Cashier using your student number.
                 </p>
+                <% } %>
+                <% if (!sv.guestAllowed) { %>
+                <p class="mt-1 ml-7 text-[11px] text-slateSoft/60">For enrolled students only</p>
                 <% } %>
                 <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
                 <details class="mt-2 ml-7">
@@ -171,7 +166,7 @@
 
       <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
       <div class="flex flex-wrap items-center gap-2.5">
-        <a href="/student/dashboard" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
+        <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %>">Cancel</a>
         <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> px-6 ml-auto" data-next>Next &rarr;</button>
       </div>
     </div>
@@ -317,47 +312,68 @@
       <section class="<%= UI.card %> step">
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Your information</h3></div>
         <div class="<%= UI.body %>">
+          <fieldset class="mb-4">
+            <legend class="sr-only">Are you a student?</legend>
+            <div class="grid grid-cols-2 gap-2.5">
+              <label class="rounded-lg border-2 px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="clientType" value="student" class="sr-only"
+                       <%= form.clientType !== 'guest' ? 'checked' : '' %> onchange="toggleClient()">
+                <div class="text-[14px] font-bold">I am a student</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Enrolled or former LCC student</div>
+              </label>
+              <label class="rounded-lg border-2 px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="clientType" value="guest" class="sr-only"
+                       <%= form.clientType === 'guest' ? 'checked' : '' %> onchange="toggleClient()">
+                <div class="text-[14px] font-bold">I am a visitor</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Parent, applicant or other client</div>
+              </label>
+            </div>
+          </fieldset>
           <%- include('../../partials/name-fields', { nf: {
-                firstName: form.firstName || me.firstName, middleName: form.middleName || me.middleName,
-                lastName: form.lastName || me.lastName,
+                firstName: form.firstName || '', middleName: form.middleName || '',
+                lastName: form.lastName || '',
                 lblClass: UI.lbl, inputClass: UI.input
               } }) %>
-          <% if (me.role !== 'guest') { %>
-          <div class="grid sm:grid-cols-4 gap-3 mt-3">
-            <div>
-              <label for="course" class="<%= UI.lbl %>">Course *</label>
-              <select id="course" name="course" class="<%= UI.input %>" required>
-                <% var pickedCourse = form.course || me.course || ''; %>
-                <option value="">Select</option>
-                <% courses.forEach(function(c){ %>
-                <option value="<%= c %>" <%= pickedCourse === c ? 'selected' : '' %>><%= c %></option>
-                <% }) %>
-                <% if (pickedCourse && courses.indexOf(pickedCourse) === -1) { %>
-                <option value="" selected disabled><%= pickedCourse %> — no longer offered, please re-select</option>
-                <% } %>
-              </select>
-            </div>
-            <div>
-              <label for="yearLevel" class="<%= UI.lbl %>">Year level *</label>
-              <select id="yearLevel" name="yearLevel" class="<%= UI.input %>" required>
-                <option value="">Select</option>
-                <% [1,2,3,4,5].forEach(function(y){ %>
-                <option value="<%= y %>" <%= String(form.yearLevel || me.yearLevel) === String(y) ? 'selected' : '' %>>Year <%= y %></option>
-                <% }) %>
-              </select>
-            </div>
-            <div>
-              <label for="academicYear" class="<%= UI.lbl %>">Academic year</label>
-              <input id="academicYear" name="academicYear" class="<%= UI.input %>" value="<%= form.academicYear || me.academicYear || settings.academicYear %>">
-            </div>
-            <div>
-              <%# Comes from the account (one number per student); not editable per ticket. %>
-              <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
-              <input id="studentNo" class="<%= UI.input %> bg-mist text-slateSoft font-mono" value="<%= me.studentNo %>" readonly>
-              <span class="<%= UI.hint %>">From your account. <a href="/student/account" class="underline">Change it</a></span>
-            </div>
+          <div id="studentNoBox" class="mt-3 max-w-xs">
+            <label for="studentNo" class="<%= UI.lbl %>">Student number *</label>
+            <input id="studentNo" name="studentNo" class="<%= UI.input %> font-mono" value="<%= form.studentNo || '' %>"
+                   inputmode="numeric" pattern="\d{9}" maxlength="9" autocomplete="off" placeholder="9 digits"
+                   title="Your 9-digit student number, numbers only">
+            <span class="<%= UI.hint %>">Used to find your records and the documents you paid for.</span>
           </div>
-          <% } %>
+        </div>
+      </section>
+
+      <!-- priority lane: declared here, the ID is checked at the window -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Priority lane</h3></div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="text-[13px] text-slateSoft mb-2.5">PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <% [['', 'No, regular'], ['pwd', priorityLabels.pwd], ['senior', priorityLabels.senior], ['pregnant', priorityLabels.pregnant]].forEach(function (p) { %>
+              <label class="rounded-lg border-2 px-3 py-2.5 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+                <input type="radio" name="priorityType" value="<%= p[0] %>" class="sr-only"
+                       <%= (form.priorityType || '') === p[0] ? 'checked' : '' %> onchange="toggleProof()">
+                <span class="text-[13px] font-bold"><%= p[1] %></span>
+              </label>
+              <% }) %>
+            </div>
+          </fieldset>
+          <div id="proofBox" class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3.5 py-3" hidden>
+            <label for="proof" class="block text-[12.5px] font-bold text-violet-900 mb-1.5">
+              Photo of your proof * <span class="font-normal" data-proof-what></span>
+            </label>
+            <input id="proof" name="proof" type="file" accept="image/jpeg,image/png,application/pdf"
+                   class="block w-full text-[12.5px] text-violet-900 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-700 file:px-3 file:py-2 file:text-white file:font-semibold">
+            <p class="text-[12px] text-violet-900/85 mt-2">
+              JPG, PNG or PDF, up to 5 MB. You start in the regular line; once staff approve
+              your proof, your ticket moves to the priority lane. Bring the same ID to the window.
+            </p>
+            <% if (formError && form.priorityType) { %>
+            <p class="text-[12px] font-semibold text-violet-900 mt-1.5">Please choose the photo again.</p>
+            <% } %>
+          </div>
         </div>
       </section>
 
@@ -426,41 +442,10 @@
           </div>
         </section>
 
-        <!-- queue category (granted by the admin, not chosen here) -->
-        <section class="<%= UI.card %> step">
-          <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Queue lane</h3></div>
-          <div class="<%= UI.body %>">
-            <% if (me.priorityStatus && me.priorityStatus !== 'none') { %>
-              <input type="hidden" name="queueCategory" value="priority">
-              <div class="rounded-lg bg-violet-50 border border-violet-200 px-4 py-3.5">
-                <div class="flex items-center gap-2">
-                  <span class="<%= pill %> <%= tone(me.priorityStatus) %>">
-                    <%= me.priorityStatus === 'pwd' ? 'PWD' : me.priorityStatus.charAt(0).toUpperCase() + me.priorityStatus.slice(1) %>
-                  </span>
-                  <span class="text-[13.5px] font-bold text-violet-900">Priority lane</span>
-                </div>
-                <p class="text-[12.5px] text-violet-800 mt-1.5">
-                  Your account is approved for the priority lane, so this ticket is flagged automatically.
-                </p>
-              </div>
-            <% } else { %>
-              <input type="hidden" name="queueCategory" value="regular">
-              <div class="rounded-lg bg-mist border border-hair px-4 py-3.5">
-                <div class="text-[13.5px] font-bold">Regular lane</div>
-                <p class="text-[12.5px] text-slateSoft mt-1.5">
-                  PWD, Senior Citizen and Pregnant clients are called ahead of the regular lane.
-                  To join it, upload your ID or medical certificate for approval.
-                </p>
-                <a href="/student/priority" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mt-3">Request priority status</a>
-              </div>
-            <% } %>
-          </div>
-        </section>
-
       <p class="wiz-error hidden rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-2.5 text-[13px] font-medium text-red-900" role="alert"></p>
       <div class="flex flex-wrap items-center gap-2.5">
         <button type="button" class="<%= UI.btn %> <%= UI.btnGh %>" data-back>&larr; Back</button>
-        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px] ml-auto">Submit request</button>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px] ml-auto">Get my number</button>
       </div>
     </div>
 
@@ -481,12 +466,40 @@ function toggleOther(){
   box.classList.toggle('hidden', v !== 'Others');
   document.getElementById('otherPurpose').required = (v === 'Others');
 }
+// Visitors give no student number (and can only pick documents open to them).
+function toggleClient(){
+  var guest = document.querySelector('input[name=clientType][value=guest]').checked;
+  var box = document.getElementById('studentNoBox');
+  var no  = document.getElementById('studentNo');
+  box.hidden = guest;
+  no.required = !guest;
+  no.disabled = guest;
+}
+// Priority needs a photo of the ID or proof (checked by staff before the
+// ticket moves to the priority lane).
+function toggleProof(){
+  var p = document.querySelector('input[name=priorityType]:checked');
+  var on = !!(p && p.value);
+  var box = document.getElementById('proofBox'), file = document.getElementById('proof');
+  box.hidden = !on;
+  file.required = on;
+  file.disabled = !on;
+  var what = { pwd: '(PWD ID)', senior: '(Senior Citizen ID)', pregnant: '(medical certificate or prenatal record)' };
+  box.querySelector('[data-proof-what]').textContent = on ? what[p.value] : '';
+}
 function toggleRep(){
   var rep = document.querySelector('input[name=claimant][value=representative]').checked;
   document.getElementById('repBox').classList.toggle('hidden', !rep);
   ['repName','repRelationship'].forEach(function(id){
     document.getElementById(id).required = rep;
   });
+}
+
+// The office came from the queue page; "Change" brings back both choices.
+function changeOffice(){
+  document.querySelectorAll('[data-office-choice]').forEach(function (el) { el.hidden = false; });
+  var s = document.querySelector('[data-office-summary]');
+  if (s) s.hidden = true;
 }
 
 // Office is chosen first; only that office's documents are shown.
@@ -573,7 +586,7 @@ function renumber(){
   });
 }
 
-toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
+toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOffice(); renumber();
 </script>
 
 <style>
@@ -615,7 +628,7 @@ toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
 </style>
 <script>
 (function () {
-  var form  = document.querySelector('form[action="/student/request"]');
+  var form  = document.querySelector('form[action="/queue/new"]');
   var panes = [].slice.call(form.querySelectorAll('.wiz-pane'));
   var items = [].slice.call(document.querySelectorAll('[data-step-item]'));
   var LAST  = panes.length;
@@ -646,11 +659,16 @@ toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
     if (n === 1) {
       var office = form.querySelector('input[name=office]:checked');
       var docs = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown);
-      var claim = docs.filter(function (d) { return d.dataset.claim === '1'; })[0];
       if (!office) msg = 'Choose an office first.';
       else if (!docs.length) msg = 'Select at least one document.';
-      else if (claim && !form.querySelector('input[name=claimLines]:checked'))
-        msg = 'Tick which paid document(s) you are claiming.';
+    }
+    if (n === 3) {
+      var guest = form.querySelector('input[name=clientType][value=guest]').checked;
+      var studentOnly = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown)
+        .filter(function (d) { return d.dataset.guest !== '1'; });
+      if (guest && studentOnly.length)
+        msg = '"' + text(studentOnly[0].closest('label').querySelector('.block')) +
+              '" is for enrolled students only. Choose "I am a student", or go back and remove it.';
     }
     if (!msg) {
       var fields = [].filter.call(p.querySelectorAll('input, select, textarea'),
@@ -712,10 +730,6 @@ toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
       return esc(name) + (n > 1 ? ' &times;' + n : '');
     });
     out.push(row('Documents', docs.join('<br>') || '&mdash;'));
-    var claims = [].map.call(form.querySelectorAll('input[name=claimLines]:checked'), function (c) {
-      return esc(text(c.closest('label').querySelector('.block')));
-    });
-    if (claims.length) out.push(row('Claiming', claims.join('<br>')));
     var purpose = document.getElementById('purpose');
     if (purpose && shown(purpose) && purpose.value) {
       var other = document.getElementById('otherPurpose');
@@ -730,8 +744,12 @@ toggleMode(); toggleOther(); toggleRep(); pickOffice(); renumber();
       var f = form.querySelector('[name=' + id + ']'); return f ? f.value.trim() : '';
     }).filter(Boolean).join(' ');
     out.push(row('Name', esc(name)));
-    var course = document.getElementById('course'), year = document.getElementById('yearLevel');
-    if (course && course.value) out.push(row('Course', esc(course.value + (year && year.value ? ', Year ' + year.value : ''))));
+    var no = document.getElementById('studentNo');
+    out.push(row('Student number', no.disabled ? 'Visitor (not a student)' : '<span class="font-mono">' + esc(no.value) + '</span>'));
+    var lane = form.querySelector('input[name=priorityType]:checked');
+    out.push(row('Lane', lane && lane.value
+      ? 'Regular until your ' + esc(text(lane.closest('label'))) + ' proof is approved'
+      : 'Regular'));
     var rep = form.querySelector('input[name=claimant][value=representative]');
     out.push(row('Claimed by', rep && rep.checked
       ? esc((document.getElementById('repName').value || 'Representative') + ' (' + (document.getElementById('repRelationship').value || '') + ')')

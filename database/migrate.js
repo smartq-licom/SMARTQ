@@ -69,6 +69,32 @@ const STEPS = [
             WHERE table_schema = DATABASE() AND table_name = 'transactions' AND index_name = 'idx_staff'`,
     add:   'ALTER TABLE transactions ADD INDEX idx_staff (staff_id)',
   },
+  {
+    name: 'walk-in tickets open from the phone without a login (access_token)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'access_token'`,
+    add:   'ALTER TABLE transactions ADD COLUMN access_token CHAR(32) DEFAULT NULL, ADD UNIQUE KEY uq_access_token (access_token)',
+  },
+  {
+    name: 'booking code to find a ticket again on another phone (booking_code)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'booking_code'`,
+    add:   'ALTER TABLE transactions ADD COLUMN booking_code CHAR(6) DEFAULT NULL',
+  },
+  {
+    name: 'priority request linked to the ticket it is for (transaction_id)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'transaction_id'`,
+    add:   `ALTER TABLE priority_requests ADD COLUMN transaction_id INT DEFAULT NULL,
+              ADD INDEX idx_tx (transaction_id),
+              ADD CONSTRAINT fk_pr_tx FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE`,
+  },
+  {
+    name: 'proof photos kept in the database, so a server restart cannot lose them (proof_data)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'proof_data'`,
+    add:   'ALTER TABLE priority_requests ADD COLUMN proof_data MEDIUMBLOB DEFAULT NULL',
+  },
 ];
 
 (async () => {

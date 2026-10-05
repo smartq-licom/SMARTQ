@@ -1,8 +1,8 @@
 <%- include('../../partials/auth-top', { title: title }) %>
 <%- include('../../partials/intro') %>
 
-  <h1 class="page-title">Sign in</h1>
-  <p class="subtitle">Use the username or the Gmail address on your account.</p>
+  <h1 class="page-title">Staff sign in</h1>
+  <p class="subtitle">For the admin, Cashier and Registrar staff.</p>
 
   <%- include('../../partials/auth-notes') %>
 
@@ -11,9 +11,9 @@
       <input type="hidden" name="next" value="<%= next %>">
 
       <div class="field">
-        <label for="identifier"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Username or Gmail</label>
+        <label for="identifier"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Username</label>
         <input id="identifier" name="identifier" class="control" required autofocus
-               autocomplete="username" placeholder="juan123 or juan@gmail.com">
+               autocomplete="username" placeholder="Your username">
       </div>
 
       <div class="field">
@@ -28,16 +28,10 @@
       <button type="submit" class="btn btn-primary" data-busy="Signing in...">Sign in</button>
     </form>
 
-    <p class="under">Forgot password? <a href="/forgot-password">Click here</a></p>
-
-    <div class="divider">or</div>
-    <%- include('../../partials/auth-google') %>
+    <p class="under">Forgot password? Ask the admin to reset it, or <a href="/forgot-password">click here</a>.</p>
   </div>
 
-  <p class="alt">New to SmartQ? <a href="/register">Create an account</a></p>
-  <p class="under" style="color:var(--faint)">
-    Locked out for another reason? <a href="/recover">Recover your account</a>
-  </p>
+  <p class="alt">Student or visitor? No account needed. <a href="/queue">Get a queue number</a></p>
 
 
 <%- include('../../partials/auth-bottom') %>

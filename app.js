@@ -60,15 +60,19 @@ const otpLimiter = rateLimit({
   legacyHeaders: false,
   message: 'Too many verification attempts. Please wait a few minutes and try again.',
 });
-app.use('/login',           authLimiter);
-app.use('/register',        authLimiter);
+// only the sign-in itself counts, not opening the page
+app.use('/login', (req, res, next) => (req.method === 'POST' ? authLimiter(req, res, next) : next()));
 app.use('/forgot-password', authLimiter);
 app.use('/verify',          otpLimiter);
-
-// Google sign-in (no-op when not configured)
-const { passport: gpassport, ENABLED: GOOGLE_ON } = require('./data/google');
-app.use(gpassport.initialize());
-app.locals.googleEnabled = GOOGLE_ON;
+// Students queue without an account. Booking codes are short, so guessing is
+// slowed down; getting a number allows more, because a whole campus can share
+// one Wi-Fi address.
+const findLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
+  message: 'Too many tries from this network. Please wait a few minutes, or ask at the office window.' });
+app.use('/queue/find', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
+const newTicketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false,
+  message: 'Too many requests from this network. Please wait a few minutes and try again.' });
+app.use('/queue/new', (req, res, next) => (req.method === 'POST' ? newTicketLimiter(req, res, next) : next()));
 
 // current user + flash available to every view
 app.use((req, res, next) => {
@@ -81,6 +85,17 @@ app.use((req, res, next) => {
   res.locals.pagePath = req.originalUrl.split('?')[0];
   delete req.session.flash;
   delete req.session.error;
+  next();
+});
+
+// Red dot on "Priority Requests": how many proofs wait for review. Only for
+// the people who review them, and only for pages (not the background checks).
+app.use(async (req, res, next) => {
+  res.locals.priorityPending = null;
+  const u = req.session.user;
+  if (!u || !['admin', 'cashier', 'registrar'].includes(u.role) || req.method !== 'GET'
+      || /\/(pulse|count)$/.test(req.path)) return next();
+  try { res.locals.priorityPending = await db.countPendingPriority(); } catch (e) { /* the dot is optional */ }
   next();
 });
 
@@ -101,13 +116,13 @@ app.use((req, res, next) => {
 
 // ── Auth guards ──────────────────────────────────────────────────────────────
 function requireLogin(req, res, next) {
-  if (!req.session.user) return res.redirect('/?next=' + encodeURIComponent(req.originalUrl));
+  if (!req.session.user) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
   next();
 }
 function requireRole(...roles) {
   return (req, res, next) => {
     const u = req.session.user;
-    if (!u) return res.redirect('/');
+    if (!u) return res.redirect('/login');
     if (!roles.includes(u.role)) {
       return res.status(403).render('pages/error', {
         title: 'Not allowed', code: 403,
@@ -173,7 +188,9 @@ app.locals.label = s => String(s || '').replace(/_/g, ' ');
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/',        require('./routes/auth'));
-app.use('/student', requireLogin, requireRole('student','guest'), require('./routes/student'));
+// Students no longer log in: the QR code opens /queue (routes/queue.js).
+app.use('/queue',   require('./routes/queue'));
+app.use('/student', (req, res) => res.redirect('/queue'));
 app.use('/staff',   requireLogin, requireRole('cashier','registrar'), require('./routes/staff'));
 app.use('/admin',   requireLogin, requireRole('admin'), require('./routes/admin'));
 app.use('/display', require('./routes/display'));

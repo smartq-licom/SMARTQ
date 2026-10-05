@@ -89,6 +89,18 @@
             <% } %>
             <span class="<%= pill %> <%= tone(current.ticketStatus) %>"><%= current.ticketStatus %></span>
           </div>
+          <%# Priority was approved from a photo; the real ID is checked here. %>
+          <% if (current.queueCategory === 'priority' && current.priorityType !== 'none') { %>
+          <div class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2.5 text-left no-print">
+            <div class="text-[12.5px] font-bold text-violet-900">Check the <%= current.priorityType === 'pregnant' ? 'proof of pregnancy' : (current.priorityType === 'senior' ? 'Senior Citizen ID' : 'PWD ID') %></div>
+            <form method="POST" action="/staff/move-regular/<%= current.id %>" class="mt-1.5"
+                  data-confirm data-confirm-title="Move <%= current.ticketNo %> to the regular lane?"
+                  data-confirm-body="The ID does not match the approved proof. The ticket gets a new regular number at the end of the line and your window is freed."
+                  data-confirm-ok="Move to regular" data-confirm-back="Keep priority">
+              <button type="submit" class="text-[12px] font-semibold text-violet-800 underline">Not valid? Move to regular line</button>
+            </form>
+          </div>
+          <% } %>
         </div>
 
         <dl class="py-4 space-y-2 text-[13px] border-b border-hair">

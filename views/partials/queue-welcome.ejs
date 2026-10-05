@@ -1,0 +1,153 @@
+<%#
+  Welcome screen for the QR code page (/queue). The question "What are your
+  transactions today?" comes in word by word, then the two offices rise with
+  how many are waiting and the expected wait. Tapping an office goes straight
+  to its form; "See the queue first" lifts the screen to show the page.
+
+  Shown once per browser session, so the page's 30-second refresh never
+  replays it. Without JavaScript it stays hidden, and people who ask for
+  reduced motion get the same screen without the movement.
+  Needs: offices, mineAt, waitText.
+%>
+<div id="welcome" class="qw" hidden role="dialog" aria-modal="true" aria-labelledby="qwTitle">
+  <div class="qw-float" aria-hidden="true">
+    <% ['C-014','R-007','CP-002','R-021','C-009','RP-003','C-032','R-015'].forEach(function (n, i) { %>
+    <span style="--i:<%= i %>"><%= n %></span>
+    <% }) %>
+  </div>
+
+  <div class="qw-body">
+    <div class="qw-brand">
+      <div class="qw-seal"></div>
+      <div class="qw-word">Smart<b>Q</b></div>
+    </div>
+
+    <h1 id="qwTitle" class="qw-q">
+      <% 'What are your transactions today?'.split(' ').forEach(function (w, i) { %><span style="--i:<%= i %>"><%= w %></span> <% }) %>
+    </h1>
+
+    <div class="qw-offices">
+      <% [['Cashier', 'Pay for documents'], ['Registrar', 'Free requests and claiming']].forEach(function (o, i) {
+           var off = o[0], s = offices[off], mine = mineAt[off]; %>
+      <a class="qw-office" style="--i:<%= i %>"
+         href="<%= mine ? '/queue/t/' + mine.accessToken : '/queue/new?office=' + off %>">
+        <span class="qw-off-name"><%= off %></span>
+        <span class="qw-off-what"><%= mine ? 'You have ' + mine.ticketNo + ' here' : o[1] %></span>
+        <span class="qw-off-stats">
+          <span><b><%= s.waiting %></b> in the queue</span>
+          <span><%= s.closed ? 'No window open' : waitText(s.minutes) %></span>
+        </span>
+        <span class="qw-go" aria-hidden="true">&rarr;</span>
+      </a>
+      <% }) %>
+    </div>
+
+    <button type="button" class="qw-skip" data-welcome-close>See the queue first</button>
+  </div>
+</div>
+
+<style>
+  .qw{
+    position:fixed; inset:0; z-index:1000; overflow-y:auto;
+    background:#2185D5; color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    padding:28px 18px;
+    transition:transform .6s cubic-bezier(.7,0,.25,1), opacity .6s;
+  }
+  .qw::after{
+    content:''; position:fixed; inset:0; pointer-events:none;
+    background:linear-gradient(135deg,rgba(255,255,255,.12) 0%,transparent 45%,transparent 60%,rgba(255,255,255,.08) 100%);
+  }
+  .qw.is-leaving{ transform:translateY(-100%) }
+  .qw-body{ position:relative; z-index:1; width:100%; max-width:560px; text-align:center }
+
+  /* ticket numbers drifting up in the background, like a queue moving */
+  .qw-float{ position:fixed; inset:0; overflow:hidden; pointer-events:none }
+  .qw-float span{
+    position:absolute; bottom:-60px; left:calc(3% + var(--i) * 11%); white-space:nowrap;
+    font:700 15px/1 ui-monospace,monospace; letter-spacing:.06em;
+    padding:7px 11px; border-radius:8px;
+    background:rgba(255,255,255,.10); color:rgba(255,255,255,.55);
+    animation:qw-drift 11s linear infinite; animation-delay:calc(var(--i) * -1.4s);
+  }
+  .qw-float span:nth-child(odd){ animation-duration:14s; font-size:13px }
+
+  .qw-brand{ display:flex; align-items:center; justify-content:center; gap:12px;
+             animation:qw-pop .55s cubic-bezier(.34,1.56,.64,1) .05s both }
+  .qw-seal{ width:52px; height:52px; border-radius:50%;
+            background:#fff url('/img/lcc-seal.jpg') center/cover;
+            box-shadow:0 0 0 5px rgba(255,255,255,.18) }
+  .qw-word{ font-weight:800; font-size:34px; letter-spacing:-1px; line-height:1 }
+  .qw-word b{ display:inline-block; text-shadow:0 0 22px rgba(255,255,255,.5);
+              animation:qw-q .8s cubic-bezier(.34,1.56,.64,1) .35s both }
+
+  .qw-q{ margin:26px 0 0; font-weight:800; line-height:1.12; letter-spacing:-.5px;
+         font-size:clamp(2rem, 8.5vw, 3.1rem) }
+  .qw-q span{ display:inline-block;
+              animation:qw-word .6s cubic-bezier(.34,1.4,.64,1) both;
+              animation-delay:calc(.55s + var(--i) * .13s) }
+
+  .qw-offices{ display:grid; gap:12px; margin-top:30px }
+  @media (min-width:560px){ .qw-offices{ grid-template-columns:1fr 1fr } }
+  .qw-office{
+    position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left;
+    background:#fff; color:#303841; text-decoration:none;
+    border-radius:16px; padding:18px 48px 16px 18px;
+    box-shadow:0 14px 34px rgba(16,52,86,.28);
+    transition:transform .18s, box-shadow .18s;
+    animation:qw-rise .6s cubic-bezier(.34,1.4,.64,1) both;
+    animation-delay:calc(1.55s + var(--i) * .15s);
+  }
+  .qw-office:hover, .qw-office:focus-visible{ transform:translateY(-3px) scale(1.02);
+    box-shadow:0 18px 40px rgba(16,52,86,.36); text-decoration:none; color:#303841 }
+  .qw-office:active{ transform:scale(.98) }
+  .qw-off-name{ font-size:22px; font-weight:800; color:#1A6CAE }
+  .qw-off-what{ font-size:13px; font-weight:600; color:#3A4750; margin-top:2px }
+  .qw-off-stats{ display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:12.5px; color:#3A4750 }
+  .qw-off-stats b{ font-size:15px; color:#303841 }
+  .qw-go{ position:absolute; right:16px; top:50%; transform:translateY(-50%);
+          width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
+          background:#2185D5; color:#fff; font-size:17px; font-weight:700;
+          animation:qw-nudge 1.6s ease-in-out 2.4s infinite }
+
+  .qw-skip{ margin-top:22px; background:none; border:0; cursor:pointer;
+            font:inherit; font-size:14px; font-weight:600; color:rgba(255,255,255,.85);
+            text-decoration:underline; text-underline-offset:3px;
+            animation:qw-fade .5s ease-out 2.1s both }
+  .qw-skip:hover{ color:#fff }
+
+  @keyframes qw-pop { from{opacity:0; transform:scale(.5)} to{opacity:1; transform:none} }
+  @keyframes qw-q   { 0%{transform:rotate(-40deg) scale(.4); opacity:0} 60%{transform:rotate(12deg) scale(1.3); opacity:1} 100%{transform:none} }
+  @keyframes qw-word{ from{opacity:0; transform:translateY(70%) scale(.85)} to{opacity:1; transform:none} }
+  @keyframes qw-rise{ from{opacity:0; transform:translateY(30px)} to{opacity:1; transform:none} }
+  @keyframes qw-fade{ from{opacity:0} to{opacity:1} }
+  @keyframes qw-nudge{ 0%,100%{transform:translate(0,-50%)} 50%{transform:translate(5px,-50%)} }
+  @keyframes qw-drift{ from{transform:translateY(0); opacity:0} 10%{opacity:1} 90%{opacity:1} to{transform:translateY(-115vh); opacity:0} }
+
+  @media (prefers-reduced-motion:reduce){
+    .qw *, .qw{ animation:none !important; transition:none !important }
+    .qw-float{ display:none }
+  }
+</style>
+<script>
+(function () {
+  var el = document.getElementById('welcome');
+  if (!el) return;
+  var KEY = 'smartq.welcome';
+  var seen = false;
+  try { seen = sessionStorage.getItem(KEY) === '1'; } catch (e) {}
+  if (seen) { el.remove(); return; }
+  try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+
+  el.hidden = false;
+  document.documentElement.style.overflow = 'hidden';
+
+  // Removing the screen also lets the page's 30-second refresh run again.
+  function close() {
+    el.classList.add('is-leaving');
+    setTimeout(function () { el.remove(); document.documentElement.style.overflow = ''; }, 650);
+  }
+  el.querySelector('[data-welcome-close]').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); }, { once: true });
+})();
+</script>

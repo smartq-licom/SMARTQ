@@ -9,7 +9,7 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 // Tapping the notification brings the student back to their ticket.
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/student/dashboard';
+  const url = (event.notification.data && event.notification.data.url) || '/queue';
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) {
       if (c.url.includes(url) && 'focus' in c) return c.focus();

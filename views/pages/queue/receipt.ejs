@@ -1,5 +1,5 @@
 <%- include('../../partials/head') %>
-<%- include('../../partials/nav', { active: '/student/history' }) %>
+<%- include('../../partials/public-nav') %>
 <div class="max-w-md mx-auto">
   <div class="<%= UI.card %> p-7">
     <div class="text-center border-b border-dashed border-hair pb-4">
@@ -42,7 +42,7 @@
     </p>
   </div>
   <div class="flex justify-center gap-2 mt-4 no-print">
-    <a href="/student/history" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
+    <a href="<%= back %>" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
     <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnMain %> <%= UI.btnSm %>">Print receipt</button>
   </div>
 </div>

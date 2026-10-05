@@ -4,8 +4,9 @@
 <div class="mb-5">
   <h2 class="text-xl font-extrabold">Priority lane requests</h2>
   <p class="text-[13px] text-slateSoft/80 mt-0.5">
-    Open the proof, check the name matches the account, then approve or reject.
-    Approving flags every future ticket from that account as priority.
+    Open the proof and check the name matches, then approve or reject. Approving moves the
+    student's waiting ticket from the regular line to the priority lane. Staff check the
+    same ID again at the window.
   </p>
 </div>
 
@@ -31,8 +32,16 @@
     </div>
     <div class="<%= UI.body %>">
       <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px] mb-3">
-        <div><dt class="text-slateSoft/80 text-[11px]">Account</dt><dd class="font-mono text-[12px]"><%= r.email %></dd></div>
-        <div><dt class="text-slateSoft/80 text-[11px]">Type</dt><dd class="capitalize"><%= r.role %></dd></div>
+        <% if (r.ticketNo) { %>
+        <div><dt class="text-slateSoft/80 text-[11px]">Ticket</dt>
+          <dd><span class="<%= chip %>"><%= r.ticketNo %></span> <span class="text-[12px]"><%= r.department %></span></dd></div>
+        <div><dt class="text-slateSoft/80 text-[11px]">Ticket status</dt>
+          <dd><span class="<%= pill %> <%= tone(r.ticketStatus) %>"><%= r.ticketStatus %></span>
+              <% if (r.serviceDate) { %><span class="text-[11.5px] text-slateSoft/80"> <%= r.serviceDate %></span><% } %></dd></div>
+        <% } else { %>
+        <div><dt class="text-slateSoft/80 text-[11px]">Account</dt><dd class="font-mono text-[12px]"><%= r.email || '-' %></dd></div>
+        <% } %>
+        <div><dt class="text-slateSoft/80 text-[11px]">Type</dt><dd class="capitalize"><%= r.role === 'guest' ? 'visitor' : r.role %></dd></div>
         <% if (r.studentNo) { %>
         <div><dt class="text-slateSoft/80 text-[11px]">Student no.</dt><dd class="font-mono text-[12px]"><%= r.studentNo %></dd></div>
         <% } %>
@@ -67,7 +76,7 @@
               data-confirm
               data-confirm-title="Approve priority status"
               data-confirm-body="Approve <%= r.name %> for the <%= r.categoryLabel %> lane?"
-              data-confirm-note="Every future ticket from this account will be flagged priority."
+              data-confirm-note="<%= r.ticketNo && r.ticketStatus === 'waiting' ? 'Ticket ' + r.ticketNo + ' moves to the priority lane with a priority number.' : 'Their ticket is no longer waiting, so only the approval is recorded.' %>"
               data-confirm-ok="Approve">
           <input type="hidden" name="decision" value="approve">
           <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full">Approve</button>
@@ -76,7 +85,7 @@
           <summary class="cursor-pointer text-[12.5px] font-semibold text-slateSoft py-1.5">Reject with a reason</summary>
           <form method="POST" action="<%= base %>/<%= r.id %>/decide" class="mt-2 space-y-2">
             <input type="hidden" name="decision" value="reject">
-            <label for="reason<%= r.id %>" class="<%= UI.lbl %>">Reason (the student will see this)</label>
+            <label for="reason<%= r.id %>" class="<%= UI.lbl %>">Reason (shown on the student's ticket)</label>
             <input id="reason<%= r.id %>" name="reason" class="<%= UI.input %>" required
                    placeholder="e.g. The ID photo is blurred and the number is unreadable">
             <button type="submit" class="<%= UI.btn %> <%= UI.btnBad %> w-full">Reject</button>
@@ -93,7 +102,7 @@
 <div class="<%= UI.card %> overflow-x-auto">
   <table class="w-full">
     <thead><tr>
-      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Category</th>
+      <th class="<%= UI.th %>">Name</th><th class="<%= UI.th %>">Ticket</th><th class="<%= UI.th %>">Category</th>
       <th class="<%= UI.th %>">Status</th><th class="<%= UI.th %>">Reviewer</th>
       <th class="<%= UI.th %>">Reviewed</th><th class="<%= UI.th %>">Reason</th>
       <th class="<%= UI.th %>">Proof</th><th class="<%= UI.th %>"></th>
@@ -102,6 +111,7 @@
       <% reviewed.forEach(function(r){ %>
       <tr class="<%= UI.tr %>">
         <td class="<%= UI.td %> font-semibold"><%= r.name %></td>
+        <td class="<%= UI.td %> text-[12px]"><%= r.ticketNo ? r.ticketNo + ' · ' + r.department : '-' %></td>
         <td class="<%= UI.td %> text-[12px]"><%= r.categoryLabel %></td>
         <td class="<%= UI.td %>">
           <span class="<%= pill %> <%= r.status === 'approved' ? tone('paid') : tone('cancelled') %>"><%= r.status %></span>
@@ -125,7 +135,7 @@
       </tr>
       <% }) %>
       <% if (!reviewed.length) { %>
-      <tr><td colspan="8" class="px-4 py-8 text-center text-[13px] text-slateSoft/80">Nothing reviewed yet.</td></tr>
+      <tr><td colspan="9" class="px-4 py-8 text-center text-[13px] text-slateSoft/80">Nothing reviewed yet.</td></tr>
       <% } %>
     </tbody>
   </table>

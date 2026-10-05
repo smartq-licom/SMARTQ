@@ -50,4 +50,27 @@ function proofUpload(req, res, next) {
   });
 }
 
-module.exports = { proofUpload, DIR, MAX_BYTES, ALLOWED };
+/**
+ * The same proof on the QR queue form, kept in memory so it can be stored in
+ * the database (req.file.buffer) instead of the server's short-lived disk.
+ * Only multipart posts are parsed here; anything else passes through.
+ */
+const inMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED[file.mimetype]) return cb(null, true);
+    cb(new Error('Only JPG, PNG or PDF files are accepted.'));
+  },
+});
+function proofToMemory(req, res, next) {
+  inMemory.single('proof')(req, res, err => {
+    if (!err) return next();
+    req.uploadError = err.code === 'LIMIT_FILE_SIZE'
+      ? 'That file is larger than 5 MB. Please upload a smaller photo.'
+      : err.message;
+    next();
+  });
+}
+
+module.exports = { proofUpload, proofToMemory, DIR, MAX_BYTES, ALLOWED };
