@@ -14,6 +14,7 @@
         : o && o.beforeOpen ? 'Opens ' + o.openClock : (m == null ? 'Book a time' : duration(m, true) + ' wait'); }
     }) %>
 <%- include('../../partials/public-nav') %>
+<div data-live="home">
 
 <% if (active.length) { %>
 <section class="mb-6" aria-labelledby="mineTitle">
@@ -66,6 +67,12 @@
         <dt class="text-[11px] uppercase tracking-wider text-slateSoft/75">In the queue</dt>
         <dd class="font-mono text-3xl font-extrabold text-ink mt-0.5"><%= o.waiting %></dd>
         <dd class="text-[11.5px] text-slateSoft/75"><%= o.waiting === 1 ? 'student waiting' : 'students waiting' %></dd>
+        <%# the rest of today's picture, so "0 waiting" never looks like lost numbers %>
+        <% if (o.serving || o.served) { %>
+        <dd class="text-[11px] text-slateSoft/65 mt-1 leading-snug">
+          <%= o.serving ? o.serving + ' at the window' : '' %><%= o.serving && o.served ? ' · ' : '' %><%= o.served ? o.served + ' served today' : '' %>
+        </dd>
+        <% } %>
       </div>
       <div class="rounded-lg bg-brand-wash px-3 py-3">
         <dt class="text-[11px] uppercase tracking-wider text-brand-deep/80">If you join now</dt>
@@ -119,7 +126,7 @@
 </div>
 
 <p class="mt-5 text-[12px] text-slateSoft/70 text-center">
-  The wait is an estimate from how fast the windows have been serving today. It updates every 30 seconds.
+  The wait is an estimate from how fast the windows have been serving today. It updates by itself.
 </p>
 
 <% if (past.length) { %>
@@ -137,9 +144,7 @@
 </section>
 <% } %>
 
-<script>
-// Live counts: reload every 30 s, but not while the welcome screen is open.
-setInterval(function () { if (!document.getElementById('welcome')) location.reload(); }, 30000);
-</script>
+</div>
+<%- include('../../partials/live', { liveEvery: 20 }) %>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>

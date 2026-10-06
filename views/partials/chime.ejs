@@ -139,7 +139,8 @@
           reloading = true;
           try { sessionStorage.setItem(KEY, String(d.id)); } catch (e) {}
           ring();
-          setTimeout(function () { location.reload(); }, 1400);   // after the ~1.2 s alert
+          // after the ~1.2 s alert: pages with live parts update in place
+          setTimeout(function () { if (window.smartqLive) { now = String(d.id); reloading = false; window.smartqLive(true); } else location.reload(); }, 1400);
         })
         .catch(function () {})
         .then(function () { busy = false; });

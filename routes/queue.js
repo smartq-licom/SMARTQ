@@ -100,7 +100,7 @@ async function officeSnapshot(sameDayOpen) {
     const beforeOpen = new Date() < new Date(`${db.today()}T${s.openTime}:00`);
     out[dept] = {
       beforeOpen, openClock: db.clock12(s.openTime),
-      waiting: load[dept].waiting, serving: load[dept].serving,
+      waiting: load[dept].waiting, serving: load[dept].serving, served: load[dept].completed,
       nowServing: windows.filter(w => w.serving).map(w => ({ label: w.label, ticket: w.serving })),
       openWindows, avgWait: avg,
       minutes: join ? join.minutes : null, startClock: join ? join.startClock : null,
@@ -331,7 +331,8 @@ router.post('/t/:token/push', express.json({ limit: '8kb' }), async (req, res, n
     if (!t) return res.status(404).json({ error: 'Ticket not found.' });
     const r = await push.subscribe(t.id, req.body);
     if (r.error) return res.status(400).json(r);
-    await push.sendToTicket(t.id, {
+    // confirm once, when this phone is new for this ticket (never on every visit)
+    if (r.created) await push.sendToTicket(t.id, {
       title: `Alerts are on: ${t.ticketNo}`,
       body: 'We will notify you when to leave, when you are called, and if the line runs late.',
       url: '/queue/t/' + t.accessToken,

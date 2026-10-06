@@ -1,19 +1,30 @@
 <%- include('modal') %>
 <script>
-document.querySelectorAll('[data-countdown]').forEach(function(el){
+// Countdowns ("time left at the window") and submit-once forms. Both also run
+// on parts of the page that update themselves (partials/live).
+function smartqCountdown(root){ (root || document).querySelectorAll('[data-countdown]').forEach(function(el){
+  if (el.dataset.ticking) return; el.dataset.ticking = '1';
   var s = parseInt(el.dataset.seconds || '0', 10);
   (function tick(){
-    if (s <= 0) { el.textContent = '00:00'; location.reload(); return; }
+    if (!el.isConnected) return;                       // replaced by an update
+    if (s <= 0) { el.textContent = '00:00'; if (window.smartqLive) window.smartqLive(true); else location.reload(); return; }
     var m = Math.floor(s/60), r = s%60;
     el.textContent = String(m).padStart(2,'0')+':'+String(r).padStart(2,'0');
     s--; setTimeout(tick, 1000);
   })();
-});
-document.querySelectorAll('form[data-once]').forEach(function(f){
+}); }
+function smartqOnce(root){ (root || document).querySelectorAll('form[data-once]').forEach(function(f){
+  if (f.dataset.onceBound) return; f.dataset.onceBound = '1';
   f.addEventListener('submit', function(){
     var b = f.querySelector('[type=submit]');
     if (b) { b.disabled = true; b.textContent = 'Please wait...'; }
   });
+}); }
+smartqCountdown(document);
+smartqOnce(document);
+window.addEventListener('smartq:updated', function (e) {
+  var root = (e.detail && e.detail.root) || document;
+  smartqCountdown(root);
 });
 var mb = document.getElementById('menuBtn'), sb = document.getElementById('sidebar');
 if (mb && sb) mb.addEventListener('click', function(){ sb.classList.toggle('-translate-x-full'); });
@@ -44,7 +55,7 @@ if (mb && sb) mb.addEventListener('click', function(){ sb.classList.toggle('-tra
 </body></html>
 <script>
 // Estimated time counts down live so the number never looks frozen.
-document.querySelectorAll('[data-eta]').forEach(function (el) {
+function smartqEta(el) {
   var secs = parseInt(el.dataset.seconds || '0', 10);
   var unit = el.parentElement.querySelector('[data-eta-unit]');
   (function tick() {
@@ -70,7 +81,14 @@ document.querySelectorAll('[data-eta]').forEach(function (el) {
       if (unit) unit.textContent = 'seconds';
     }
     secs--;
-    setTimeout(tick, 1000);
+    if (el.isConnected) setTimeout(tick, 1000);       // stops once the part is replaced
   })();
+}
+document.querySelectorAll('[data-eta]').forEach(smartqEta);
+window.smartqEta = smartqEta;
+window.addEventListener('smartq:updated', function (e) {
+  var root = (e.detail && e.detail.root) || document;
+  root.querySelectorAll('[data-eta]').forEach(smartqEta);
+  smartqOnce(root);
 });
 </script>

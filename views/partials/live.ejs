@@ -1,0 +1,64 @@
+<%#
+  Smooth live updates, without reloading the page.
+
+  Every few seconds (and at once when the ticket's /pulse check sees a change)
+  the page is fetched in the background and each part marked data-live="name"
+  is replaced only if it changed. Nothing blinks or jumps, and a part the
+  person is using is left alone: an open menu (<details>) or a field with the
+  cursor in it. If the whole situation changed (data-live-key: called, a new
+  number...), the page loads fresh once. Paused while the app is in the
+  background, so it costs no battery or data then.
+
+  liveEvery: seconds between checks (0 = only when the pulse sees a change).
+%>
+<script>
+(function () {
+  var EVERY = <%= Number(typeof liveEvery !== 'undefined' ? liveEvery : 15) %> * 1000;
+  var parts = [].slice.call(document.querySelectorAll('[data-live]'));
+  if (!parts.length) return;
+  // what the server sent, before scripts changed it (countdowns...)
+  parts.forEach(function (el) { el._src = el.innerHTML; });
+  var busy = false;
+
+  function inUse(el) {
+    var a = document.activeElement;
+    return (a && a !== document.body && el.contains(a)) || !!el.querySelector('details[open]');
+  }
+
+  function update(force) {
+    if (busy || (document.hidden && !force)) return;
+    busy = true;
+    fetch(location.href, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Live': '1' } })
+      .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
+      .then(function (html) {
+        if (!html) return;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var a = document.querySelector('[data-live-key]'), b = doc.querySelector('[data-live-key]');
+        if (a && b && a.getAttribute('data-live-key') !== b.getAttribute('data-live-key')) {
+          location.reload();                       // a different situation: start fresh once
+          return;
+        }
+        document.querySelectorAll('[data-live]').forEach(function (el) {
+          var nu = doc.querySelector('[data-live="' + el.getAttribute('data-live') + '"]');
+          if (!nu || nu.innerHTML === el._src || inUse(el)) return;
+          el.innerHTML = el._src = nu.innerHTML;
+          window.dispatchEvent(new CustomEvent('smartq:updated', { detail: { root: el } }));
+        });
+      })
+      .catch(function () {})
+      .then(function () { busy = false; });
+  }
+
+  if (EVERY > 0) setInterval(update, EVERY);
+  // back to the app: catch up at once
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) update(); });
+  // the ticket's fast /pulse check saw a change (someone called, fewer ahead)
+  var last = null;
+  window.addEventListener('smartq:pulse', function (e) {
+    var d = e.detail || {}, k = [d.id, d.status, d.ahead].join('|');
+    if (last !== null && k !== last) update();
+    last = k;
+  });
+  window.smartqLive = update;
+})();
+</script>

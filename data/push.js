@@ -27,11 +27,18 @@ async function subscribe(txId, sub) {
   const keys = sub.keys || {};
   if (!keys.p256dh || !keys.auth) return { error: 'Invalid subscription.' };
   const hash = crypto.createHash('sha256').update(sub.endpoint).digest('hex');
+  const p256dh = String(keys.p256dh).slice(0, 255), auth = String(keys.auth).slice(0, 255);
+  // Already known phone for this ticket: refresh its keys, no "alerts are on" again.
+  const known = await q('SELECT id FROM push_subscriptions WHERE transaction_id=? AND endpoint_hash=?', [txId, hash]);
+  if (known.length) {
+    await q('UPDATE push_subscriptions SET p256dh=?, auth=? WHERE id=?', [p256dh, auth, known[0].id]);
+    return { ok: true, created: false };
+  }
   await q(
     `INSERT INTO push_subscriptions (transaction_id,endpoint_hash,endpoint,p256dh,auth) VALUES (?,?,?,?,?)
      ON DUPLICATE KEY UPDATE p256dh=VALUES(p256dh), auth=VALUES(auth)`,
-    [txId, hash, sub.endpoint.slice(0, 2000), String(keys.p256dh).slice(0, 255), String(keys.auth).slice(0, 255)]);
-  return { ok: true };
+    [txId, hash, sub.endpoint.slice(0, 2000), p256dh, auth]);
+  return { ok: true, created: true };
 }
 
 /**

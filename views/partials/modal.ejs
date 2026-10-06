@@ -87,8 +87,12 @@
   // Available to page scripts:  smartqConfirm({title, body, ok}, fn)
   window.smartqConfirm = open;
 
-  // Any element with data-confirm routes through the modal
-  document.querySelectorAll('[data-confirm]').forEach(function (el) {
+  // Any element with data-confirm routes through the modal. Also run on parts
+  // of the page that update themselves (partials/live).
+  function bind(root) {
+  (root || document).querySelectorAll('[data-confirm]').forEach(function (el) {
+    if (el.dataset.confirmBound) return;
+    el.dataset.confirmBound = '1';
     if (el.tagName === 'FORM') {
       el.addEventListener('submit', function (e) {
         if (el.dataset.confirmed === '1') { el.dataset.confirmed = ''; return; }
@@ -115,5 +119,8 @@
       });
     }
   });
+  }
+  bind(document);
+  window.addEventListener('smartq:updated', function (e) { bind(e.detail && e.detail.root); });
 })();
 </script>

@@ -13,8 +13,8 @@ self.addEventListener('push', event => {
   try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'SmartQ', body: event.data && event.data.text() }; }
   event.waitUntil(self.registration.showNotification(d.title || 'SmartQ', {
     body: d.body || '',
-    icon: '/img/lcc-seal.jpg',
-    badge: '/img/lcc-seal.jpg',
+    icon: '/img/icon-192.png',
+    badge: '/img/badge.png',
     tag: d.tag || 'smartq',
     renotify: true,
     vibrate: [200, 100, 200, 100, 200],

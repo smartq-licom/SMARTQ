@@ -1,6 +1,8 @@
 <%- include('../../partials/head') %>
-<meta http-equiv="refresh" content="10">
 <%- include('../../partials/nav', { active: '/staff/dashboard' }) %>
+<%# Updated in place every 10 s (partials/live) instead of reloading, so a
+    reason being typed or an open menu is never lost. %>
+<div data-live="dash">
 
 <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
   <div>
@@ -301,5 +303,7 @@
   </div>
 </div>
 
+</div>
 <%- include('../../partials/foot') %>
+<%- include('../../partials/live', { liveEvery: 10 }) %>
 <%- include('../../partials/scripts') %>

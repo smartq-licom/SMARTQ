@@ -124,9 +124,18 @@
   @keyframes qw-nudge{ 0%,100%{transform:translate(0,-50%)} 50%{transform:translate(5px,-50%)} }
   @keyframes qw-drift{ from{transform:translateY(0); opacity:0} 10%{opacity:1} 90%{opacity:1} to{transform:translateY(-115vh); opacity:0} }
 
+  /* Phones asking for less motion (often power-saving mode) still get a calm
+     opening: gentle fades in the same order, no bouncing, spinning or drifting. */
   @media (prefers-reduced-motion:reduce){
-    .qw *, .qw{ animation:none !important; transition:none !important }
     .qw-float{ display:none }
+    .qw .qw-brand, .qw .qw-word b, .qw .qw-q span, .qw .qw-office, .qw .qw-skip{
+      animation-name:qw-fade !important; animation-duration:.6s !important;
+      animation-timing-function:ease-out !important; animation-fill-mode:both !important;
+      animation-iteration-count:1 !important;
+    }
+    .qw .qw-go{ animation:none !important }
+    .qw, .qw .qw-office{ transition:opacity .4s !important }
+    .qw.is-leaving{ transform:none; opacity:0 }
   }
 </style>
 <script>
@@ -136,7 +145,11 @@
   var KEY = 'smartq.welcome';
   var seen = false;
   try { seen = sessionStorage.getItem(KEY) === '1'; } catch (e) {}
-  if (seen) { el.remove(); return; }
+  // Opened from the Home Screen icon (start_url /queue?app=1): play it every
+  // time the app is opened, not only once per session.
+  var launch = /[?&]app=1(&|$)/.test(location.search);
+  if (launch) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+  if (seen && !launch) { el.remove(); return; }
   try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
 
   el.hidden = false;

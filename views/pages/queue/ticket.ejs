@@ -1,8 +1,9 @@
 <%- include('../../partials/head') %>
-<% if (['waiting','called','serving'].includes(t.ticketStatus)) { %><meta http-equiv="refresh" content="10"><% } %>
 <%- include('../../partials/public-nav') %>
 <div class="max-w-lg mx-auto">
-  <div class="<%= UI.card %> text-center p-8">
+  <%# Live parts (data-live) are updated in place by partials/live; a change of
+      status or number (data-live-key) loads the page fresh instead. %>
+  <div class="<%= UI.card %> text-center p-8" data-live-key="<%= t.ticketStatus %>|<%= t.ticketNo %>|<%= t.queueCategory %>|<%= t.serviceDate %>">
     <div class="text-[11px] uppercase tracking-widest text-slateSoft/80">Your queue number</div>
     <div class="font-mono text-6xl font-extrabold tracking-tight mt-1"><%= t.ticketNo %></div>
     <div class="flex justify-center gap-2 mt-3">
@@ -24,6 +25,7 @@
     </div>
     <% } %>
     <%# Priority proof sent with this ticket: where its review stands. %>
+    <div data-live="priority">
     <% if (priorityRequest) { var pr = priorityRequest; %>
     <div class="mt-3 rounded-lg border px-3.5 py-2.5 text-[12.5px] text-left
                 <%= pr.status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-violet-50 border-violet-200 text-violet-900' %>">
@@ -40,6 +42,7 @@
       <% } %>
     </div>
     <% } %>
+    </div>
 
     <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
         a vibration and (if allowed) a phone notification at 5 ahead and when
@@ -52,6 +55,7 @@
     </div>
     <% } %>
 
+    <div data-live="notices">
     <%# The capacity decision (data/engine.js): even at a slow pace, would this
         ticket finish before closing? If not, say so early and offer choices. %>
     <% var dayEnded = t.ticketStatus === 'waiting' && isToday && eta && eta.state === 'ended'; %>
@@ -67,7 +71,7 @@
       <% } %>
     </div>
     <% } else if (atRisk) { %>
-    <div class="mt-5 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3.5 text-left no-print" role="alert">
+    <div class="mt-5 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3.5 text-left no-print" role="alert" data-risk>
       <div class="text-[14px] font-bold text-red-900">&#9888;&#65039; You may not be served today</div>
       <p class="text-[12.5px] text-red-900/85 mt-1">
         <% if (eta.paused) { %>
@@ -85,7 +89,7 @@
               data-confirm-ok="Book tomorrow" data-confirm-back="Keep my place">
           <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Book the earliest time tomorrow</button>
         </form>
-        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> w-full" onclick="this.closest('[role=alert]').hidden=true">Keep my place and wait</button>
+        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> w-full" data-keep-place>Keep my place and wait</button>
         <a href="#cancelBox" class="text-center text-[12.5px] font-semibold text-red-700 underline" onclick="document.getElementById('cancelBox').open=true">Cancel my ticket</a>
       </div>
     </div>
@@ -131,6 +135,7 @@
       </details>
       <% } %>
     <% } %>
+    </div>
 
     <%# Phone alerts without SMS (Web Push): arrive even with this page closed.
         Without them, the page itself must stay open. %>
@@ -151,6 +156,7 @@
       </div>
     </div>
     <% } %>
+    <div data-live="details">
     <dl class="mt-6 text-left space-y-2.5 text-[13px]">
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Name</dt><dd class="font-semibold text-right"><%= t.fullName %></dd></div>
       <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Destination</dt><dd class="font-semibold"><%= t.department %></dd></div>
@@ -224,6 +230,7 @@
       <% } %>
     </div>
     <% } %>
+    </div>
     <div class="flex flex-wrap justify-center gap-2 mt-6 no-print">
       <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
       <% if (t.paymentStatus === 'paid') { %>
@@ -305,7 +312,9 @@
 
   function notify(t) {
     if (!canNotify || Notification.permission !== 'granted') return;
-    var opts = { body: t.body, tag: 'smartq-' + TX, renotify: true, icon: '/img/lcc-seal.jpg',
+    // with phone alerts on, the server already notifies at the right moments
+    try { if (localStorage.getItem('smartq.push.' + location.pathname.split('/').pop()) === '1') return; } catch (e) {}
+    var opts = { body: t.body, tag: 'smartq-' + TX, renotify: true, icon: '/img/icon-192.png', badge: '/img/badge.png',
                  vibrate: [200, 100, 200], data: { url: location.pathname } };
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(function (r) { r.showNotification(t.title, opts); })
@@ -368,17 +377,44 @@
         return fetch(box.dataset.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(sub), credentials: 'same-origin' });
       })
-      .then(function (r) { if (!r.ok) throw new Error('save failed'); show('on'); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('save failed');
+        try { localStorage.setItem(DONE, '1'); } catch (e) {}
+        show('on');
+      })
       .catch(off);
   }
-  // already allowed on this phone: make sure this ticket is subscribed too
-  if (Notification.permission === 'granted') { show('on'); subscribe(); return; }
+  // Already allowed on this phone: subscribe this ticket once, then never again
+  // (re-registering on every visit is what caused repeated notifications).
+  var DONE = 'smartq.push.' + location.pathname.split('/').pop();
+  var done = false;
+  try { done = localStorage.getItem(DONE) === '1'; } catch (e) {}
+  if (Notification.permission === 'granted') { show('on'); if (!done) subscribe(); return; }
   show('offer');
   part('offer').querySelector('button').addEventListener('click', function () {
     Notification.requestPermission().then(function (p) { p === 'granted' ? subscribe() : off(); });
   });
 })();
 </script>
+<script>
+// "Keep my place and wait" hides the warning for this ticket on this phone,
+// also after the page updates itself.
+(function () {
+  var KEEP = 'smartq.keep.' + location.pathname.split('/').pop();
+  function apply() {
+    var kept = false; try { kept = localStorage.getItem(KEEP) === '1'; } catch (e) {}
+    document.querySelectorAll('[data-risk]').forEach(function (el) { if (kept) el.hidden = true; });
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-keep-place]')) return;
+    try { localStorage.setItem(KEEP, '1'); } catch (e2) {}
+    apply();
+  });
+  window.addEventListener('smartq:updated', apply);
+  apply();
+})();
+</script>
+<%- include('../../partials/live', { liveEvery: ['waiting','called','serving'].includes(t.ticketStatus) ? 15 : 0 }) %>
 <%- include('../../partials/chime', {
       chimeScope: 'ticket' + t.id,
       chimeId: announcement ? announcement.id : '',
