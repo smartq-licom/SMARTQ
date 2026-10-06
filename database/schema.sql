@@ -164,6 +164,14 @@ CREATE TABLE transactions (
   submit_token    CHAR(36) DEFAULT NULL UNIQUE,      -- duplicate-submit guard
   access_token    CHAR(32) DEFAULT NULL,             -- opens the ticket from the phone (no login)
   booking_code    CHAR(6)  DEFAULT NULL,             -- finds the ticket again on another phone
+  queue_at        DATETIME DEFAULT NULL,             -- place in line: when they joined, or the booked slot's start
+  slot_start      TIME DEFAULT NULL,                 -- booked 30-minute slot (NULL for same-day "join now")
+  slot_end        TIME DEFAULT NULL,
+  risk_at         DATETIME DEFAULT NULL,             -- warned that they may not be served today
+  alerts_sent     VARCHAR(80) NOT NULL DEFAULT '',   -- phone alerts already given (leave, next, risk...)
+  hold_until      DATETIME DEFAULT NULL,             -- "available from": not called before this time
+  hold_used       TINYINT(1) NOT NULL DEFAULT 0,     -- the hold can be used once per ticket
+  missed_count    TINYINT NOT NULL DEFAULT 0,        -- called but not there: 1 = moved back, 2 = cancelled
 
   requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   called_at       TIMESTAMP NULL DEFAULT NULL,
@@ -182,6 +190,7 @@ CREATE TABLE transactions (
   INDEX idx_dept_status (department, ticket_status),
   INDEX idx_user (user_id),
   INDEX idx_service_date (service_date),
+  INDEX idx_queue (department, service_date, ticket_status, queue_at),
   CONSTRAINT fk_tx_user   FOREIGN KEY (user_id)   REFERENCES users(id)  ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -286,6 +295,19 @@ CREATE TABLE settings (
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- ── DECISION LOG: why the system accepted, warned or held a ticket ───────────
+CREATE TABLE decision_log (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transaction_id INT DEFAULT NULL,
+  department     VARCHAR(20) DEFAULT NULL,
+  decision       VARCHAR(30) NOT NULL,
+  reason         VARCHAR(255) NOT NULL,
+  detail         TEXT DEFAULT NULL,
+  created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_tx (transaction_id),
+  INDEX idx_created (created_at)
+) ENGINE=InnoDB;
+
 -- ── COUNTERS (daily ticket numbering + never-reset receipt numbering) ────────
 CREATE TABLE counters (
   name       VARCHAR(40) NOT NULL,
@@ -378,6 +400,19 @@ CREATE TABLE priority_requests (
   INDEX idx_tx (transaction_id),
   CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_pr_tx   FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ── PHONE NOTIFICATIONS (Web Push), one row per ticket and phone ──────────────
+CREATE TABLE push_subscriptions (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  transaction_id INT NOT NULL,
+  endpoint_hash  CHAR(64) NOT NULL,
+  endpoint       TEXT NOT NULL,
+  p256dh         VARCHAR(255) NOT NULL,
+  auth           VARCHAR(255) NOT NULL,
+  created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_tx_endpoint (transaction_id, endpoint_hash),
+  CONSTRAINT fk_ps_tx FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ============================================================================

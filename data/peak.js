@@ -130,7 +130,7 @@ async function loadHistory(department, lookback, range = null) {
 
   return cacheSet(key, await q(
     `SELECT service_date, department, ticket_status,
-            requested_at, called_at, completed_at
+            COALESCE(queue_at, requested_at) AS requested_at, called_at, completed_at
        FROM transactions
       WHERE ${where}
       ORDER BY requested_at, id`, params));

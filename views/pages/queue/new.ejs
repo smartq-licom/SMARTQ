@@ -186,25 +186,33 @@
               <label class="rounded-lg border-2 px-4 py-3.5 border-hair <%= sameDay.open ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash' : 'cursor-not-allowed bg-mist/60 opacity-60' %>">
                 <input type="radio" name="mode" value="now" class="sr-only" <%= sameDay.open ? '' : 'disabled' %>
                        <%= sameDay.open && form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
-                <div class="text-[14px] font-bold">Request now</div>
-                <div class="text-[12px] text-slateSoft/80 mt-0.5"><%= sameDay.open ? "Join today's queue immediately" : 'Not available right now' %></div>
+                <div class="text-[14px] font-bold">Join the line now</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5"><%= sameDay.open ? "Even from class: your place starts now, and we alert you when to come" : 'Not available right now' %></div>
               </label>
               <% } %>
               <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
                 <input type="radio" name="mode" value="schedule" class="sr-only"
                        <%= (!sameDay.open || form.mode === 'schedule') ? 'checked' : '' %> onchange="toggleMode()">
-                <div class="text-[14px] font-bold">Schedule for a later date</div>
-                <div class="text-[12px] text-slateSoft/80 mt-0.5">Book up to <%= settings.scheduleMaxDays %> days ahead</div>
+                <div class="text-[14px] font-bold">Book a time</div>
+                <div class="text-[12px] text-slateSoft/80 mt-0.5">Pick a day and a 30-minute slot, up to <%= settings.scheduleMaxDays %> days ahead</div>
               </label>
             </div>
           </fieldset>
           <div id="scheduleBox" class="hidden mt-3.5">
             <label for="scheduledDate" class="<%= UI.lbl %>">Date of your visit</label>
-            <input id="scheduledDate" name="scheduledDate" type="date" class="<%= UI.input %> max-w-xs"
+            <input id="scheduledDate" name="scheduledDate" type="date" onchange="loadSlots()" class="<%= UI.input %> max-w-xs"
                    value="<%= form.scheduledDate || '' %>" min="<%= sameDay.open ? today : firstBookable %>" max="<%= maxDate %>">
             <span class="<%= UI.hint %>">
               Any open day from <%= sameDay.open ? today : firstBookable %> up to <%= maxDate %>.
             </span>
+
+            <%# 30-minute slots for that date (data/engine.js slotPlan). Half of each
+                slot can be booked; the rest is kept for students who join that day. %>
+            <fieldset id="slotBox" class="mt-4" hidden data-picked="<%= form.slot || '' %>">
+              <legend class="<%= UI.lbl %>">Time of your visit *</legend>
+              <p class="text-[12px] text-slateSoft/80 -mt-1 mb-2" data-slot-note></p>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" data-slot-list></div>
+            </fieldset>
           </div>
           <% if (!sameDay.open) { %>
           <p class="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
@@ -479,6 +487,52 @@ function toggleMode(){
   var on = sched && sched.checked;
   box.classList.toggle('hidden', !on);
   document.getElementById('scheduledDate').required = on;
+  loadSlots();
+}
+
+// Booking times: asks the server which 30-minute slots on that date still have
+// room for the chosen documents, and lists them with the places left.
+var slotAsk = 0;
+function loadSlots(){
+  var box = document.getElementById('slotBox');
+  var sched = document.querySelector('input[name=mode][value=schedule]');
+  var date = document.getElementById('scheduledDate').value;
+  var office = document.querySelector('input[name=office]:checked');
+  var list = box.querySelector('[data-slot-list]'), note = box.querySelector('[data-slot-note]');
+  if (!(sched && sched.checked) || !date || !office) { box.hidden = true; list.innerHTML = ''; return; }
+  var docs = [].map.call(document.querySelectorAll('input[name=documentIds]:checked'), function (b) { return b.value; });
+  var picked = (document.querySelector('input[name=slot]:checked') || {}).value || box.dataset.picked;
+  var mine = ++slotAsk;
+  box.hidden = false;
+  note.textContent = 'Checking available times...';
+  list.innerHTML = '';
+  fetch('/queue/slots?office=' + encodeURIComponent(office.value) + '&date=' + date + '&docs=' + docs.join(','),
+        { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (mine !== slotAsk) return;                  // an older answer arrived late
+      if (d.closed || d.error) { note.textContent = d.closed || d.error; return; }
+      var open = d.slots.filter(function (x) { return x.available; }).length;
+      note.textContent = open
+        ? 'Each slot fits about ' + d.capacity + ' clients (' + d.windows + ' window' + (d.windows > 1 ? 's' : '') +
+          ', about ' + d.avgService + ' min each); half can be booked. Your documents take about ' + d.serviceMin + ' min.'
+        : 'Every slot on this date is fully booked. Please choose another date.';
+      d.slots.forEach(function (x) {
+        if (x.past) return;
+        var lab = document.createElement('label');
+        lab.className = 'rounded-lg border-2 px-3 py-2.5 text-center border-hair ' +
+          (x.available ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash' : 'opacity-50 cursor-not-allowed bg-mist');
+        lab.innerHTML = '<input type="radio" name="slot" class="sr-only" required>' +
+          '<span class="block text-[13px] font-bold"></span><span class="block text-[11px] text-slateSoft/80 mt-0.5"></span>';
+        var inp = lab.querySelector('input');
+        inp.value = x.start; inp.disabled = !x.available; inp.checked = x.available && x.start === picked;
+        lab.querySelectorAll('span')[0].textContent = x.label;
+        lab.querySelectorAll('span')[1].textContent = x.available
+          ? (x.placesLeft > 0 ? 'about ' + x.placesLeft + ' place' + (x.placesLeft === 1 ? '' : 's') + ' left' : 'last place') : 'full';
+        list.appendChild(lab);
+      });
+    })
+    .catch(function () { if (mine === slotAsk) note.textContent = 'Could not load the times. Check your connection and try again.'; });
 }
 function toggleOther(){
   var v = document.getElementById('purpose').value;
@@ -688,6 +742,12 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       if (!office) msg = 'Choose an office first.';
       else if (!docs.length) msg = 'Select at least one document.';
     }
+    if (n === 2) {
+      var sch = form.querySelector('input[name=mode][value=schedule]');
+      if (sch && sch.checked && document.getElementById('scheduledDate').value &&
+          !form.querySelector('input[name=slot]:checked'))
+        msg = 'Choose a time for your visit.';
+    }
     if (n === 3) {
       var guest = form.querySelector('input[name=clientType][value=guest]').checked;
       var studentOnly = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown)
@@ -733,6 +793,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     if (n > reached) reached = n;
     panes.forEach(function (p, i) { p.hidden = i + 1 !== n; });
     if (n === LAST) buildReview();
+    if (n === 2) loadSlots();                        // documents may have changed
     paintBar();
     var top = document.querySelector('nav[aria-label="Request steps"]');
     if (top && !stay) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -767,8 +828,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     var sched = form.querySelector('input[name=mode][value=schedule]');
     var date = document.getElementById('scheduledDate');
     out.push(row('When', sched && sched.checked && date.value
-      ? esc(new Date(date.value + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))
-      : 'Today, join the queue now'));
+      ? esc(new Date(date.value + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })) +
+        (function () { var sl = form.querySelector('input[name=slot]:checked');
+                       return sl ? '<br>' + esc(text(sl.closest('label').querySelector('span'))) : ''; })()
+      : 'Today, join the line now'));
     var name = ['firstName', 'middleName', 'lastName'].map(function (id) {
       var f = form.querySelector('[name=' + id + ']'); var v = f ? f.value.trim() : ''; return /^n\/a$/i.test(v) ? '' : v;
     }).filter(Boolean).join(' ');

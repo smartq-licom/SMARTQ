@@ -13,6 +13,8 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../data/db');
 const predict = require('../data/prediction');
+const engine  = require('../data/engine');
+const push    = require('../data/push');
 const { proofToMemory } = require('../data/uploads');
 
 // ── tickets remembered on this phone ─────────────────────────────────────────
@@ -49,9 +51,9 @@ async function myTickets(req) {
   return list;
 }
 
-/** True when ticket a was created before ticket b (id breaks second ties). */
+/** True when ticket a is ahead of ticket b in line (id breaks second ties). */
 function aheadOf(a, b) {
-  const ta = new Date(a.requestedAt).getTime(), tb = new Date(b.requestedAt).getTime();
+  const ta = new Date(a.queueAt).getTime(), tb = new Date(b.queueAt).getTime();
   return ta === tb ? a.id < b.id : ta < tb;
 }
 
@@ -59,23 +61,50 @@ function sameDayStatus(s) {
   if (!s.allowSameDay) return { open: false, why: 'Same-day requests are closed at the moment, so please pick a date.' };
   if (!s.openDays.includes(new Date().getDay() || 7)) return { open: false, why: 'The offices are closed today, so please pick a working day.' };
   if (db.isPastClosing(s)) return { open: false, why: 'Office hours are over for today (closed at ' + db.clock12(s.closeTime) + '), so please pick a date.' };
+  if (db.isBeforeJoinOpens(s)) return { open: false, early: true, opensClock: db.clock12(db.joinOpensAt(s)),
+    why: "Today's line opens at " + db.clock12(db.joinOpensAt(s)) + ', so for now please book a time.' };
   return { open: true, why: '' };
 }
 const officeHours = s => db.clock12(s.openTime) + ' – ' + db.clock12(s.closeTime);
 
-/** Waiting counts and the wait a NEW regular ticket would have, per office. */
-async function officeSnapshot() {
+/** "Available from" times: every 15 minutes, up to 2 hours ahead, before closing. */
+function holdChoices(s) {
+  const out = [], now = new Date();
+  const close = new Date(`${db.today()}T${s.closeTime}:00`);
+  const t = new Date(now);
+  t.setSeconds(0, 0);
+  t.setMinutes(Math.ceil((t.getMinutes() + 1) / 15) * 15);
+  for (; t <= new Date(now.getTime() + 120 * 60000) && t < close; t.setMinutes(t.getMinutes() + 15)) {
+    const hm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+    out.push({ value: hm, label: db.clock12(hm) });
+  }
+  return out;
+}
+
+/**
+ * Per office: how many are waiting, today's ACTUAL average wait, and what the
+ * decision engine predicts for someone joining now (and whether they would
+ * still be served before closing).
+ */
+async function officeSnapshot(sameDayOpen) {
   const load = await db.getLoad();
   const out = {};
   for (const dept of ['Cashier', 'Registrar']) {
-    const [pos, windows] = await Promise.all([
-      predict.positionWait(dept, { lane: 'regular' }), db.getWindows(dept),
-    ]);
+    const [windows, avg] = await Promise.all([db.getWindows(dept), db.todayAverageWait(dept)]);
+    const openWindows = windows.filter(w => w.status === 'open').length;
+    let join = null;
+    if (sameDayOpen) {
+      try { join = await engine.evaluateJoin(dept); } catch (e) { /* show counts only */ }
+    }
+    const s = await db.getSettings();
+    const beforeOpen = new Date() < new Date(`${db.today()}T${s.openTime}:00`);
     out[dept] = {
+      beforeOpen, openClock: db.clock12(s.openTime),
       waiting: load[dept].waiting, serving: load[dept].serving,
       nowServing: windows.filter(w => w.serving).map(w => ({ label: w.label, ticket: w.serving })),
-      openWindows: windows.filter(w => w.status === 'open').length,
-      minutes: pos.minutes, closed: !!pos.closed,
+      openWindows, avgWait: avg,
+      minutes: join ? join.minutes : null, startClock: join ? join.startClock : null,
+      fits: join ? join.fits : true, closed: !openWindows,
     };
   }
   return out;
@@ -85,9 +114,8 @@ async function officeSnapshot() {
 router.get('/', async (req, res, next) => {
   try {
     await db.processAutoCancel();
-    const [settings, offices, mine] = await Promise.all([
-      db.getSettings(), officeSnapshot(), myTickets(req),
-    ]);
+    const settings = await db.getSettings();
+    const [offices, mine] = await Promise.all([officeSnapshot(sameDayStatus(settings).open), myTickets(req)]);
     res.render('pages/queue/home', {
       title: 'Get a Queue Number', settings, offices,
       active: mine.filter(ACTIVE), past: mine.filter(t => !ACTIVE(t)).slice(0, 3),
@@ -132,6 +160,24 @@ router.get('/new', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// 30-minute slots for a date, with how many places are left for THESE
+// documents (the form asks again whenever the date or documents change).
+router.get('/slots', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const office = ['Cashier', 'Registrar'].includes(req.query.office) ? req.query.office : null;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
+    if (!office || !date) return res.status(400).json({ error: 'Choose an office and a date.' });
+    const v = await db.validateSchedule('schedule', date, office);
+    if (v.error) return res.json({ closed: v.error, slots: [] });
+    const settings = await db.getSettings();
+    const ids = String(req.query.docs || '').split(',').map(Number).filter(Boolean).slice(0, 10);
+    const items = (await Promise.all(ids.map(id => db.getDocument(id)))).filter(Boolean);
+    const svc = items.length ? (await predict.estimateService(items, office, settings)).minutes : null;
+    res.json(await engine.slotPlan(office, date, svc, settings));
+  } catch (e) { next(e); }
+});
+
 router.post('/new', proofToMemory, async (req, res, next) => {
   try {
     const b = req.body;
@@ -154,6 +200,22 @@ router.post('/new', proofToMemory, async (req, res, next) => {
         t.clientType === 'guest' && t.userId && same(t.firstName, b.firstName) && same(t.lastName, b.lastName));
       if (prev) guestId = prev.userId;
     }
+    // Limit of requests: one open ticket per office, for visitors too. A
+    // visitor has no student number, so this phone and their name count.
+    if (b.clientType === 'guest') {
+      const first = await db.getDocument(Number([].concat(b.documentIds || [])[0]) || 0);
+      const office = first ? first.office : b.office;
+      const here = (await myTickets(req)).find(t => ACTIVE(t) && t.department === office);
+      const named = office ? await db.findActiveGuestTicket(b.firstName, b.lastName, office) : null;
+      const open = here || named;
+      if (open) {
+        const msg = `You already have an open ${office} ticket (${open.ticketNo}). ` +
+                    'Visitors can hold one ticket per office at a time.';
+        await engine.logDecision(null, office, 'refused', `Visitor ${String(b.firstName || '').trim()} ${String(b.lastName || '').trim()}: ${msg}`);
+        return renderForm(req, res, b, msg);
+      }
+    }
+
     const who = guestId
       ? { user: await db.getUser(guestId) }
       : await db.findOrCreateWalkIn(b);
@@ -161,6 +223,9 @@ router.post('/new', proofToMemory, async (req, res, next) => {
 
     const r = await db.createRequest(who.user, b, { walkIn: true });
     if (r.error) {
+      // refused requests are kept, so the admin can see the limits working
+      await engine.logDecision(r.blockedBy ? r.blockedBy.id : null, r.blockedBy ? r.blockedBy.department : null,
+        'refused', `${who.user.fullName || 'Client'}: ${r.error}`);
       // the open ticket may be from another phone: say how to get it back
       const msg = r.blockedBy
         ? `${r.error} If it is not on this phone, use "Find my ticket" with its booking code.`
@@ -171,6 +236,11 @@ router.post('/new', proofToMemory, async (req, res, next) => {
     if (b.priorityType && !(await db.getTicketPriorityRequest(r.id)))
       await db.createTicketPriorityRequest(r, b.priorityType, req.file);
     remember(req, res, r.accessToken);
+    // the capacity decision: still a number, but an honest heads-up
+    if (r.decision && !r.decision.fits) {
+      req.session.error = `Heads up: the line is long today. You may not be served before closing ` +
+        `(${r.decision.closeClock}). You can keep your place, or book a time tomorrow from this page.`;
+    }
     res.redirect('/queue/t/' + r.accessToken);
   } catch (e) { next(e); }
 });
@@ -227,6 +297,8 @@ router.get('/t/:token', async (req, res, next) => {
       announcement: await db.latestAnnouncementFor(t.id),
       priorityRequest: await db.getTicketPriorityRequest(t.id),
       priorityLabels: db.PRIORITY_LABELS,
+      pushKey: push.ENABLED ? push.PUBLIC_KEY : '',
+      holdChoices: holdChoices(await db.getSettings()),
       base: '/queue/t/' + t.accessToken,
     });
   } catch (e) { next(e); }
@@ -248,6 +320,57 @@ router.post('/t/:token/cancel', async (req, res, next) => {
     const r = await db.cancelByStudent({ id: t.userId }, t.id, req.body.reason);
     if (r.error) req.session.error = r.error;
     else req.session.flash = `Ticket ${r.ticketNo} was cancelled. You can get a new number any time.`;
+    res.redirect('/queue/t/' + t.accessToken);
+  } catch (e) { next(e); }
+});
+
+// "Turn on alerts": this phone's push address for this ticket.
+router.post('/t/:token/push', express.json({ limit: '8kb' }), async (req, res, next) => {
+  try {
+    const t = await db.getTransactionByToken(req.params.token);
+    if (!t) return res.status(404).json({ error: 'Ticket not found.' });
+    const r = await push.subscribe(t.id, req.body);
+    if (r.error) return res.status(400).json(r);
+    await push.sendToTicket(t.id, {
+      title: `Alerts are on: ${t.ticketNo}`,
+      body: 'We will notify you when to leave, when you are called, and if the line runs late.',
+      url: '/queue/t/' + t.accessToken,
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// "Available from": busy until a time (max 2 hours); the place is kept.
+router.post('/t/:token/hold', async (req, res, next) => {
+  try {
+    const t = await ticketOr404(req, res);
+    if (!t) return;
+    const r = await db.setHold(t, req.body.until);
+    if (r.error) req.session.error = r.error;
+    else if (r.notNeeded) req.session.flash = r.message;
+    else req.session.flash = `Got it. You keep your place and will not be called before ${r.untilClock}.`;
+    res.redirect('/queue/t/' + t.accessToken);
+  } catch (e) { next(e); }
+});
+router.post('/t/:token/hold/clear', async (req, res, next) => {
+  try {
+    const t = await ticketOr404(req, res);
+    if (!t) return;
+    await db.clearHold(t);
+    req.session.flash = 'You are available again and will be called in your turn.';
+    res.redirect('/queue/t/' + t.accessToken);
+  } catch (e) { next(e); }
+});
+
+// "Book tomorrow" after a warning: the earliest open slot on the next open day.
+router.post('/t/:token/rebook', async (req, res, next) => {
+  try {
+    const t = await ticketOr404(req, res);
+    if (!t) return;
+    const r = await db.rebookTicket(t.id);
+    if (r.error) req.session.error = r.error;
+    else req.session.flash = `Moved to ${db.longDate(r.date)}, ${r.slot.label}. ` +
+      `Your new number is ${r.to}.`;
     res.redirect('/queue/t/' + t.accessToken);
   } catch (e) { next(e); }
 });

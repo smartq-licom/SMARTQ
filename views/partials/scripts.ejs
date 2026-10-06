@@ -55,7 +55,11 @@ document.querySelectorAll('[data-eta]').forEach(function (el) {
       if (unit) unit.textContent = 'now';
       return;
     }
-    if (secs >= 120) {
+    if (secs >= 3600) {                              // 7 h 52 min, not 472 minutes
+      var mm = Math.round(secs / 60);
+      el.textContent = Math.floor(mm / 60) + ' h ' + (mm % 60);
+      if (unit) unit.textContent = 'min';
+    } else if (secs >= 120) {
       el.textContent = Math.round(secs / 60);
       if (unit) unit.textContent = 'minutes';
     } else if (secs >= 60) {

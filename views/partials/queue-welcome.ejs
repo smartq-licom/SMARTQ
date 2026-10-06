@@ -35,7 +35,7 @@
         <span class="qw-off-what"><%= mine ? 'You have ' + mine.ticketNo + ' here' : o[1] %></span>
         <span class="qw-off-stats">
           <span><b><%= s.waiting %></b> in the queue</span>
-          <span><%= s.closed ? 'No window open' : waitText(s.minutes) %></span>
+          <span><%= s.closed && !s.beforeOpen ? 'No window open' : waitText(s.minutes, s) %></span>
         </span>
         <span class="qw-go" aria-hidden="true">&rarr;</span>
       </a>

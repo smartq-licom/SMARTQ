@@ -82,6 +82,17 @@ async function getDocumentStats(minSamples = 3, lookback = 30) {
  * Returns the figure plus which rung of the ladder produced it, so the
  * admin screen can show whether a number is learned or assumed.
  */
+/**
+ * Careful learning (shrinkage toward a prior). With only a few samples, a
+ * learned time is blended with the configured default, and trusted more as
+ * samples grow:  (n × median + K × default) ÷ (n + K).  Five 1-minute samples
+ * give about 5.7 min, not 1; a hundred real samples are almost all data.
+ */
+const PRIOR_WEIGHT = 10;
+function shrink(median, n, prior) {
+  return (n * median + PRIOR_WEIGHT * prior) / (n + PRIOR_WEIGHT);
+}
+
 async function estimateService(items, department, settings, stats) {
   const s = stats || await getDocumentStats(settings.minSamples);
   let total = 0;
@@ -89,14 +100,15 @@ async function estimateService(items, department, settings, stats) {
 
   for (const it of items) {
     const st = s.documentStats[it.name];
+    const prior = it.baselineMinutes || settings.avgServiceMinutes;
     if (st && st.usable) {
-      total += st.median;
+      total += shrink(st.median, st.samples, prior);
       source = 'historical';
     } else if (s.deptStats[department] && s.deptStats[department].usable) {
-      total += s.deptStats[department].median;
+      total += shrink(s.deptStats[department].median, s.deptStats[department].samples, prior);
       if (source !== 'historical') source = 'office';
     } else {
-      total += it.baselineMinutes || settings.avgServiceMinutes;
+      total += prior;
     }
   }
   return { minutes: Math.max(1, Math.round(total)), source };
@@ -124,7 +136,8 @@ async function positionWait(department, { lane = 'regular', requestedAt = null, 
     `SELECT COUNT(*) AS c FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
        AND queue_category=?
-       ${requestedAt ? 'AND (requested_at < ? OR (requested_at = ? AND id < ?))' : ''}`,
+       AND queue_at <= NOW()
+       ${requestedAt ? 'AND (queue_at < ? OR (queue_at = ? AND id < ?))' : ''}`,
     requestedAt ? [department, lane, requestedAt, requestedAt, ticketId || 0]
                 : [department, lane]);
   const ahead = Number(sameLane[0].c) || 0;
@@ -210,6 +223,7 @@ async function observedPace(department, { sample = 8, maxGap = 45, minGaps = 3 }
  * Returns both a duration and a clock time, plus the basis so the screen can
  * tell the client whether it is measured or merely assumed.
  */
+const PAUSED_AFTER_MIN = 15;   // no call for this long = the line is paused
 async function ticketEta(t) {
   const db       = require('./db');
   const settings = await db.getSettings();
@@ -225,6 +239,19 @@ async function ticketEta(t) {
   if (t.serviceDate && t.serviceDate > today)
     return { state: 'scheduled', label: 'Scheduled for ' + t.serviceDate, minutes: null };
 
+  // Office hours are over and this ticket was not reached: no estimate (a
+  // prediction made from "now" would just slide later with the clock).
+  if (t.serviceDate === today && db.isPastClosing(settings))
+    return { state: 'ended', label: 'The office closed at ' + db.clock12(settings.closeTime) + ' before your turn', minutes: null };
+
+  // before opening: the place is kept, the estimate starts with the day
+  if (t.serviceDate === today && new Date() < new Date(`${today}T${settings.openTime}:00`))
+    return { state: 'opens', label: 'The office opens at ' + db.clock12(settings.openTime), minutes: null };
+
+  // a booking for later today: not in line until its slot starts
+  if (t.slotStart && new Date(t.queueAt) > new Date())
+    return { state: 'scheduled', label: 'Booked for ' + t.slotLabel + ' today', minutes: null };
+
   const wins = await q(
     `SELECT COUNT(*) AS c FROM windows WHERE department=? AND status='open'`, [t.department]);
   const openWindows = Number(wins[0].c) || 0;
@@ -236,8 +263,8 @@ async function ticketEta(t) {
     `SELECT COUNT(*) AS c FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting'
        AND queue_category=?
-       AND (requested_at < ? OR (requested_at = ? AND id < ?))`,
-    [t.department, t.queueCategory, t.requestedAt, t.requestedAt, t.id]);
+       AND (queue_at < ? OR (queue_at = ? AND id < ?))`,
+    [t.department, t.queueCategory, t.queueAt, t.queueAt, t.id]);
   let ahead = Number(same[0].c) || 0;
 
   // regular tickets also wait behind priority clients (the queue alternates)
@@ -277,20 +304,42 @@ async function ticketEta(t) {
     }
   }
 
-  basisLabel = basis === 'observed'
+  const effective = ahead + jumpers + inService * 0.5;
+  let minutes     = Math.round(effective * pace);
+
+  // Prefer the decision engine's day simulation (data/engine.js): it plays the
+  // rest of the day forward window by window, with each ticket's own documents.
+  let fits = true, slowEndClock = null, closeClock = null;
+  try {
+    const f = await require('./engine').ticketForecast(t);
+    if (f) {
+      minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
+      basis = 'simulated';
+    }
+  } catch (e) { /* fall back to the position estimate */ }
+
+  basisLabel = basis === 'simulated'
+      ? "simulated from the line ahead, each client's documents and today's pace"
+    : basis === 'observed'
       ? `based on the last ${obs.gaps + 1} clients served`
     : basis === 'history'
       ? 'based on how long this service usually takes'
       : 'estimate only, no data yet today';
 
-  const effective = ahead + jumpers + inService * 0.5;
-  const minutes   = Math.round(effective * pace);
+  // Paused line: windows are open but nobody has been called for a while, so
+  // every estimate moves later minute by minute. Say so instead of looking exact.
+  const lastCall = await q(
+    `SELECT TIMESTAMPDIFF(MINUTE, MAX(called_at), NOW()) AS idle,
+            SUM(ticket_status IN ('called','serving')) AS busy
+     FROM transactions WHERE department=? AND service_date=CURDATE()`, [t.department]);
+  const idle = lastCall[0].idle == null ? null : Number(lastCall[0].idle);
+  const paused = !Number(lastCall[0].busy) && (idle == null || idle >= PAUSED_AFTER_MIN);
 
   if (effective <= 0) {
     return {
-      state: 'next', label: 'You are next', minutes: 0, seconds: 0,
+      state: 'next', label: 'You are next', minutes: 0, seconds: 0, paused, idleMinutes: idle,
       ahead: 0, jumpers, inService, pace: Math.round(pace * 10) / 10,
-      basis, basisLabel, openWindows,
+      basis, basisLabel, openWindows, fits, slowEndClock, closeClock,
     };
   }
 
@@ -301,12 +350,14 @@ async function ticketEta(t) {
 
   return {
     state: 'waiting',
+    paused, idleMinutes: idle,
     minutes,
     seconds: minutes * 60,
     atClock: `${h}:${pad(at.getMinutes())} ${ampm}`,
     ahead, jumpers, inService,
     pace: Math.round(pace * 10) / 10,
     basis, basisLabel, openWindows,
+    fits, slowEndClock, closeClock,
   };
 }
 
@@ -402,7 +453,7 @@ async function getAccuracy(from = null, to = null) {
 
   const rows = await q(
     `SELECT t.predicted_wait AS predicted,
-            TIMESTAMPDIFF(MINUTE, t.requested_at, t.called_at) AS actual,
+            TIMESTAMPDIFF(MINUTE, COALESCE(t.queue_at, t.requested_at), t.called_at) AS actual,
             t.department, t.queue_category
      FROM transactions t
      WHERE t.predicted_wait IS NOT NULL AND t.called_at IS NOT NULL ${range}`, args);
@@ -437,7 +488,7 @@ async function getAccuracy(from = null, to = null) {
 }
 
 module.exports = {
-  median, ewma, erlangC,
+  median, ewma, erlangC, shrink,
   getDocumentStats, estimateService,
   observedPace, ticketEta,
   positionWait, arrivalWait, arrivalRate,

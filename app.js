@@ -185,6 +185,18 @@ app.locals.tone = s => ({
 app.locals.peso  = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 app.locals.chip  = 'font-mono font-bold text-[12.5px] bg-brand-wash border border-brand-line rounded px-2 py-0.5 text-brand-deep';
 app.locals.label = s => String(s || '').replace(/_/g, ' ');
+// 472 -> "about 7 hours and 52 minutes"; 25 -> "about 25 minutes".
+// short: "~7 h 52 min" (small labels).
+app.locals.duration = (m, short) => {
+  if (m == null) return null;
+  m = Math.max(0, Math.round(m));
+  if (m < 1) return short ? 'under a minute' : 'less than a minute';
+  const h = Math.floor(m / 60), r = m % 60;
+  if (short) return '~' + (h ? h + ' h' + (r ? ' ' + r + ' min' : '') : r + ' min');
+  const hs = h ? h + (h === 1 ? ' hour' : ' hours') : '';
+  const rs = r ? r + (r === 1 ? ' minute' : ' minutes') : '';
+  return 'about ' + (hs && rs ? hs + ' and ' + rs : hs || rs);
+};
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/',        require('./routes/auth'));
@@ -200,6 +212,19 @@ setInterval(async () => {
   try { await db.processAutoCancel(); }
   catch (e) { console.error('[AUTO-CANCEL]', e.message); }
 }, 15 * 1000);
+
+// ── Decision engine watcher (data/engine.js) ─────────────────────────────────
+// Re-runs the day simulation and sends phone alerts: "leave now" 15 minutes
+// before a turn, and "you may not be served today". One run at a time.
+const engine = require('./data/engine');
+let watching = false;
+setInterval(async () => {
+  if (watching) return;
+  watching = true;
+  try { await engine.watch(); }
+  catch (e) { console.error('[ENGINE]', e.message); }
+  finally { watching = false; }
+}, 30 * 1000);
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).render('pages/error', {

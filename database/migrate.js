@@ -95,6 +95,74 @@ const STEPS = [
             WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'proof_data'`,
     add:   'ALTER TABLE priority_requests ADD COLUMN proof_data MEDIUMBLOB DEFAULT NULL',
   },
+  {
+    name: 'first come, first served by joining time or booked slot start (queue_at)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'queue_at'`,
+    add:   `ALTER TABLE transactions ADD COLUMN queue_at DATETIME DEFAULT NULL,
+              ADD INDEX idx_queue (department, service_date, ticket_status, queue_at)`,
+  },
+  {
+    name: 'older tickets get their place in line (queue_at from the request or the opening time)',
+    sql: `UPDATE transactions t JOIN settings s ON s.id = 1
+          SET t.queue_at = CASE WHEN t.is_scheduled = 1 THEN TIMESTAMP(t.service_date, s.open_time)
+                                ELSE t.requested_at END
+          WHERE t.queue_at IS NULL`,
+  },
+  {
+    name: '30-minute booking slots (slot_start, slot_end)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'slot_start'`,
+    add:   'ALTER TABLE transactions ADD COLUMN slot_start TIME DEFAULT NULL, ADD COLUMN slot_end TIME DEFAULT NULL',
+  },
+  {
+    name: 'warnings and phone alerts already given for a ticket (risk_at, alerts_sent)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'alerts_sent'`,
+    add:   `ALTER TABLE transactions ADD COLUMN risk_at DATETIME DEFAULT NULL,
+              ADD COLUMN alerts_sent VARCHAR(80) NOT NULL DEFAULT ''`,
+  },
+  {
+    name: '"available from": a place held while the student is busy (hold_until, hold_used)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'hold_until'`,
+    add:   `ALTER TABLE transactions ADD COLUMN hold_until DATETIME DEFAULT NULL,
+              ADD COLUMN hold_used TINYINT(1) NOT NULL DEFAULT 0`,
+  },
+  {
+    name: 'missed turns: back 5 places, cancelled on the second miss (missed_count)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'missed_count'`,
+    add:   'ALTER TABLE transactions ADD COLUMN missed_count TINYINT NOT NULL DEFAULT 0',
+  },
+  {
+    name: 'decision log: why the system accepted, warned or held a ticket',
+    sql: `CREATE TABLE IF NOT EXISTS decision_log (
+      id             INT AUTO_INCREMENT PRIMARY KEY,
+      transaction_id INT DEFAULT NULL,
+      department     VARCHAR(20) DEFAULT NULL,
+      decision       VARCHAR(30) NOT NULL,
+      reason         VARCHAR(255) NOT NULL,
+      detail         TEXT DEFAULT NULL,
+      created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_tx (transaction_id),
+      INDEX idx_created (created_at)
+    ) ENGINE=InnoDB`,
+  },
+  {
+    name: 'phone notifications (Web Push) subscribed per ticket',
+    sql: `CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id             INT AUTO_INCREMENT PRIMARY KEY,
+      transaction_id INT NOT NULL,
+      endpoint_hash  CHAR(64) NOT NULL,
+      endpoint       TEXT NOT NULL,
+      p256dh         VARCHAR(255) NOT NULL,
+      auth           VARCHAR(255) NOT NULL,
+      created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_tx_endpoint (transaction_id, endpoint_hash),
+      CONSTRAINT fk_ps_tx FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`,
+  },
 ];
 
 (async () => {

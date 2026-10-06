@@ -5,6 +5,8 @@ const auth   = require('./auth');
 const predict = require('./prediction');
 const peak    = require('./peak');
 const paging  = require('./paging');
+const engine  = require('./engine');
+const push    = require('./push');
 
 const q   = async (sql, p = []) => (await pool.execute(sql, p))[0];
 const run = async (sql, p = []) => (await pool.execute(sql, p))[0];
@@ -585,7 +587,7 @@ async function getDayBookings(department, date) {
     `SELECT * FROM transactions
      WHERE department IN (${offices.map(() => '?').join(',')}) AND service_date=?
      ORDER BY FIELD(department,'Cashier','Registrar'),
-              FIELD(queue_category,'priority','regular'), requested_at, id`,
+              FIELD(queue_category,'priority','regular'), queue_at, id`,
     [...offices, date]);
   const list = rows.map(mapTx);
   await attachDocuments(list);
@@ -743,6 +745,15 @@ async function decidePriorityRequest(reviewer, id, approve, reason) {
     await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW() WHERE id=?`,
               [pr.category, pr.userId]);
     if (pr.transactionId) moved = await moveToPriority(reviewer, pr.transactionId, pr.category);
+  }
+  if (pr.transactionId) {
+    const t = await getTransaction(pr.transactionId);
+    if (t) push.sendToTicket(t.id, approve
+      ? { title: `Priority approved: ${t.ticketNo}`,
+          body: moved ? `You moved to the priority lane. Bring the same ID to the window.` : 'Bring the same ID to the window.',
+          url: '/queue/t/' + t.accessToken }
+      : { title: 'Priority not approved',
+          body: `${String(reason).trim()} You stay in the regular line.`, url: '/queue/t/' + t.accessToken });
   }
   return { ok: true, moved, request: await getPriorityRequest(id) };
 }
@@ -1174,6 +1185,8 @@ async function validateSchedule(mode, dateStr, department = null) {
       return { error: 'The offices are closed today. Please schedule for a working day.' };
     if (isPastClosing(s))
       return { error: `Office hours are over for today (closed at ${clock12(s.closeTime)}). Please schedule for a later date.` };
+    if (isBeforeJoinOpens(s))
+      return { error: `Today's line opens at ${clock12(joinOpensAt(s))}. You can book a time instead.` };
     return { ok: true, serviceDate: today(), isScheduled: 0 };
   }
 
@@ -1391,13 +1404,32 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     }
   }
 
-  // Predict the wait now and store it, so accuracy can be measured later.
+  // Predict the service time now and store it, so accuracy can be measured later.
   let forecast = { wait: null, service: null, source: null };
   try {
     const svc = await predict.estimateService(items, department, s);
-    const pos = await predict.positionWait(department, { lane: category });
-    forecast = { wait: pos.minutes, service: svc.minutes, source: svc.source };
+    forecast = { wait: null, service: svc.minutes, source: svc.source };
   } catch (e) { /* a forecast must never block a ticket */ }
+
+  // ---- place in line: first come, first served (data/engine.js) -------------
+  // "Join now" counts from this moment, even from a classroom. A booking counts
+  // from its 30-minute slot's start, and only if the slot still has room for
+  // these documents.
+  let queueAt = new Date(), slot = null, decision = null;
+  if (b.mode === 'schedule') {
+    const plan = await engine.slotPlan(department, sched.serviceDate, forecast.service, s);
+    slot = plan.slots.find(x => x.start === b.slot);
+    if (!slot) return { error: 'Please choose a time for your visit.' };
+    if (!slot.available) return { error: `The ${slot.label} slot is full. Please choose another time.` };
+    queueAt = new Date(`${sched.serviceDate}T${slot.start}:00`);
+  } else {
+    // The capacity decision: does this person fit before closing, even if the
+    // windows run slow? Either way they get the number; a tight day is warned.
+    try {
+      decision = await engine.evaluateJoin(department, { lane: category, service: forecast.service });
+      forecast.wait = decision.minutes;
+    } catch (e) { /* the decision must never block a ticket */ }
+  }
 
   const conn = await pool.getConnection();
   try {
@@ -1420,8 +1452,8 @@ async function createRequest(user, b, { walkIn = false } = {}) {
          purpose,other_purpose,amount_due,ticket_status,payment_status,overall_status,
          is_scheduled,scheduled_date,service_date,submit_token,requires_claim,
          predicted_wait,predicted_service,prediction_source,
-         access_token,booking_code)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?)`,
+         access_token,booking_code,queue_at,slot_start,slot_end)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [ ticketNo, department, category, pType, user.id,
         user.role === 'guest' ? 'guest' : 'student',
         String(b.firstName).trim(), String(b.middleName || '').trim() || null,
@@ -1436,7 +1468,8 @@ async function createRequest(user, b, { walkIn = false } = {}) {
         sched.isScheduled, sched.isScheduled ? sched.serviceDate : null,
         sched.serviceDate, token, items.some(i => i.requiresClaim) ? 1 : 0,
         forecast.wait, forecast.service, forecast.source,
-        crypto.randomBytes(16).toString('hex'), bookingCode() ]
+        crypto.randomBytes(16).toString('hex'), bookingCode(),
+        queueAt, slot ? slot.start : null, slot ? slot.end : null ]
     );
     const txId = ins.insertId;
 
@@ -1480,10 +1513,21 @@ async function createRequest(user, b, { walkIn = false } = {}) {
       `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note)
        VALUES (?,?,?,?,?)`,
       [txId, ticketNo, sched.isScheduled ? 'scheduled' : 'requested', department,
-       sched.isScheduled ? `Scheduled for ${sched.serviceDate}` : null]);
+       slot ? `Booked ${sched.serviceDate}, ${slot.label}` : null]);
 
     await conn.commit();
-    return await getTransaction(txId);
+
+    // why the system took this ticket, with its numbers (decision log)
+    if (slot) {
+      await engine.logDecision(txId, department, 'booked',
+        `${ticketNo}: slot ${slot.label} on ${sched.serviceDate} had room for ${forecast.service} min of work.`,
+        { slot: slot.label, placesLeftBefore: slot.placesLeft, serviceMin: forecast.service });
+    } else if (decision) {
+      await engine.logDecision(txId, department, decision.decision, `${ticketNo}: ${decision.reason}`, decision);
+    }
+    const created = await getTransaction(txId);
+    created.decision = decision;
+    return created;
   } catch (e) {
     await conn.rollback();
     if (e.code === 'ER_DUP_ENTRY') {
@@ -1588,6 +1632,16 @@ function bookingCode() {
 }
 
 /** The ticket behind a phone's secret link, or null. */
+/** A visitor's open ticket at an office, matched by name (one per office). */
+async function findActiveGuestTicket(firstName, lastName, department) {
+  const rows = await q(
+    `SELECT * FROM transactions
+     WHERE client_type='guest' AND department=? AND overall_status NOT IN ('completed','cancelled')
+       AND service_date >= CURDATE()`, [department]);
+  const hit = rows.find(r => normName(r.first_name) === normName(firstName) && normName(r.last_name) === normName(lastName));
+  return hit ? mapTx(hit) : null;
+}
+
 async function getTransactionByToken(token) {
   if (!/^[a-f0-9]{32}$/.test(String(token || ''))) return null;
   const r = await q(`${TX_SELECT} WHERE t.access_token=?`, [token]);
@@ -1635,7 +1689,7 @@ async function moveToRegular(staff, txId) {
     await conn.execute(
       `UPDATE transactions SET ticket_no=?, queue_category='regular', priority_type='none',
          ticket_status='waiting', staff_id=NULL, staff_name=NULL, window_id=NULL, window_label=NULL,
-         called_at=NULL, started_at=NULL, warned_at=NULL, requested_at=NOW(),
+         called_at=NULL, started_at=NULL, warned_at=NULL, queue_at=NOW(),
          overall_status=CASE WHEN department='Cashier' THEN 'pending' ELSE 'waiting_registrar' END
        WHERE id=?`, [newNo, t.id]);
     await conn.execute(
@@ -1660,6 +1714,14 @@ function mapTx(t) {
     queueCategory: t.queue_category, priorityType: t.priority_type,
     userId: t.user_id, clientType: t.client_type,
     accessToken: t.access_token || null, bookingCode: t.booking_code || null,
+    // place in line: when they joined, or their booked slot's start
+    queueAt: t.queue_at || t.requested_at,
+    slotStart: t.slot_start ? String(t.slot_start).slice(0, 5) : null,
+    slotEnd:   t.slot_end   ? String(t.slot_end).slice(0, 5)   : null,
+    slotLabel: t.slot_start ? `${clock12(String(t.slot_start).slice(0, 5))} – ${clock12(String(t.slot_end).slice(0, 5))}` : '',
+    riskAt: t.risk_at || null,
+    holdUntil: t.hold_until || null, holdUsed: !!t.hold_used, missedCount: Number(t.missed_count) || 0,
+    alertsSent: t.alerts_sent || '',
     firstName: t.first_name, middleName: t.middle_name || '', lastName: t.last_name,
     fullName: fullName(t),
     name: `${t.first_name} ${t.last_name}`,
@@ -1709,6 +1771,23 @@ function longDate(dateStr) {
     { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 /** True once today's closing time (Philippine time) has passed. */
+/**
+ * The same-day line opens 1 hour before office hours (7:00 AM for an 8:00 AM
+ * opening), so nobody takes the first numbers in the middle of the night.
+ * Booking a time is open at any hour.
+ */
+const JOIN_OPENS_BEFORE_MIN = 60;
+function joinOpensAt(s) {
+  const [h, m] = String(s.openTime || '08:00').split(':').map(Number);
+  const t = Math.max(0, h * 60 + (m || 0) - JOIN_OPENS_BEFORE_MIN);
+  return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+}
+function isBeforeJoinOpens(s) {
+  const [h, m] = joinOpensAt(s).split(':').map(Number);
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes() < h * 60 + m;
+}
+
 function isPastClosing(s) {
   const [h, m] = String(s.closeTime || '17:00').split(':').map(Number);
   const now = new Date();
@@ -1832,7 +1911,7 @@ async function getQueue(department, { date = null } = {}) {
   const d = date || today();
   const list = (await q(
     `${TX_SELECT} WHERE t.department=? AND t.service_date=?
-     ORDER BY t.requested_at ASC, t.id ASC`, [department, d])).map(mapTx);
+     ORDER BY t.queue_at ASC, t.id ASC`, [department, d])).map(mapTx);
   return attachDocuments(list);
 }
 
@@ -1849,8 +1928,9 @@ async function pickNextTicket(department) {
     const r = await q(
       `SELECT * FROM transactions
        WHERE department=? AND service_date=? AND ticket_status='waiting'
-         AND queue_category=?
-       ORDER BY requested_at ASC, id ASC LIMIT 1`, [department, d, cat]);
+         AND queue_category=? AND queue_at <= NOW()
+         AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
+       ORDER BY queue_at ASC, id ASC LIMIT 1`, [department, d, cat]);
     return r[0] || null;
   };
 
@@ -2070,7 +2150,9 @@ async function completeRegistrar(staff, txId) {
 async function cancelByStudent(user, txId, reason) {
   const t = await getTransaction(txId);
   if (!t || t.userId !== user.id)        return { error: 'Ticket not found.' };
-  if (!t.isScheduled)                     return { error: 'Only booked tickets can be cancelled here. For a same-day ticket, please ask the office.' };
+  // booked tickets, and same-day tickets the system warned may not be served today
+  const booked = t.isScheduled || !!t.slotStart;
+  if (!booked && !t.riskAt)               return { error: 'Only booked tickets can be cancelled here. For a same-day ticket, please ask the office.' };
   if (t.paymentStatus === 'paid')         return { error: 'This ticket is already paid, so it cannot be cancelled here. Please ask the Cashier.' };
   if (t.ticketStatus !== 'waiting')       return { error: 'This ticket has already been called, so only the office can cancel it now.' };
 
@@ -2079,7 +2161,8 @@ async function cancelByStudent(user, txId, reason) {
   const r = await run(
     `UPDATE transactions SET ticket_status='cancelled', overall_status='cancelled',
        cancel_reason=?, completed_at=NOW()
-     WHERE id=? AND user_id=? AND is_scheduled=1 AND ticket_status='waiting' AND payment_status<>'paid'`,
+     WHERE id=? AND user_id=? AND (is_scheduled=1 OR slot_start IS NOT NULL OR risk_at IS NOT NULL)
+       AND ticket_status='waiting' AND payment_status<>'paid'`,
     ['Cancelled by student' + (why ? ': ' + why : ''), txId, user.id]);
   if (!r.affectedRows) return { error: 'This ticket can no longer be cancelled. Please ask the office.' };
 
@@ -2089,6 +2172,157 @@ async function cancelByStudent(user, txId, reason) {
     [txId, t.ticketNo, t.fullName || 'Student', t.department,
      'Cancelled by the student' + (why ? ': ' + why : '')]);
   return { ok: true, ticketNo: t.ticketNo };
+}
+
+/**
+ * "Book tomorrow" from a ticket the system warned about: move it to the
+ * earliest open 30-minute slot on the next open day, with that day's number.
+ */
+async function rebookTicket(txId) {
+  const t = await getTransaction(txId);
+  if (!t || t.ticketStatus !== 'waiting' || t.paymentStatus === 'paid')
+    return { error: 'This ticket can no longer be moved. Please ask the office.' };
+  const s = await getSettings();
+  for (let i = 1; i <= s.scheduleMaxDays; i++) {
+    const date = addDays(today(), i);
+    if ((await validateSchedule('schedule', date, t.department)).error) continue;   // closed day
+    const dayOv = (await getDayOverrides(t.department, date, date))[date];
+    const cap = dayOv && dayOv.slotLimit != null ? dayOv.slotLimit : s.dailySlotLimit;
+    if (cap > 0 && await slotsUsed(t.department, date) >= cap) continue;
+    const plan = await engine.slotPlan(t.department, date, t.predictedService, s);
+    const slot = plan.slots.find(x => x.available);
+    if (!slot) continue;
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const newNo = await nextTicketNo(conn, t.department, date, t.queueCategory);
+      const [u] = await conn.execute(
+        `UPDATE transactions SET ticket_no=?, service_date=?, scheduled_date=?, is_scheduled=1,
+           slot_start=?, slot_end=?, queue_at=?, risk_at=NULL, alerts_sent=''
+         WHERE id=? AND ticket_status='waiting'`,
+        [newNo, date, date, slot.start, slot.end, `${date} ${slot.start}:00`, t.id]);
+      if (!u.affectedRows) { await conn.rollback(); return { error: 'This ticket can no longer be moved.' }; }
+      await conn.execute(
+        `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note) VALUES (?,?,'rebooked',?,?)`,
+        [t.id, newNo, t.department, `Moved by the student from ${t.ticketNo} today to ${date}, ${slot.label}`]);
+      await conn.commit();
+      await engine.logDecision(t.id, t.department, 'rebooked',
+        `${t.ticketNo} moved to ${date} ${slot.label} as ${newNo} (first open slot).`, { date, slot: slot.label });
+      return { ok: true, from: t.ticketNo, to: newNo, date, slot };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  return { error: 'There is no open slot in the coming days. Please ask the office.' };
+}
+
+/**
+ * "I'm busy until 2:00 PM": the student keeps their place but is not called
+ * before then; others are called meanwhile, and once the time comes they are
+ * next in their lane. Once per ticket, at most 2 hours, today only. If the
+ * engine already predicts their turn after that time, nothing is held.
+ */
+const HOLD_MAX_MIN = 120;
+async function setHold(t, untilHHMM) {
+  if (!t || t.ticketStatus !== 'waiting' || t.paymentStatus === 'paid' || t.serviceDate !== today())
+    return { error: "Only a ticket waiting in today's line can be held." };
+  if (t.holdUsed) return { error: 'You can only set "available from" once per ticket.' };
+  if (!/^\d{2}:\d{2}$/.test(String(untilHHMM || ''))) return { error: 'Choose a time.' };
+  const s = await getSettings();
+  const until = new Date(`${today()}T${untilHHMM}:00`), now = new Date();
+  const max = new Date(now.getTime() + HOLD_MAX_MIN * 60000);
+  const close = new Date(`${today()}T${s.closeTime}:00`);
+  if (until <= now)   return { error: 'Choose a time later than now.' };
+  if (until > max)    return { error: 'You can hold your place for up to 2 hours.' };
+  if (until >= close) return { error: `The office closes at ${clock12(s.closeTime)}. Choose an earlier time.` };
+
+  const f = await engine.ticketForecast(t).catch(() => null);
+  if (f && f.start >= until) {
+    return { notNeeded: true, startClock: f.startClock,
+             message: `No need: your turn is predicted around ${f.startClock}, after ${clock12(untilHHMM)}. ` +
+                      'We will alert you 15 minutes before.' };
+  }
+  const alerts = String(t.alertsSent || '').split(',').filter(a => a && a !== 'leave').join(',');
+  await run(`UPDATE transactions SET hold_until=?, hold_used=1, alerts_sent=? WHERE id=? AND ticket_status='waiting'`,
+            [until, alerts, t.id]);
+  await run(`INSERT INTO queue_history (transaction_id,ticket_no,action,department,note) VALUES (?,?,'held',?,?)`,
+            [t.id, t.ticketNo, t.department, `Available from ${clock12(untilHHMM)}; place kept`]);
+  await engine.logDecision(t.id, t.department, 'held',
+    `${t.ticketNo} available from ${clock12(untilHHMM)}` +
+    (f ? `; predicted turn was ${f.startClock}, so others are called meanwhile and ${t.ticketNo} keeps its place.` : '.'),
+    { until: untilHHMM, predictedStart: f && f.startClock });
+  return { ok: true, untilClock: clock12(untilHHMM) };
+}
+
+/** "I'm available now": end the hold early. */
+async function clearHold(t) {
+  await run(`UPDATE transactions SET hold_until=NULL WHERE id=? AND ticket_status='waiting'`, [t.id]);
+  return { ok: true };
+}
+
+/**
+ * Called but not at the window. First miss: back to the line, 5 places behind
+ * where they were (or at the end), with a notice saying why. Second miss: the
+ * ticket is cancelled. Staff press one button; the window is freed.
+ */
+const MISS_PLACES = 5;
+async function missedTurn(staff, txId) {
+  const t = await getTransaction(txId);
+  const dept = staff.role === 'cashier' ? 'Cashier' : 'Registrar';
+  if (!t || t.department !== dept)                    return { error: 'Ticket not found.' };
+  if (!['called', 'serving'].includes(t.ticketStatus)) return { error: `${t.ticketNo} is not at a window.` };
+  if (t.paymentStatus === 'paid')                     return { error: `${t.ticketNo} is already paid.` };
+  const url = t.accessToken ? '/queue/t/' + t.accessToken : '/queue';
+
+  if (t.missedCount >= 1) {
+    await run(
+      `UPDATE transactions SET ticket_status='no-show', overall_status='cancelled', missed_count=missed_count+1,
+         cancel_reason='Missed turn twice', completed_at=NOW() WHERE id=?`, [t.id]);
+    await run(`INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,window_label,note)
+               VALUES (?,?,'no-show',?,?,?,?,?)`,
+              [t.id, t.ticketNo, staff.id, staff.fullName, dept, t.windowLabel || null, 'Missed turn twice; cancelled']);
+    await engine.logDecision(t.id, dept, 'cancelled', `${t.ticketNo} missed the turn a second time; cancelled.`);
+    push.sendToTicket(t.id, { title: `${t.ticketNo} was cancelled`,
+      body: 'You missed your turn twice. You can get a new number from the queue page.', url });
+    return { ok: true, cancelled: true, ticketNo: t.ticketNo };
+  }
+
+  // the 5th client behind them in the same lane (only people already in line,
+  // not bookings for later today); they go just after
+  const behind = await q(
+    `SELECT queue_at FROM transactions
+     WHERE department=? AND service_date=? AND ticket_status='waiting' AND queue_category=? AND id<>?
+       AND (queue_at > ? OR (queue_at = ? AND id > ?)) AND queue_at <= NOW()
+     ORDER BY queue_at, id LIMIT ${MISS_PLACES}`,
+    [dept, t.serviceDate, t.queueCategory, t.id, t.queueAt, t.queueAt, t.id]);
+  // One second after that person (they are called first anyway). With nobody
+  // behind, "now" in whole seconds: a time MySQL rounds UP would not be
+  // callable until the next second.
+  const newAt = behind.length
+    ? new Date(new Date(behind[behind.length - 1].queue_at).getTime() + 1000)
+    : new Date(Math.floor(Date.now() / 1000) * 1000);
+  await run(
+    `UPDATE transactions SET ticket_status='waiting', queue_at=?, missed_count=1, alerts_sent='',
+       staff_id=NULL, staff_name=NULL, window_id=NULL, window_label=NULL,
+       called_at=NULL, started_at=NULL, warned_at=NULL,
+       overall_status=CASE WHEN department='Cashier' THEN 'pending' ELSE 'waiting_registrar' END
+     WHERE id=?`, [newAt, t.id]);
+  const moved = behind.length;
+  const places = `${moved} place${moved === 1 ? '' : 's'}`;
+  await run(`INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,window_label,note)
+             VALUES (?,?,'missed_turn',?,?,?,?,?)`,
+            [t.id, t.ticketNo, staff.id, staff.fullName, dept, t.windowLabel || null,
+             `Not at the window; moved back ${places}`]);
+  await engine.logDecision(t.id, dept, 'missed',
+    `${t.ticketNo} was not at the window; moved back ${places} (rule: ${MISS_PLACES}). A second miss cancels it.`);
+  push.sendToTicket(t.id, { title: `You missed your turn: ${t.ticketNo}`,
+    body: `You were called but were not at the window, so you moved back ${places}. ` +
+          'If you miss it again, your ticket will be cancelled.', url });
+  return { ok: true, ticketNo: t.ticketNo, movedBack: moved };
 }
 
 async function cancelTicket(staff, txId, reason) {
@@ -2131,6 +2365,12 @@ async function announce(t, { isRecall = false } = {}) {
      VALUES (?,?,?,?,?,?)`,
     [t.id, t.ticketNo, t.department, t.windowLabel || null,
      [t.firstName, t.lastName].filter(Boolean).join(' '), isRecall ? 1 : 0]);
+  // the student's phone, even with the page closed (Web Push)
+  push.sendToTicket(t.id, {
+    title: `${isRecall ? 'Calling again' : 'Now calling'}: ${t.ticketNo}`,
+    body: `Please go to ${t.windowLabel || 'the ' + t.department} now.`,
+    url: t.accessToken ? '/queue/t/' + t.accessToken : '/queue',
+  });
   return r.insertId;
 }
 
@@ -2167,7 +2407,7 @@ async function announcementPulseFor(txId, userId) {
             (SELECT COUNT(*) FROM transactions x
               WHERE x.department = t.department AND x.service_date = t.service_date
                 AND x.queue_category = t.queue_category AND x.ticket_status = 'waiting'
-                AND (x.requested_at < t.requested_at OR (x.requested_at = t.requested_at AND x.id < t.id))
+                AND (x.queue_at < t.queue_at OR (x.queue_at = t.queue_at AND x.id < t.id))
             ) AS ahead
      FROM transactions t WHERE t.id=? AND t.user_id=?`, [txId, userId]);
   if (!r.length) return { id: null };
@@ -2241,16 +2481,11 @@ async function processAutoCancel() {
        AND TIMESTAMPDIFF(MINUTE, started_at, NOW()) >= ?`,
     [s.cancelAfterMinutes]);
 
-  // 4. Never called at all. A queue number the client took and abandoned would
-  //    otherwise sit as "pending" forever, which is what students were seeing.
-  //    Scheduled tickets are left alone until the day they are for.
-  const expired = await run(
-    `UPDATE transactions SET ticket_status='cancelled', overall_status='cancelled',
-       cancel_reason='Expired: not attended', completed_at=NOW()
-     WHERE ticket_status='waiting' AND payment_status <> 'paid'
-       AND service_date <= CURDATE()
-       AND TIMESTAMPDIFF(MINUTE, requested_at, NOW()) >= ?`,
-    [s.expireWaitingMinutes]);
+  // 4. (Removed) Waiting tickets are no longer cancelled after a fixed time.
+  //    Students may join from a classroom and wait two hours, and a booking's
+  //    clock starts at its slot, not when it was made. A client who is not
+  //    there is caught when called (no-show), and step 5 closes the day.
+  const expired = { affectedRows: 0 };
 
   // 5. Anything still open from an earlier day is closed out, so yesterday's
   //    numbers never linger on a dashboard.
@@ -2288,6 +2523,17 @@ async function getTimeLeft(txId) {
 }
 
 // ── LIVE QUEUE LOAD ──────────────────────────────────────────────────────────
+/** Today's real average wait: from a client's place in line to being called. */
+async function todayAverageWait(department) {
+  const r = await q(
+    `SELECT ROUND(AVG(TIMESTAMPDIFF(SECOND, queue_at, called_at)) / 60) AS m, COUNT(*) AS n
+     FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL AND queue_at IS NOT NULL
+       AND called_at >= queue_at`, [department]);
+  const n = Number(r[0].n) || 0;
+  return n ? { minutes: Number(r[0].m) || 0, served: n } : null;
+}
+
 async function getLoad() {
   const s = await getSettings();
   const out = {};
@@ -2810,7 +3056,7 @@ async function getReports(from, to) {
        SUM(client_type='guest')                  AS guests,
        SUM(is_scheduled=1)                       AS scheduled,
        ROUND(AVG(actual_minutes),1)              AS avg_service,
-       ROUND(AVG(TIMESTAMPDIFF(MINUTE, requested_at, called_at)),1) AS avg_wait
+       ROUND(AVG(TIMESTAMPDIFF(MINUTE, COALESCE(queue_at, requested_at), called_at)),1) AS avg_wait
      FROM transactions WHERE service_date BETWEEN ? AND ?`, range);
 
   const [money] = await q(
@@ -2888,14 +3134,15 @@ module.exports = {
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,
-  validateSchedule, createRequest,
+  validateSchedule, createRequest, longDate,
   getTransaction, getUserTransactions, getQueue, getBlockingTransaction,
   getActiveByDepartment,
-  findOrCreateWalkIn, getTransactionByToken, findTicketByCode, moveToRegular,
+  findOrCreateWalkIn, getTransactionByToken, findTicketByCode, moveToRegular, rebookTicket,
+  setHold, clearHold, missedTurn, findActiveGuestTicket,
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, getClaimableLines, clock12, cancelByStudent, isPastClosing,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

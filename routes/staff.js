@@ -94,6 +94,18 @@ router.post('/move-regular/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Called but not at the window: back 5 places with a notice; cancelled on a
+// second miss (db.missedTurn).
+router.post('/missed/:id', async (req, res, next) => {
+  try {
+    const r = await db.missedTurn(req.session.user, Number(req.params.id));
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, r.cancelled
+      ? `${r.ticketNo} missed the turn twice and was cancelled.`
+      : `${r.ticketNo} moved back ${r.movedBack} place${r.movedBack === 1 ? '' : 's'}. The client was notified.`);
+  } catch (e) { next(e); }
+});
+
 router.post('/accept/:id', async (req, res, next) => {
   try {
     const r = await db.acceptTicket(req.session.user, req.params.id);

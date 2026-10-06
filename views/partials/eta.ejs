@@ -18,12 +18,24 @@
     <%= e.ahead %> ahead of you<% if (e.jumpers) { %> plus <%= e.jumpers %> priority<% } %>
     &middot; <%= e.basisLabel %>
   </div>
+  <% if (e.paused) { %>
+  <div class="mt-2.5 rounded bg-white/10 px-2.5 py-2 text-[11.5px] text-white/85">
+    &#9208; The line is paused: no one has been called<%= e.idleMinutes != null ? ' in the last ' + e.idleMinutes + ' minutes' : ' yet today' %>.
+    Until the windows start calling, this time moves later.
+  </div>
+  <% } %>
 </div>
 <% } else if (e && e.state === 'next') { %>
 <div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
   <div class="text-[11px] uppercase tracking-wider text-white/60">Estimated time</div>
   <div class="text-2xl font-extrabold mt-0.5">You are next</div>
   <div class="text-[11.5px] text-white/70 mt-1">Stay close to the window.</div>
+  <% if (e.paused) { %>
+  <div class="mt-2.5 rounded bg-white/15 px-2.5 py-2 text-[11.5px] text-white/90">
+    &#9208; The line is paused: no one has been called<%= e.idleMinutes != null ? ' in the last ' + e.idleMinutes + ' minutes' : ' yet today' %>.
+    You will be called when the windows start calling.
+  </div>
+  <% } %>
 </div>
 <% } else if (e && e.state === 'now') { %>
 <div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
@@ -34,8 +46,12 @@
 <div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
   <%= e.label %>. Your number stays valid.
 </div>
+<% } else if (e && e.state === 'opens') { %>
+<div class="rounded-lg bg-brand-wash border border-brand-line px-4 py-3 text-[12.5px] text-brand-deep">
+  <strong><%= e.label %>.</strong> You are in line; your estimate starts when the windows open.
+</div>
 <% } else if (e && e.state === 'scheduled') { %>
 <div class="rounded-lg bg-mist border border-hair px-4 py-3 text-[12.5px] text-slateSoft">
-  <%= e.label %>. An estimate appears on the day.
+  <%= e.label %>. <%= /today$/.test(e.label) ? 'Your estimate appears when your slot starts.' : 'An estimate appears on the day.' %>
 </div>
 <% } %>

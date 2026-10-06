@@ -1,0 +1,13 @@
+{
+  "name": "SmartQ - LICOM Queue",
+  "short_name": "SmartQ",
+  "description": "Get a Cashier or Registrar queue number at Libon Community College.",
+  "start_url": "/queue",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#2185D5",
+  "theme_color": "#2185D5",
+  "icons": [
+    { "src": "/img/lcc-seal.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
