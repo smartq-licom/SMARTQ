@@ -1,0 +1,110 @@
+<%#
+  "Install SmartQ?" sheet for the students' pages (included by public-nav).
+  Android / Chrome: the browser's own install prompt, opened from our button.
+  iPhone (no install prompt exists): the two steps, Share then Add to Home Screen.
+  Never over the welcome screen, never once installed, and "Not now" keeps it
+  away for 7 days. Without JavaScript nothing shows.
+%>
+<div id="installSheet" class="ins" hidden role="dialog" aria-modal="false" aria-labelledby="insTitle">
+  <div class="ins-card">
+    <div class="ins-top">
+      <img src="/img/icon-192.png" alt="" class="ins-icon" width="52" height="52">
+      <div class="min-w-0">
+        <div id="insTitle" class="ins-title">Install the SmartQ app?</div>
+        <div class="ins-text">Open your ticket in one tap and get alerts when it's almost your turn.</div>
+      </div>
+      <button type="button" class="ins-x" data-ins-later aria-label="Close">&times;</button>
+    </div>
+
+    <%# iPhone: there is no install button, so show how %>
+    <ol class="ins-ios" data-ins-ios hidden>
+      <li><span class="ins-n">1</span> Tap
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2185D5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg>
+        <b>Share</b> at the bottom of Safari</li>
+      <li><span class="ins-n">2</span> Choose <b>Add to Home Screen</b></li>
+    </ol>
+
+    <div class="ins-actions">
+      <button type="button" class="ins-btn ins-later" data-ins-later>Not now</button>
+      <button type="button" class="ins-btn ins-go" data-ins-go>Install</button>
+    </div>
+  </div>
+</div>
+<style>
+  .ins{ position:fixed; left:0; right:0; bottom:0; z-index:900; padding:0 12px calc(12px + env(safe-area-inset-bottom));
+        display:flex; justify-content:center; pointer-events:none }
+  .ins-card{ pointer-events:auto; width:100%; max-width:440px; background:#fff; border-radius:22px; padding:16px;
+             box-shadow:0 24px 60px -12px rgba(15,76,129,.45), 0 0 0 1px rgba(16,24,40,.06);
+             animation:ins-up .45s cubic-bezier(.2,.8,.2,1) both }
+  .ins.is-leaving .ins-card{ animation:ins-down .3s ease-in both }
+  @keyframes ins-up{ from{ transform:translateY(120%); opacity:0 } to{ transform:none; opacity:1 } }
+  @keyframes ins-down{ to{ transform:translateY(120%); opacity:0 } }
+  .ins-top{ display:flex; align-items:flex-start; gap:12px }
+  .ins-icon{ width:52px; height:52px; border-radius:14px; flex:none; box-shadow:0 6px 14px -6px rgba(33,133,213,.6) }
+  .ins-title{ font-size:15.5px; font-weight:800; color:#1E2A36; line-height:1.25 }
+  .ins-text{ font-size:12.5px; color:#4A5866; margin-top:3px; line-height:1.4 }
+  .ins-x{ margin-left:auto; flex:none; width:30px; height:30px; border-radius:50%; font-size:20px; line-height:1; color:#8A96A3 }
+  .ins-x:hover{ background:#F5F7FA; color:#1E2A36 }
+  .ins-ios{ margin:12px 0 0; padding:10px 12px; list-style:none; border-radius:14px; background:#F5F7FA; font-size:13px; color:#1E2A36 }
+  .ins-ios li{ display:flex; align-items:center; gap:7px; padding:4px 0 }
+  .ins-n{ display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#2185D5; color:#fff; font-size:11px; font-weight:800; flex:none }
+  .ins-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px }
+  .ins-btn{ min-height:44px; border-radius:12px; font-size:14px; font-weight:700; transition:transform .15s, background .15s }
+  .ins-btn:active{ transform:scale(.98) }
+  .ins-later{ background:#F5F7FA; color:#4A5866 }
+  .ins-go{ background:linear-gradient(135deg,#2E9BEA,#2185D5 50%,#1A6CAE); color:#fff; box-shadow:0 10px 22px -8px rgba(33,133,213,.7) }
+  .ins.is-ios .ins-actions{ grid-template-columns:1fr }
+  .ins.is-ios .ins-go{ display:none }
+  @media (prefers-reduced-motion:reduce){ .ins-card, .ins.is-leaving .ins-card{ animation:none } }
+  @media print{ .ins{ display:none !important } }
+</style>
+<script>
+(function () {
+  var sheet = document.getElementById('installSheet');
+  if (!sheet) return;
+  var KEY = 'smartq.install.later', WEEK = 7 * 24 * 3600 * 1000;
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (standalone) return;                                   // already the app
+  try { if (Date.now() - Number(localStorage.getItem(KEY) || 0) < WEEK) return; } catch (e) {}
+
+  var ua = navigator.userAgent;
+  var ios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var iosSafari = ios && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+  var deferred = null, shown = false;
+
+  // Chrome needs the service worker registered to offer installing
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+
+  function welcomeOpen() { var w = document.getElementById('welcome'); return w && !w.hidden; }
+  function show() {
+    if (shown) return;
+    if (welcomeOpen()) { setTimeout(show, 1500); return; }  // after the welcome screen
+    shown = true;
+    if (!deferred) { sheet.classList.add('is-ios'); sheet.querySelector('[data-ins-ios]').hidden = false;
+                     sheet.querySelector('.ins-title').textContent = 'Add SmartQ to your Home Screen?'; }
+    sheet.hidden = false;
+  }
+  function hide(remember) {
+    if (remember) { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} }
+    sheet.classList.add('is-leaving');
+    setTimeout(function () { sheet.hidden = true; sheet.classList.remove('is-leaving'); }, 320);
+  }
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();                                     // our sheet asks instead
+    deferred = e;
+    setTimeout(show, 3500);
+  });
+  window.addEventListener('appinstalled', function () { hide(true); });
+
+  sheet.querySelectorAll('[data-ins-later]').forEach(function (b) { b.addEventListener('click', function () { hide(true); }); });
+  sheet.querySelector('[data-ins-go]').addEventListener('click', function () {
+    if (!deferred) return;
+    deferred.prompt();
+    deferred.userChoice.then(function (c) { hide(c.outcome !== 'accepted' ? true : false); deferred = null; })
+      .catch(function () { hide(false); });
+  });
+
+  if (iosSafari) setTimeout(show, 3500);                    // iPhone: no event, just the steps
+})();
+</script>
