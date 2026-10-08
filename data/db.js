@@ -2895,34 +2895,6 @@ async function getStaffAccounts() {
      ORDER BY FIELD(role,'admin','cashier','registrar'), last_name`)).map(mapUser);
 }
 
-/** Student and guest accounts only, with how many transactions each has made. */
-async function getClientAccounts({ search = '', role = '', page = 1 } = {}) {
-  const where = ["u.role IN ('student','guest')", 'u.deleted_at IS NULL'];
-  const params = [];
-  if (role === 'student' || role === 'guest') { where.push('u.role = ?'); params.push(role); }
-  if (search) {
-    where.push(`(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ? OR u.student_no LIKE ?)`);
-    const like = `%${search}%`;
-    params.push(like, like, like, like);
-  }
-  // one page at a time; the cards above the table still count every match
-  const w = where.join(' AND ');
-  const [c] = await q(
-    `SELECT COUNT(*) AS n, SUM(u.role='student') AS students, SUM(u.role='guest') AS guests
-     FROM users u WHERE ${w}`, params);
-  const pg = paging.paging(c.n, page);
-  const rows = await q(
-    `SELECT u.*,
-            (SELECT COUNT(*) FROM transactions t WHERE t.user_id = u.id) AS tx_count,
-            (SELECT MAX(t.requested_at) FROM transactions t WHERE t.user_id = u.id) AS last_tx
-     FROM users u WHERE ${w}
-     ORDER BY u.last_name, u.first_name
-     LIMIT ${pg.perPage} OFFSET ${pg.offset}`, params);
-  return {
-    list: rows.map(r => ({ ...mapUser(r), txCount: Number(r.tx_count) || 0, lastTx: r.last_tx || null })),
-    pg, counts: { students: Number(c.students) || 0, guests: Number(c.guests) || 0 },
-  };
-}
 /**
  * Admin deletes an account (staff, student or guest; never an admin or
  * themselves). An account with history (tickets, priority requests, or
@@ -3426,7 +3398,7 @@ module.exports = {
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,
   historyFilters, getHistoryClients, getHistoryForClient, getHistoryChoices, HISTORY_STATUS,
   REPORT_TYPES, runReport,
-  getReceipt, getUsers, getStaffAccounts, getClientAccounts,
+  getReceipt, getUsers, getStaffAccounts,
   getAssignableStaff, setUserActive, createStaff,
   getReports, getHistory,
 };

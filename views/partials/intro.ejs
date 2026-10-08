@@ -103,6 +103,9 @@
   if (!el || seen || calm) { if (el) el.remove(); return; }
 
   try { sessionStorage.setItem('smartq.intro', '1'); } catch (e) {}
+  // Straight onto <body>: inside the login card (which animates with a
+  // transform) a fixed layer would only fill the card, not the screen.
+  document.body.appendChild(el);
   el.hidden = false;
   document.documentElement.style.overflow = 'hidden';
 

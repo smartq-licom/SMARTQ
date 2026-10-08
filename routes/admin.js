@@ -132,23 +132,10 @@ router.post('/users/:id/reset-password', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Student and guest accounts (kept separate from staff)
-router.get('/students', async (req, res, next) => {
-  try {
-    const search = req.query.search || '';
-    const role   = req.query.role   || '';
-    const { list, pg, counts } = await db.getClientAccounts({ search, role, page: paging.pageFrom(req.query) });
-    res.render('pages/admin/students', { title: 'Student Accounts', list, pg, search, role, counts });
-  } catch (e) { next(e); }
-});
-
-router.post('/students/:id/active', async (req, res, next) => {
-  try {
-    await db.setUserActive(req.params.id, req.body.active === '1');
-    req.session.flash = 'Account updated.';
-    res.redirect('/admin/students');
-  } catch (e) { next(e); }
-});
+// No "Student Accounts" page: students have no accounts (they queue by QR with
+// their student number). Their records stay behind the scenes for claims,
+// the one-ticket-per-day rule, history and reports. Old links come here.
+router.get('/students', (req, res) => res.redirect('/admin/history'));
 
 router.post('/users/staff', async (req, res, next) => {
   try {
@@ -165,8 +152,7 @@ router.post('/users/:id/delete', async (req, res, next) => {
     const r = await db.deleteAccount(req.session.user, Number(req.params.id));
     if (r.error) req.session.error = r.error;
     else req.session.flash = `${r.name}'s ${r.role} account was deleted.`;
-    const back = req.get('referer') || '';
-    res.redirect(back.includes('/admin/students') ? '/admin/students' : '/admin/users');
+    res.redirect('/admin/users');
   } catch (e) { next(e); }
 });
 
