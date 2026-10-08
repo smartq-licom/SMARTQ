@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="<%= settings.refreshRate %>">
 <title><%= dept %> Queue | SmartQ</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="icon" href="/img/lcc-seal.jpg">
@@ -18,6 +17,10 @@ tailwind.config = { theme: { extend: { colors: {
   body{font-family:'Public Sans',system-ui,sans-serif}
   .blink{animation:bl 1.6s ease-in-out infinite}
   @keyframes bl{0%,100%{opacity:1}50%{opacity:.55}}
+  /* a part that just changed glows once, instead of the whole screen reloading */
+  .live-changed{animation:lc 1.2s ease-out}
+  @keyframes lc{0%{background-color:rgba(33,133,213,.16)}100%{background-color:transparent}}
+  @media (prefers-reduced-motion:reduce){.live-changed{animation:none}}
 </style>
 </head>
 <body class="bg-white text-ink">
@@ -40,8 +43,8 @@ tailwind.config = { theme: { extend: { colors: {
     </div>
   </header>
 
-  <!-- now serving -->
-  <section class="px-8 py-7 border-b-2 border-hair">
+  <!-- now serving (parts marked data-live update in place: partials/live) -->
+  <section class="px-8 py-7 border-b-2 border-hair" data-live="serving">
     <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-5">Now Serving</div>
     <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> gap-6">
       <% windows.forEach(function(w){ %>
@@ -69,7 +72,7 @@ tailwind.config = { theme: { extend: { colors: {
 
   <!-- SmartQ predicts: the real call order, the wait if you join now, today's average, a QR to join -->
   <% var nextNo = predict.nextUp.length ? predict.nextUp[0].ticketNo : null; %>
-  <section class="px-8 py-5 border-b-2 border-hair bg-mist/60">
+  <section class="px-8 py-5 border-b-2 border-hair bg-mist/60" data-live="predict">
     <div class="flex flex-wrap items-stretch gap-6">
       <div class="flex-1 min-w-[16rem]">
         <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-3">Next up</div>
@@ -112,7 +115,7 @@ tailwind.config = { theme: { extend: { colors: {
   </section>
 
   <!-- waiting lanes -->
-  <section class="flex-1 grid md:grid-cols-2 gap-0">
+  <section class="flex-1 grid md:grid-cols-2 gap-0" data-live="lanes">
     <div class="px-8 py-6 md:border-r-2 border-hair">
       <div class="flex items-center gap-3 mb-4">
         <span class="text-[15px] font-black uppercase tracking-[0.2em] text-slateSoft">Priority</span>
@@ -151,6 +154,7 @@ tailwind.config = { theme: { extend: { colors: {
   </section>
 
   <!-- recently called -->
+  <div data-live="recent">
   <% if (recent.length) { %>
   <section class="px-8 py-4 border-t-2 border-hair">
     <div class="flex items-center gap-4 flex-wrap">
@@ -161,9 +165,10 @@ tailwind.config = { theme: { extend: { colors: {
     </div>
   </section>
   <% } %>
+  </div>
 
   <!-- announcement -->
-  <footer class="bg-brand text-white px-8 py-4 text-center text-[19px] font-bold">
+  <footer class="bg-brand text-white px-8 py-4 text-center text-[19px] font-bold" data-live="announce">
     <%= settings.announcement %>
   </footer>
 </div>
@@ -177,6 +182,14 @@ function tick(){
 }
 tick(); setInterval(tick, 1000);
 </script>
+<script>
+// the part that changed glows once, so a new number is noticed without a flash
+window.addEventListener('smartq:updated', function (e) {
+  var el = e.detail && e.detail.root; if (!el) return;
+  el.classList.remove('live-changed'); void el.offsetWidth; el.classList.add('live-changed');
+});
+</script>
+<%- include('../../partials/live', { liveEvery: Math.max(5, Number(settings.refreshRate) || 10) }) %>
 <%- include('../../partials/chime', {
       chimeScope: dept.toLowerCase(),
       chimeId: announcement ? announcement.id : '',
