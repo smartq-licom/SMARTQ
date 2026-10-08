@@ -35,13 +35,16 @@
         <span class="qw-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><%- off === 'Cashier'
           ? '<path d="M8 21V3.5h5.5a4.5 4.5 0 0 1 0 9H8M5 7h14M5 10h14"/>'
           : '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>' %></svg></span>
-        <span class="qw-off-name"><%= off %></span>
-        <span class="qw-off-what"><%= mine ? 'You have ' + mine.ticketNo + ' here' : o[1] %></span>
-        <span class="qw-off-stats">
+        <span class="qw-txt">
+          <span class="qw-off-name"><%= off %></span>
+          <span class="qw-off-what"><%= mine ? 'You have ' + mine.ticketNo + ' here' : o[1] %></span>
+        </span>
+        <span class="qw-go" aria-hidden="true">&rarr;</span>
+        <%# kept live while the screen is open (partials/live on the page) %>
+        <span class="qw-off-stats" data-live="qw-<%= off %>">
           <span><i class="qw-live"></i><b><%= s.waiting %></b> in the queue</span>
           <span><%= s.closed && !s.beforeOpen ? 'No window open' : waitText(s.minutes, s) %></span>
         </span>
-        <span class="qw-go" aria-hidden="true">&rarr;</span>
       </a>
       <% }) %>
     </div>
@@ -71,7 +74,7 @@
   .qw-aurora i:nth-child(2){ background:#8B5CF6; right:-25vmax; top:10vh; opacity:.25; animation:qw-orb 18s ease-in-out infinite alternate-reverse }
   .qw-aurora i:nth-child(3){ background:#10B981; left:10vw; bottom:-35vmax; opacity:.18; animation:qw-orb 22s ease-in-out infinite alternate }
   @keyframes qw-orb{ to{ transform:translate(12vmax,8vmax) scale(1.15) } }
-  .qw-ico{ display:grid; place-items:center; width:42px; height:42px; border-radius:12px; margin-bottom:10px;
+  .qw-ico{ display:grid; place-items:center; width:42px; height:42px; border-radius:12px; margin:0;
            background:#EAF3FB; color:#2185D5 }
   .qw-live{ display:inline-block; width:7px; height:7px; border-radius:50%; background:#10B981; margin-right:6px;
             box-shadow:0 0 0 0 rgba(16,185,129,.5); animation:qw-ping 1.8s ease-out infinite; vertical-align:1px }
@@ -110,9 +113,9 @@
   .qw-offices{ display:grid; gap:12px; margin-top:30px }
   @media (min-width:560px){ .qw-offices{ grid-template-columns:1fr 1fr } }
   .qw-office{
-    position:relative; display:flex; flex-direction:column; align-items:flex-start; text-align:left;
+    position:relative; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:0 12px; text-align:left;
     background:#fff; color:#303841; text-decoration:none;
-    border-radius:16px; padding:18px 48px 16px 18px;
+    border-radius:18px; padding:14px 14px 0;
     box-shadow:0 14px 34px rgba(16,52,86,.28);
     transition:transform .18s, box-shadow .18s;
     animation:qw-rise .6s cubic-bezier(.34,1.4,.64,1) both;
@@ -121,11 +124,14 @@
   .qw-office:hover, .qw-office:focus-visible{ transform:translateY(-3px) scale(1.02);
     box-shadow:0 18px 40px rgba(16,52,86,.36); text-decoration:none; color:#303841 }
   .qw-office:active{ transform:scale(.98) }
-  .qw-off-name{ font-size:22px; font-weight:800; color:#1A6CAE }
-  .qw-off-what{ font-size:13px; font-weight:600; color:#3A4750; margin-top:2px }
-  .qw-off-stats{ display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:10px; font-size:12.5px; color:#3A4750 }
+  .qw-txt{ min-width:0 }
+  .qw-off-name{ display:block; font-size:19px; font-weight:800; color:#1A6CAE; line-height:1.15 }
+  .qw-off-what{ display:block; font-size:12.5px; font-weight:600; color:#4A5866; margin-top:1px }
+  .qw-off-stats{ grid-column:1 / -1; display:flex; justify-content:space-between; gap:6px 12px; flex-wrap:wrap;
+                 margin:12px -14px 0; padding:9px 14px; border-top:1px solid #EEF1F5; border-radius:0 0 18px 18px;
+                 background:#F7F9FC; font-size:12.5px; color:#4A5866 }
   .qw-off-stats b{ font-size:15px; color:#303841 }
-  .qw-go{ position:absolute; right:16px; top:50%; transform:translateY(-50%);
+  .qw-go{ position:static;
           width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
           background:#2185D5; color:#fff; font-size:17px; font-weight:700;
           animation:qw-nudge 1.6s ease-in-out 2.4s infinite }
@@ -141,7 +147,7 @@
   @keyframes qw-word{ from{opacity:0; transform:translateY(40%); filter:blur(10px)} to{opacity:1; transform:none; filter:blur(0)} }
   @keyframes qw-rise{ from{opacity:0; transform:translateY(30px)} to{opacity:1; transform:none} }
   @keyframes qw-fade{ from{opacity:0} to{opacity:1} }
-  @keyframes qw-nudge{ 0%,100%{transform:translate(0,-50%)} 50%{transform:translate(5px,-50%)} }
+  @keyframes qw-nudge{ 0%,100%{transform:none} 50%{transform:translateX(4px)} }
   @keyframes qw-drift{ from{transform:translateY(0); opacity:0} 10%{opacity:1} 90%{opacity:1} to{transform:translateY(-115vh); opacity:0} }
 
   /* Phones asking for less motion (often power-saving mode) still get a calm

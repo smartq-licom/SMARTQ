@@ -90,39 +90,46 @@
                   ticket is made (the Registrar checks the ID before releasing). %>
               <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
                  const picked = [].concat(form.documentIds || []).map(String).includes(String(sv.id)); %>
-              <div class="doc-row rounded-2xl border-2 border-hair px-4 py-3.5 transition has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10"
-                   data-office="<%= sv.office %>" hidden>
-                <label class="flex items-start gap-3 cursor-pointer">
+              <%# Highlighted from its own checkbox only (recalc sets .is-picked): a
+                  plain :has(:checked) also matched the purpose list's selected
+                  option, so an unticked OTR stayed blue. %>
+              <div class="doc-row" data-office="<%= sv.office %>" hidden>
+                <label class="doc-head">
                   <input type="checkbox" name="documentIds" value="<%= sv.id %>" <%= picked ? 'checked' : '' %>
                          data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
                          data-purpose="<%= sv.needsPurpose ? 1 : 0 %>" data-guest="<%= sv.guestAllowed ? 1 : 0 %>"
                          <%= isClaim ? 'data-claim=1' : '' %>
-                         class="mt-0.5 rounded border-hair" onchange="recalc()">
+                         class="sr-only" onchange="recalc()">
+                  <span class="doc-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
                   <span class="min-w-0 flex-1">
-                    <span class="block text-[13.5px] font-semibold leading-tight"><%= sv.name %></span>
-                    <span class="block text-[11.5px] text-slateSoft/80 mt-0.5">
-                      <%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %>
-                    </span>
+                    <span class="block text-[14px] font-semibold leading-tight"><%= sv.name %></span>
+                    <span class="block text-[11.5px] text-slateSoft/70 mt-0.5"><%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %><%= sv.needsPurpose ? ' · asks for a purpose' : '' %></span>
                   </span>
-                  <span class="shrink-0 flex items-center gap-1.5" id="qty-<%= sv.id %>" hidden>
-                    <label for="copies-<%= sv.id %>" class="text-[11.5px] text-slateSoft/80">Copies</label>
-                    <input id="copies-<%= sv.id %>" type="number" name="copies" value="1" min="1"
-                           max="<%= settings.maxCopies %>" data-copies="<%= sv.id %>" disabled
-                           class="w-16 rounded border border-hair px-2 py-1 text-[13px] text-center"
-                           onchange="recalc()" oninput="recalc()">
-                  </span>
+                  <span class="doc-price"><%= sv.paymentRequired ? peso(sv.price).replace('.00', '') : 'Free' %></span>
                 </label>
+                <%# copies: a − / + stepper; the number field is what is submitted %>
+                <div class="doc-qty" id="qty-<%= sv.id %>" hidden>
+                  <span class="text-[12px] font-semibold text-slateSoft">Copies</span>
+                  <div class="stepper">
+                    <button type="button" aria-label="One copy less" onclick="stepCopies(<%= sv.id %>, -1)">&minus;</button>
+                    <input id="copies-<%= sv.id %>" type="number" name="copies" value="1" min="1" inputmode="numeric"
+                           max="<%= settings.maxCopies %>" data-copies="<%= sv.id %>" disabled aria-label="Copies of <%= sv.name %>"
+                           onchange="recalc()" oninput="recalc()">
+                    <button type="button" aria-label="One copy more" onclick="stepCopies(<%= sv.id %>, 1)">+</button>
+                  </div>
+                  <span class="ml-auto text-[12px] text-slateSoft/70" data-line-total="<%= sv.id %>"></span>
+                </div>
                 <% if (sv.needsPurpose) { %><div data-purpose-slot="<%= sv.id %>"></div><% } %>
                 <% if (isClaim) { %>
-                <p class="mt-2 ml-7 text-[12px] text-slateSoft/80" data-claim-panel="<%= sv.id %>" hidden>
+                <p class="mt-2 ml-10 text-[12px] text-slateSoft/80" data-claim-panel="<%= sv.id %>" hidden>
                   We will find the documents you already paid for at the Cashier using your student number.
                 </p>
                 <% } %>
                 <% if (!sv.guestAllowed) { %>
-                <p class="mt-1 ml-7 text-[11px] text-slateSoft/60">For enrolled students only</p>
+                <p class="mt-1 ml-10 text-[11px] text-slateSoft/60">For enrolled students only</p>
                 <% } %>
                 <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
-                <details class="mt-2 ml-7">
+                <details class="mt-2 ml-10">
                   <summary class="cursor-pointer text-[11.5px] font-semibold text-brand"><%= sv.office === 'Cashier' ? 'What to bring to the Registrar when you claim it' : 'What you need to bring' %></summary>
                   <ul class="mt-1.5 space-y-1">
                     <% requirements[sv.id].forEach(function(r){ %>
@@ -155,15 +162,26 @@
       <%# Purpose belongs to the document that asks for it (e.g. the OTR), so it
           sits inside that document's box (moved there by recalc), never at the
           bottom where it would look like every document needs one. %>
-      <div id="purposeSection" class="mt-3 ml-7 rounded-lg bg-white border border-brand-line px-3 py-3" hidden>
-          <label for="purpose" class="<%= UI.lbl %>">Purpose of this document *</label>
-          <select id="purpose" name="purpose" class="<%= UI.input %>" required onchange="toggleOther()">
+      <div id="purposeSection" class="purpose-box" hidden>
+          <div class="flex items-center gap-2 text-[13px] font-bold text-ink">
+            <span class="grid place-items-center w-7 h-7 rounded-lg bg-brand text-white" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6"/></svg>
+            </span>
+            What is it for? <span class="font-normal text-slateSoft/60">required</span>
+          </div>
+          <div class="purpose-chips" role="radiogroup" aria-label="Purpose of this document">
+            <% purposes.forEach(function(p){ %>
+            <button type="button" role="radio" data-purpose-chip="<%= p %>" aria-checked="<%= form.purpose === p ? 'true' : 'false' %>"><%= p %></button>
+            <% }) %>
+          </div>
+          <label for="purpose" class="sr-only">Purpose of this document</label>
+          <select id="purpose" name="purpose" hidden onchange="toggleOther()">
             <option value="">Select purpose</option>
             <% purposes.forEach(function(p){ %>
             <option value="<%= p %>" <%= form.purpose === p ? 'selected' : '' %>><%= p %></option>
             <% }) %>
           </select>
-          <div id="otherBox" class="hidden mt-3">
+          <div id="otherBox" class="hidden mt-3 fade-in">
             <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
             <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %>" value="<%= form.otherPurpose || '' %>">
           </div>
@@ -539,8 +557,27 @@ function loadSlots(){
     })
     .catch(function () { if (mine === slotAsk) note.textContent = 'Could not load the times. Check your connection and try again.'; });
 }
+// tapping a purpose chip sets the (hidden) purpose list
+document.addEventListener('click', function (e) {
+  var chip = e.target.closest('[data-purpose-chip]'); if (!chip) return;
+  var sel = document.getElementById('purpose');
+  sel.value = chip.dataset.purposeChip;
+  toggleOther();
+  var box = sel.closest('.wiz-pane'); var err = box && box.querySelector('.wiz-error');
+  if (err && /is for|purpose/i.test(err.textContent)) { err.textContent = ''; err.classList.add('hidden'); }
+  if (sel.value === 'Others') setTimeout(function () { document.getElementById('otherPurpose').focus(); }, 50);
+});
+function stepCopies(id, d){
+  var f = document.querySelector('[data-copies="' + id + '"]'); if (!f || f.disabled) return;
+  var max = parseInt(f.max, 10) || 99;
+  f.value = Math.min(max, Math.max(1, (parseInt(f.value, 10) || 1) + d));
+  recalc();
+}
 function toggleOther(){
   var v = document.getElementById('purpose').value;
+  document.querySelectorAll('[data-purpose-chip]').forEach(function (c) {
+    c.setAttribute('aria-checked', c.dataset.purposeChip === v ? 'true' : 'false');
+  });
   var box = document.getElementById('otherBox');
   box.classList.toggle('hidden', v !== 'Others');
   document.getElementById('otherPurpose').required = (v === 'Others');
@@ -615,6 +652,14 @@ function recalc(){
     var qty    = document.getElementById('qty-' + b.dataset.row);
     var copies = document.querySelector('[data-copies="' + b.dataset.row + '"]');
     if (qty) qty.hidden = !(b.checked && visible);
+    var row = b.closest('.doc-row');
+    if (row) row.classList.toggle('is-picked', b.checked && visible);
+    var line = document.querySelector('[data-line-total="' + b.dataset.row + '"]');
+    if (line && copies) {
+      var cn = Math.max(1, parseInt(copies.value || '1', 10));
+      line.textContent = parseFloat(b.dataset.price) > 0 && cn > 1
+        ? '₱' + (parseFloat(b.dataset.price) * cn).toLocaleString('en-PH', {minimumFractionDigits:2}) : '';
+    }
     // an unticked box must not submit a copies value, or the arrays misalign
     if (copies) copies.disabled = !(b.checked && visible);
     // the list of paid documents to claim shows only while claiming is ticked
@@ -675,6 +720,39 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
 </script>
 
 <style>
+  /* document cards */
+  .doc-row{ border:2px solid #E3E7ED; border-radius:18px; padding:14px 16px; background:#fff;
+            transition:border-color .2s, background-color .2s, box-shadow .2s, transform .15s }
+  .doc-row:hover{ border-color:#C9E0F4 }
+  .doc-row.is-picked{ border-color:#2185D5; background:#F4F9FE; box-shadow:0 0 0 4px rgba(33,133,213,.10), 0 6px 18px -8px rgba(33,133,213,.45) }
+  .doc-head{ display:flex; align-items:center; gap:12px; cursor:pointer }
+  .doc-head:active{ transform:scale(.99) }
+  .doc-check{ flex:none; width:26px; height:26px; border-radius:50%; border:2px solid #C7CED6; display:grid; place-items:center;
+              background:#fff; transition:background .2s, border-color .2s, transform .25s cubic-bezier(.34,1.56,.64,1) }
+  .doc-check svg{ width:15px; height:15px; fill:none; stroke:#fff; stroke-width:3.2; stroke-linecap:round; stroke-linejoin:round;
+                  stroke-dasharray:24; stroke-dashoffset:24; transition:stroke-dashoffset .3s ease-out .05s }
+  .doc-row.is-picked .doc-check{ background:#2185D5; border-color:#2185D5; transform:scale(1.08) }
+  .doc-row.is-picked .doc-check svg{ stroke-dashoffset:0 }
+  .doc-head input:focus-visible + .doc-check{ outline:2px solid #2185D5; outline-offset:2px }
+  .doc-head input:disabled ~ *{ opacity:.45 }
+  .doc-price{ flex:none; font:700 12.5px/1 'JetBrains Mono',monospace; padding:6px 9px; border-radius:999px; background:#F5F7FA; color:#4A5866 }
+  .doc-row.is-picked .doc-price{ background:#2185D5; color:#fff }
+  .doc-qty{ display:flex; align-items:center; gap:10px; margin:12px 0 0 38px; animation:open .25s ease-out }
+  .stepper{ display:flex; align-items:center; border:1.5px solid #E3E7ED; border-radius:12px; background:#fff; overflow:hidden }
+  .stepper button{ width:34px; height:34px; font-size:18px; font-weight:700; color:#2185D5 }
+  .stepper button:hover{ background:#EAF3FB }
+  .stepper input{ width:38px; text-align:center; font:700 14px 'JetBrains Mono',monospace; border:0; outline:none; -moz-appearance:textfield }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0 }
+  /* the purpose, inside the document that asks for it */
+  .purpose-box{ margin:12px 0 0 38px; padding:12px 14px; border-radius:14px; background:#fff; border:1.5px dashed #C9E0F4; animation:open .3s ease-out }
+  .purpose-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+  .purpose-chips button{ padding:8px 13px; border-radius:999px; font-size:12.5px; font-weight:600; color:#1E2A36;
+                         background:#F5F7FA; border:1.5px solid #E3E7ED; transition:all .15s }
+  .purpose-chips button:hover{ border-color:#2185D5; color:#1A6CAE }
+  .purpose-chips button[aria-checked="true"]{ background:#2185D5; border-color:#2185D5; color:#fff; box-shadow:0 6px 14px -6px rgba(33,133,213,.7) }
+  @keyframes open{ from{ opacity:0; transform:translateY(-6px) } to{ opacity:1; transform:none } }
+  @media (max-width:480px){ .doc-qty, .purpose-box{ margin-left:0 } }
+  @media (prefers-reduced-motion:reduce){ .doc-qty, .purpose-box{ animation:none } .doc-check, .doc-check svg{ transition:none } }
   /* "hidden" must win over layout classes such as flex (the Copies box). */
   form [hidden]{ display:none !important }
   /* the line between steps fills from left to right as you move on */
@@ -760,6 +838,8 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       var docs = [].filter.call(form.querySelectorAll('input[name=documentIds]:checked'), shown);
       if (!office) msg = 'Choose an office first.';
       else if (!docs.length) msg = 'Select at least one document.';
+      else if (!document.getElementById('purposeSection').hidden && !document.getElementById('purpose').value)
+        msg = 'Choose what the document is for.';
     }
     if (n === 2) {
       var sch = form.querySelector('input[name=mode][value=schedule]');
@@ -841,7 +921,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     });
     out.push(row('Documents', docs.join('<br>') || '&mdash;'));
     var purpose = document.getElementById('purpose');
-    if (purpose && shown(purpose) && purpose.value) {
+    if (purpose && shown(document.getElementById('purposeSection')) && purpose.value) {
       var other = document.getElementById('otherPurpose');
       var ownerRow = purpose.closest('.doc-row');
       var ownerName = ownerRow ? text(ownerRow.querySelector('label .block')) : '';
