@@ -69,7 +69,7 @@
           <div class="font-mono text-4xl font-extrabold text-hair">----</div>
           <p class="text-[13px] font-semibold mt-3">No client at your window</p>
           <p class="text-[12px] text-slateSoft/80 mt-1">
-            <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)
+            <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)<% if (nextUp._decision && nextUp._decision.reason) { %><span class="block text-[11.5px] text-brand-deep mt-0.5">Smart match: <%= nextUp._decision.reason %></span><% } %>
             <% } else { %>The queue is empty.<% } %>
           </p>
           <form method="POST" action="/staff/call-next" class="mt-4 no-print" data-once>

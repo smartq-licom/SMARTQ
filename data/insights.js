@@ -215,7 +215,7 @@ async function biasFactor(department) {
 // ── decision log ─────────────────────────────────────────────────────────────
 const DECISIONS = {
   accept: 'Accepted', accept_warned: 'Accepted, warned', warned: 'Warned late', booked: 'Booked a slot',
-  held: 'Place held', missed: 'Missed turn', cancelled: 'Cancelled', rebooked: 'Moved to next day', refused: 'Refused',
+  held: 'Place held', assigned: 'Window match', missed: 'Missed turn', cancelled: 'Cancelled', rebooked: 'Moved to next day', refused: 'Refused',
 };
 async function decisions({ department = null, decision = null, from = null, to = null, page = 1 } = {}) {
   const w = [], p = [];

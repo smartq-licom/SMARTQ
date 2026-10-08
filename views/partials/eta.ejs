@@ -14,6 +14,11 @@
           data-eta data-seconds="<%= e.seconds %>"><%= e.minutes %></span>
     <span class="text-[13px] text-white/70" data-eta-unit>minutes</span>
   </div>
+  <%# The window Smart Call Next will most likely give them (data/dispatch.js),
+      shown once the turn is near; the call itself has the final say. %>
+  <% if (e.window && e.minutes <= 20 && !e.paused) { %>
+  <div class="mt-2 rounded bg-white/10 px-2.5 py-1.5 text-[12.5px] font-semibold">Your window: <%= e.window %> <span class="font-normal text-white/70">(most likely)</span></div>
+  <% } %>
   <div class="text-[11px] text-white/50 mt-2">
     <%= e.ahead %> ahead of you<% if (e.jumpers) { %> plus <%= e.jumpers %> priority<% } %>
     &middot; <%= e.basisLabel %>
@@ -29,6 +34,7 @@
 <div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
   <div class="text-[11px] uppercase tracking-wider text-white/60">Estimated time</div>
   <div class="text-2xl font-extrabold mt-0.5">You are next</div>
+  <% if (e.window) { %><div class="text-[13px] font-semibold mt-1">Most likely at <%= e.window %></div><% } %>
   <div class="text-[11.5px] text-white/70 mt-1">Stay close to the window.</div>
   <% if (e.paused) { %>
   <div class="mt-2.5 rounded bg-white/15 px-2.5 py-2 text-[11.5px] text-white/90">

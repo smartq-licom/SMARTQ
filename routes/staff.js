@@ -32,7 +32,7 @@ router.get('/dashboard', async (req, res, next) => {
       waitingPriority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority'),
       waitingRegular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular'),
       completed:       queue.filter(t => t.ticketStatus === 'completed'),
-      nextUp: await db.pickNextTicket(dept),
+      nextUp: await db.pickNextTicket(dept, me),   // who Call Next would give THIS window
     });
   } catch (e) { next(e); }
 });

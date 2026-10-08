@@ -136,6 +136,12 @@ const STEPS = [
     add:   'ALTER TABLE transactions ADD COLUMN missed_count TINYINT NOT NULL DEFAULT 0',
   },
   {
+    name: 'smart Call Next: times a client was passed over (skip_count, max 2)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'skip_count'`,
+    add:   'ALTER TABLE transactions ADD COLUMN skip_count TINYINT NOT NULL DEFAULT 0',
+  },
+  {
     name: 'decision log: why the system accepted, warned or held a ticket',
     sql: `CREATE TABLE IF NOT EXISTS decision_log (
       id             INT AUTO_INCREMENT PRIMARY KEY,

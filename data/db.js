@@ -6,6 +6,7 @@ const predict = require('./prediction');
 const peak    = require('./peak');
 const paging  = require('./paging');
 const engine  = require('./engine');
+const dispatch = require('./dispatch');
 const push    = require('./push');
 
 const q   = async (sql, p = []) => (await pool.execute(sql, p))[0];
@@ -1921,36 +1922,50 @@ async function getQueue(department, { date = null } = {}) {
  * Falls through to whichever lane has tickets when one is empty.
  * Decides from what was actually called today, so it survives restarts.
  */
-async function pickNextTicket(department) {
-  const d = today();
+/** Clients ready to be called, per lane, first come first served (for data/dispatch.js). */
+async function readyLanes(department, settings) {
+  const rows = await q(
+    `SELECT id, ticket_no, queue_category, predicted_service, skip_count FROM transactions
+     WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
+       AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
+     ORDER BY queue_at ASC, id ASC`, [department]);
+  const lanes = { priority: [], regular: [] };
+  rows.forEach(r => lanes[r.queue_category === 'priority' ? 'priority' : 'regular'].push({
+    id: r.id, ticketNo: r.ticket_no, skip: Number(r.skip_count) || 0,
+    svc: Number(r.predicted_service) || settings.avgServiceMinutes,
+  }));
+  return lanes;
+}
 
-  const head = async cat => {
-    const r = await q(
-      `SELECT * FROM transactions
-       WHERE department=? AND service_date=? AND ticket_status='waiting'
-         AND queue_category=? AND queue_at <= NOW()
-         AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
-       ORDER BY queue_at ASC, id ASC LIMIT 1`, [department, d, cat]);
-    return r[0] || null;
-  };
-
-  const nextPriority = await head('priority');
-  const nextRegular  = await head('regular');
-
-  if (!nextPriority && !nextRegular) return null;
-  if (!nextRegular)  return nextPriority;
-  if (!nextPriority) return nextRegular;
-
-  // both lanes have tickets — alternate based on the last one called.
-  // called_at is whole-second precision, so ties are broken by id to keep the
-  // alternation deterministic when several tickets are called in the same second.
+/** The lane called last today (ties by id: called_at is whole seconds). */
+async function lastCalledLane(department) {
   const last = await q(
     `SELECT queue_category FROM transactions
-     WHERE department=? AND service_date=? AND called_at IS NOT NULL
-     ORDER BY called_at DESC, id DESC LIMIT 1`, [department, d]);
+     WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL
+     ORDER BY called_at DESC, id DESC LIMIT 1`, [department]);
+  return last.length ? last[0].queue_category : 'regular';
+}
 
-  const lastCat = last.length ? last[0].queue_category : 'regular';
-  return lastCat === 'priority' ? nextRegular : nextPriority;
+/**
+ * Who this window should call next: one fair line (FCFS, priority and regular
+ * 1:1), matched to the window by data/dispatch.js (window speed, shortest task
+ * for a clearly slower window, priority to a less busy free window, nobody
+ * passed over more than twice). With no staff given, the plain line order.
+ * The decision rides along as `_decision`.
+ */
+async function pickNextTicket(department, staff = null) {
+  const settings = await getSettings();
+  const lanes = await readyLanes(department, settings);
+  const wins = await dispatch.officeWindows(department);
+  const mine = staff && staff.windowId ? wins.find(w => w.id === staff.windowId) : null;
+  const win = mine || { id: null, label: 'this window', speed: 1, workToday: 0 };
+  const others = mine ? wins.filter(w => w.id !== win.id && w.status === 'open' && w.staffId) : [];
+  const d = dispatch.decide(win, lanes, await lastCalledLane(department), others);
+  if (!d) return null;
+  const r = await q('SELECT * FROM transactions WHERE id=?', [d.pick.id]);
+  if (!r.length) return null;
+  r[0]._decision = d;
+  return r[0];
 }
 
 /**
@@ -1993,18 +2008,35 @@ async function callNext(staff, department) {
   if (!win)       return { error: 'No window is open and free right now.' };
   if (win.error)  return { error: win.error };
 
-  const t = await pickNextTicket(department);
-  if (!t) return { error: 'There are no clients waiting in this queue.' };
+  // Smart Call Next (data/dispatch.js) picks who this window calls. If another
+  // window took the same client in the same instant, pick again.
+  let t = null;
+  for (let attempt = 0; attempt < 3 && !t; attempt++) {
+    const cand = await pickNextTicket(department, { ...staff, windowId: win.id });
+    if (!cand) return { error: 'There are no clients waiting in this queue.' };
+    // Calling a number also starts serving it: there is no separate Accept step.
+    // A client who never comes is cleared by Cancel or the inactivity auto-cancel.
+    const u = await run(
+      `UPDATE transactions SET ticket_status='serving', called_at=NOW(), started_at=NOW(),
+         staff_id=?, staff_name=?, window_id=?, window_label=?,
+         overall_status=CASE WHEN department='Cashier' THEN 'cashier_processing'
+                             ELSE 'registrar_processing' END
+       WHERE id=? AND ticket_status='waiting'`,
+      [staff.id, staff.fullName, win.id, win.label, cand.id]);
+    if (u.affectedRows) t = cand;
+  }
+  if (!t) return { error: 'Another window just called that client. Press Call Next again.' };
 
-  // Calling a number also starts serving it: there is no separate Accept step.
-  // A client who never comes is cleared by Cancel or the inactivity auto-cancel.
-  await run(
-    `UPDATE transactions SET ticket_status='serving', called_at=NOW(), started_at=NOW(),
-       staff_id=?, staff_name=?, window_id=?, window_label=?,
-       overall_status=CASE WHEN department='Cashier' THEN 'cashier_processing'
-                           ELSE 'registrar_processing' END
-     WHERE id=?`,
-    [staff.id, staff.fullName, win.id, win.label, t.id]);
+  // whoever was passed over moves one step closer to "called next no matter what"
+  const d = t._decision;
+  if (d && d.skipped.length) {
+    await run(`UPDATE transactions SET skip_count = skip_count + 1 WHERE id IN (${d.skipped.map(() => '?').join(',')})`,
+              d.skipped.map(x => x.id));
+    await engine.logDecision(t.id, department, 'assigned',
+      `${t.ticket_no} to ${win.label}: ${d.reason}. Passed over once: ${d.skipped.map(x => x.ticketNo).join(', ')} ` +
+      `(each at most ${dispatch.MAX_SKIPS} times).`,
+      { window: win.label, rule: d.rule, skipped: d.skipped.map(x => x.ticketNo) });
+  }
   await run(
     `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,window_label)
      VALUES (?,?,'called',?,?,?,?)`,

@@ -382,12 +382,12 @@ async function ticketEta(t) {
 
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
   // rest of the day forward window by window, with each ticket's own documents.
-  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, patternUsed = false;
+  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, patternUsed = false, window = null;
   try {
     const f = await require('./engine').ticketForecast(t);
     if (f) {
       minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
-      expectedAhead = f.expectedAhead; patternUsed = f.patternUsed;
+      expectedAhead = f.expectedAhead; patternUsed = f.patternUsed; window = f.window;
       basis = 'simulated';
     }
   } catch (e) { /* fall back to the position estimate */ }
@@ -415,7 +415,7 @@ async function ticketEta(t) {
     return {
       state: 'next', label: 'You are next', minutes: 0, seconds: 0, paused, idleMinutes: idle,
       ahead: 0, jumpers, inService, pace: Math.round(pace * 10) / 10,
-      basis, basisLabel, openWindows, fits, slowEndClock, closeClock,
+      basis, basisLabel, openWindows, fits, slowEndClock, closeClock, window,
     };
   }
 
@@ -433,7 +433,7 @@ async function ticketEta(t) {
     ahead, jumpers, inService,
     pace: Math.round(pace * 10) / 10,
     basis, basisLabel, openWindows,
-    fits, slowEndClock, closeClock,
+    fits, slowEndClock, closeClock, window,
   };
 }
 

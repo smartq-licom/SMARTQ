@@ -31,6 +31,7 @@
 const pool    = require('../database/connection');
 const predict = require('./prediction');
 const push    = require('./push');
+const dispatch = require('./dispatch');
 
 const q = async (sql, p = []) => (await pool.execute(sql, p))[0];
 
@@ -198,29 +199,32 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   const brStart = at(today, s.breakStart), brEnd  = at(today, s.breakEnd);
   const base = now > openAt ? now : openAt;
 
-  const wins = await q(`SELECT status FROM windows WHERE department=?`, [department]);
-  const openCount = wins.filter(w => w.status === 'open').length;
-  // Before opening (or with every window on break) assume the office's
-  // windows will be staffed, so students still get an estimate.
-  let c = openCount || wins.length || 1;
+  // The office's real windows, each with its staff member's speed and today's
+  // work (data/dispatch.js). Before opening (or with every window closed)
+  // assume the windows will be staffed, so students still get an estimate.
+  const all = await dispatch.officeWindows(department);
+  const open = all.filter(w => w.status === 'open');
+  const slots = (open.length ? open : all.length ? all : [{ id: null, label: department, speed: 1, workToday: 0 }])
+    .map(w => ({ id: w.id, label: w.label, speed: w.speed || 1, work: w.workToday || 0, free: base }));
 
   const rows = await q(
-    `SELECT id, ticket_no, queue_category, ticket_status, queue_at, hold_until, called_at, started_at, predicted_service
+    `SELECT id, ticket_no, queue_category, ticket_status, queue_at, hold_until, called_at, started_at,
+            predicted_service, skip_count, window_id
      FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status IN ('waiting','called','serving')
      ORDER BY queue_at, id`, [department]);
 
-  const inService = rows.filter(r => r.ticket_status !== 'waiting');
-  c = Math.max(c, inService.length);
-  const free = Array(c).fill(base);
   const result = {};
-  inService.forEach((r, i) => {
+  rows.filter(r => r.ticket_status !== 'waiting').forEach(r => {
+    let slot = slots.find(x => x.id === r.window_id);
+    if (!slot) { slot = { id: r.window_id, label: 'a window', speed: 1, work: 0, free: base }; slots.push(slot); }
     const from = new Date(r.started_at || r.called_at || now);
-    let end = addMin(from, serviceOf(r, pr, from) * factor);
+    let end = addMin(from, serviceOf(r, pr, from) * slot.speed * factor);
     if (end < now) end = addMin(now, 1);            // running long: assume about to finish
-    free[i] = end;
-    result[r.id] = { start: from, end, fits: end <= close, atWindow: true };
+    slot.free = end > slot.free ? end : slot.free;
+    result[r.id] = { start: from, end, fits: end <= close, atWindow: true, window: slot.label };
   });
+  const c = slots.length;
 
   const lane = { priority: [], regular: [] };
   rows.filter(r => r.ticket_status === 'waiting')
@@ -253,36 +257,43 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
      ORDER BY called_at DESC, id DESC LIMIT 1`, [department]);
   let lastCat = last.length ? last[0].queue_category : 'regular';
 
+  // Each client gets the same fields Call Next uses (expected minutes, times passed over).
+  [...lane.priority, ...lane.regular].forEach(x => {
+    x.svc = Number(x.predicted_service) || pr.median;
+    x.skip = Number(x.skip_count) || 0;
+  });
+
   let guard = 0;
   const realLeft = () => lane.regular.length || lane.priority.some(x => !x.expected);
+  const readyAt = x => Math.max(new Date(x.queue_at).getTime(), x.hold_until ? new Date(x.hold_until).getTime() : 0);
   while (realLeft() && guard++ < 5000) {
     // the window that frees up first
-    let w = 0;
-    for (let i = 1; i < c; i++) if (free[i] < free[w]) w = i;
-    let t0 = free[w];
+    const win = slots.reduce((a, b) => (b.free < a.free ? b : a));
+    let t0 = win.free;
     if (t0 >= brStart && t0 < brEnd) t0 = brEnd;    // nobody is called over lunch
 
-    // First in each lane who may be called by t0: a booking waits for its slot
-    // start, and a student who is "available from" later is skipped (keeping
-    // their place) until then.
-    const readyAt = x => Math.max(new Date(x.queue_at).getTime(), x.hold_until ? new Date(x.hold_until).getTime() : 0);
-    const first = l => lane[l].findIndex(x => readyAt(x) <= t0.getTime());
-    const pi = first('priority'), ri = first('regular');
-    const p = pi >= 0 ? 'priority' : null, r = ri >= 0 ? 'regular' : null;
-    let pick = p && r ? (lastCat === 'priority' ? 'regular' : 'priority') : (p || r);
-    if (!pick) {                                     // nobody ready yet: jump to the next one who is
-      const next = Math.min(...lane.priority.concat(lane.regular).map(readyAt));
-      free[w] = new Date(next);
+    // Who is ready by t0 (a booking waits for its slot start; "available from"
+    // is skipped until then), then the window picks exactly as Call Next does.
+    const ready = { priority: lane.priority.filter(x => readyAt(x) <= t0.getTime()),
+                    regular:  lane.regular.filter(x => readyAt(x) <= t0.getTime()) };
+    const others = slots.filter(o => o !== win).map(o => ({ label: o.label, speed: o.speed, free: o.free <= t0, workToday: o.work }));
+    const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others);
+    if (!d) {                                        // nobody ready yet: jump to the next one who is
+      win.free = new Date(Math.min(...lane.priority.concat(lane.regular).map(readyAt)));
       continue;
     }
-    const tk = lane[pick].splice(pick === 'priority' ? pi : ri, 1)[0];
-    const start = t0, end = addMin(start, serviceOf(tk, pr, start) * factor);
+    d.skipped.forEach(x => { x.skip++; });
+    const tk = d.pick;
+    lane[d.lane].splice(lane[d.lane].indexOf(tk), 1);
+    const mins = serviceOf(tk, pr, t0) * win.speed * factor;
+    const start = t0, end = addMin(start, mins);
     if (tk.expected) expectedServed++;
-    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed };
-    free[w] = end;
-    lastCat = pick;
+    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed, window: win.label };
+    win.free = end;
+    win.work += mins;
+    lastCat = d.lane;
   }
-  return { result, close, windows: c, assumed: !openCount, profile: pr, factor, expectedCount };
+  return { result, close, windows: c, assumed: !open.length, profile: pr, factor, expectedCount };
 }
 
 // ── 3. decisions ─────────────────────────────────────────────────────────────
@@ -339,6 +350,7 @@ async function ticketForecast(t) {
     live: profile.live, liveBasis: profile.liveBasis,
     expectedAhead: a.expectedAhead || 0,
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
+    window: a.window || null,
   };
 }
 
@@ -386,7 +398,8 @@ async function watch() {
         await add('leave');
         await push.sendToTicket(w.id, {
           title: `Leave now: ${w.ticket_no}`,
-          body: `Your turn at the ${department} is in about ${Math.max(1, Math.round(lead))} minutes (around ${clock(a.start)}).`,
+          body: `Your turn at the ${department} is in about ${Math.max(1, Math.round(lead))} minutes (around ${clock(a.start)})` +
+                (a.window ? `, most likely at ${a.window}.` : '.'),
           url,
         });
       }

@@ -172,6 +172,7 @@ CREATE TABLE transactions (
   hold_until      DATETIME DEFAULT NULL,             -- "available from": not called before this time
   hold_used       TINYINT(1) NOT NULL DEFAULT 0,     -- the hold can be used once per ticket
   missed_count    TINYINT NOT NULL DEFAULT 0,        -- called but not there: 1 = moved back, 2 = cancelled
+  skip_count      TINYINT NOT NULL DEFAULT 0,        -- passed over by smart Call Next (never more than 2)
 
   requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   called_at       TIMESTAMP NULL DEFAULT NULL,
