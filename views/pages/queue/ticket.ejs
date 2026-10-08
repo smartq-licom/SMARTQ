@@ -220,6 +220,27 @@
   <% } %>
 
   <div data-live="info">
+  <%# Documents that take days to process (the OTR: 14): when they can be
+      released. Before payment, how long it will take. %>
+  <% (typeof release !== 'undefined' ? release : []).forEach(function (rl) { %>
+  <div class="mt-4 rounded-2xl px-4 py-3.5 flex items-center gap-3.5 <%= rl.ready ? 'bg-emerald-50 ring-1 ring-inset ring-emerald-200' : 'bg-white border border-hair/80 shadow-card' %>">
+    <span class="grid place-items-center w-11 h-11 rounded-xl shrink-0 <%= rl.ready ? 'bg-emerald-500 text-white' : 'bg-brand-wash text-brand' %>" aria-hidden="true">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><% if (rl.ready) { %><path d="m5 12.5 4.5 4.5L19 7.5"/><% } else { %><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><% } %></svg>
+    </span>
+    <div class="min-w-0">
+      <% if (!rl.readyOn) { %>
+      <div class="text-[13.5px] font-bold text-ink"><%= rl.name %> takes <%= rl.days %> days to process</div>
+      <div class="text-[12px] text-slateSoft/75">Counted from your payment. The release date shows here once you've paid.</div>
+      <% } else if (rl.ready) { %>
+      <div class="text-[13.5px] font-bold text-emerald-900">Your <%= rl.name %> is ready for release</div>
+      <div class="text-[12px] text-emerald-800/80">Get a Registrar number and choose "Claim Released Document". Bring your receipt and a valid ID.</div>
+      <% } else { %>
+      <div class="text-[13.5px] font-bold text-ink">Ready for release on <%= rl.readyText %></div>
+      <div class="text-[12px] text-slateSoft/75"><%= rl.name %> &middot; in <%= rl.daysLeft %> day<%= rl.daysLeft === 1 ? '' : 's' %> (it takes <%= rl.days %> days to process). Claim it at the Registrar on or after that date.</div>
+      <% } %>
+    </div>
+  </div>
+  <% }) %>
   <%# A reminder of the requirements: on a Registrar ticket, what to bring to
       the window now; on a Cashier ticket (e.g. the OTR), what to bring later
       when claiming it at the Registrar. Nothing is ticked off any more. %>

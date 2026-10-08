@@ -242,6 +242,11 @@ router.post('/new', proofToMemory, async (req, res, next) => {
       req.session.error = `Heads up: the line is long today. You may not be served before closing ` +
         `(${r.decision.closeClock}). You can keep your place, or book a time tomorrow from this page.`;
     }
+    // claiming a processed document (the OTR) before its release date: allowed, with a warning
+    if (r.notReady && r.notReady.length) {
+      req.session.error = 'Heads up: ' + r.notReady.map(n => `your ${n.name} will be ready on ${n.readyText}`).join('; ') +
+        '. It may not be released yet. You can keep this number, or cancel and book a time on or after that date.';
+    }
     res.redirect('/queue/t/' + r.accessToken + '?new=1');   // the ticket "prints" once
   } catch (e) { next(e); }
 });
@@ -295,6 +300,7 @@ router.get('/t/:token', async (req, res, next) => {
       isToday: t.serviceDate === db.today(),
       requirements: await db.getTransactionRequirements(t.id),
       claimRequirements: t.department === 'Cashier' ? await db.getRequirementsForClaim(t.id) : [],
+      release: t.department === 'Cashier' ? await db.getReleaseInfo(t.id) : [],
       announcement: await db.latestAnnouncementFor(t.id),
       priorityRequest: await db.getTicketPriorityRequest(t.id),
       priorityLabels: db.PRIORITY_LABELS,
@@ -390,7 +396,7 @@ router.get('/t/:token/receipt', async (req, res, next) => {
     const r = await db.getReceipt(t.id);
     if (!r) return res.redirect('/queue/t/' + t.accessToken);
     res.render('pages/queue/receipt', {
-      title: 'Receipt ' + r.receiptNo, r, settings: await db.getSettings(),
+      title: 'Receipt ' + r.receiptNo, r, settings: await db.getSettings(), release: await db.getReleaseInfo(t.id),
       back: '/queue/t/' + t.accessToken,
     });
   } catch (e) { next(e); }

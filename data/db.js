@@ -875,6 +875,7 @@ function mapDocument(s) {
     needsRequirements: !!s.needs_requirements, requiresClaim: !!s.requires_claim,
     guestAllowed: !!s.guest_allowed,
     baselineMinutes: s.baseline_minutes,
+    processingDays: Number(s.processing_days) || 0,
     // a deleted document can never be requested again, whatever is_active says
     isActive: !!s.is_active && !s.deleted_at, deleted: !!s.deleted_at,
   };
@@ -911,19 +912,23 @@ async function getDocument(id) {
   const r = await q('SELECT * FROM documents WHERE id=?', [id]);
   return r.length ? mapDocument(r[0]) : null;
 }
+/** Days a paid document takes before it can be released: 0 (same day) to 60. */
+const processingDaysOf = b => Math.min(60, Math.max(0, parseInt(b.processingDays, 10) || 0));
+
 async function saveDocument(id, b) {
   if (!b.name || !String(b.name).trim()) return { error: 'Document name is required.' };
   const price = Number(b.price);
   if (isNaN(price) || price < 0) return { error: 'Price must be zero or greater.' };
   const args = [ b.name.trim(), price, b.paymentRequired ? 1 : 0, b.requiresClaim ? 1 : 0,
-                 b.guestAllowed ? 1 : 0, +b.baselineMinutes || 8, b.isActive ? 1 : 0 ];
+                 b.guestAllowed ? 1 : 0, +b.baselineMinutes || 8, b.isActive ? 1 : 0,
+                 processingDaysOf(b) ];
   if (id) {
     await run(`UPDATE documents SET name=?,price=?,payment_required=?,requires_claim=?,
-               guest_allowed=?,baseline_minutes=?,is_active=?,
+               guest_allowed=?,baseline_minutes=?,is_active=?,processing_days=?,
                office=IF(payment_required=1,'Cashier','Registrar') WHERE id=? AND deleted_at IS NULL`, [...args, id]);
   } else {
     const r = await run(`INSERT INTO documents (name,price,payment_required,requires_claim,
-                         guest_allowed,baseline_minutes,is_active) VALUES (?,?,?,?,?,?,?)`, args);
+                         guest_allowed,baseline_minutes,is_active,processing_days) VALUES (?,?,?,?,?,?,?,?)`, args);
     // a new document's office follows whether it needs payment
     await run(`UPDATE documents SET office=IF(payment_required=1,'Cashier','Registrar') WHERE id=?`,
               [r.insertId]);
@@ -1043,9 +1048,9 @@ async function saveDocumentAsStaff(office, b) {
 
     await run(
       `UPDATE documents SET name=?, requires_claim=?, guest_allowed=?,
-         baseline_minutes=?, is_active=? WHERE id=? AND office=?`,
+         baseline_minutes=?, is_active=?, processing_days=? WHERE id=? AND office=?`,
       [name, b.requiresClaim ? 1 : 0, b.guestAllowed ? 1 : 0,
-       Math.max(1, +b.baselineMinutes || 10), b.isActive ? 1 : 0, id, office]);
+       Math.max(1, +b.baselineMinutes || 10), b.isActive ? 1 : 0, processingDaysOf(b), id, office]);
     return { ok: true, created: false };
   }
 
@@ -1054,10 +1059,10 @@ async function saveDocumentAsStaff(office, b) {
   const payment = office === 'Cashier' ? 1 : 0;
   const r = await run(
     `INSERT INTO documents (name,price,payment_required,office,requires_claim,
-                            guest_allowed,baseline_minutes,is_active)
-     VALUES (?,?,?,?,?,?,?,?)`,
+                            guest_allowed,baseline_minutes,is_active,processing_days)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
     [name, 0, payment, office, b.requiresClaim ? 1 : 0, b.guestAllowed ? 1 : 0,
-     Math.max(1, +b.baselineMinutes || 10), office === 'Cashier' ? 0 : (b.isActive ? 1 : 0)]);
+     Math.max(1, +b.baselineMinutes || 10), office === 'Cashier' ? 0 : (b.isActive ? 1 : 0), processingDaysOf(b)]);
   return { ok: true, created: true, id: r.insertId, needsPrice: office === 'Cashier' };
 }
 
@@ -1368,7 +1373,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   // ---- claiming a released document ------------------------------------------
   // Only documents already paid at the Cashier can be claimed, and each paid
   // document only once. The student ticks which ones this ticket collects.
-  let claimLineIds = [];
+  let claimLineIds = [], notReady = [];
   if (items.some(isClaimDocument)) {
     const available = await getClaimableLines(user.id);
     if (!available.length) {
@@ -1389,6 +1394,10 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     if (picked.some(id => !ok.has(id)))
       return { error: 'One of the documents you ticked is not paid for, or is already being claimed.' };
     claimLineIds = picked;
+    // Processed documents (the OTR: 14 days) may be claimed early, but the
+    // student is warned that it may not be ready yet; staff decide.
+    notReady = available.filter(a => picked.includes(a.id) && a.readyOn && a.readyOn > sched.serviceDate)
+      .map(a => ({ name: a.name, readyOn: a.readyOn, readyText: shortDate(a.readyOn) }));
   }
 
   const amount     = items.reduce((t, i) => t + i.lineTotal, 0);
@@ -1528,6 +1537,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     }
     const created = await getTransaction(txId);
     created.decision = decision;
+    created.notReady = notReady;
     return created;
   } catch (e) {
     await conn.rollback();
@@ -1838,18 +1848,26 @@ async function attachDocuments(list) {
   // Registrar claim tickets: which paid documents they collect. The claim
   // line's label names them, so every screen that lists documents shows it.
   const claims = await q(
-    `SELECT ci.claim_tx_id, td.document_name, td.copies, pt.ticket_no AS paid_ticket, r.receipt_no
+    `SELECT ci.claim_tx_id, td.document_name, td.copies, pt.ticket_no AS paid_ticket, r.receipt_no,
+            d.processing_days, p.paid_at
      FROM claim_items ci
      JOIN transaction_documents td ON td.id = ci.line_id
      JOIN transactions pt ON pt.id = td.transaction_id
+     LEFT JOIN documents d ON d.id = td.document_id
+     LEFT JOIN payments p ON p.transaction_id = pt.id AND p.status = 'paid'
      LEFT JOIN receipts r ON r.transaction_id = pt.id
      WHERE ci.claim_tx_id IN (${ids.map(() => '?').join(',')})
      ORDER BY ci.id`, ids);
   const cl = {};
-  claims.forEach(c => (cl[c.claim_tx_id] = cl[c.claim_tx_id] || []).push({
-    name: c.document_name, copies: Number(c.copies) || 1,
-    paidTicket: c.paid_ticket, receiptNo: c.receipt_no || '',
-  }));
+  for (const c of claims) {
+    const days = Number(c.processing_days) || 0;
+    const readyOn = days && c.paid_at ? await releaseDate(ymd(new Date(c.paid_at)), days) : null;
+    (cl[c.claim_tx_id] = cl[c.claim_tx_id] || []).push({
+      name: c.document_name, copies: Number(c.copies) || 1,
+      paidTicket: c.paid_ticket, receiptNo: c.receipt_no || '',
+      readyOn, readyText: readyOn ? shortDate(readyOn) : null, early: !!(readyOn && readyOn > today()),
+    });
+  }
   list.forEach(t => {
     t.claimItems = cl[t.id] || [];
     if (!t.claimItems.length) return;
@@ -1866,7 +1884,7 @@ async function attachDocuments(list) {
  */
 async function getClaimableLines(userId) {
   const rows = await q(
-    `SELECT td.id, td.document_name, td.copies, t.ticket_no, r.receipt_no, p.paid_at
+    `SELECT td.id, td.document_name, td.copies, t.ticket_no, r.receipt_no, p.paid_at, d.processing_days
      FROM transaction_documents td
      JOIN transactions t ON t.id = td.transaction_id
      JOIN documents d    ON d.id = td.document_id
@@ -1878,11 +1896,61 @@ async function getClaimableLines(userId) {
          SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
          WHERE ci.line_id = td.id AND c.ticket_status NOT IN ('cancelled','no-show'))
      ORDER BY p.paid_at DESC, td.id`, [userId]);
-  return rows.map(r => ({
-    id: r.id, name: r.document_name, copies: Number(r.copies) || 1,
-    paidTicket: r.ticket_no, receiptNo: r.receipt_no || '',
-    paidAt: r.paid_at ? ymd(new Date(r.paid_at)) : null,
-  }));
+  const out = [];
+  for (const r of rows) {
+    const paidAt = r.paid_at ? ymd(new Date(r.paid_at)) : null;
+    const days = Number(r.processing_days) || 0;
+    out.push({
+      id: r.id, name: r.document_name, copies: Number(r.copies) || 1,
+      paidTicket: r.ticket_no, receiptNo: r.receipt_no || '', paidAt,
+      processingDays: days, readyOn: paidAt && days ? await releaseDate(paidAt, days) : paidAt,
+    });
+  }
+  return out;
+}
+
+/**
+ * When a paid document can be released: the payment date plus its processing
+ * days (calendar days, e.g. the OTR's 14), moved to the next day the Registrar
+ * is open if it lands on a closed day.
+ */
+async function releaseDate(paidYmd, days) {
+  const s = await getSettings();
+  let d = addDays(paidYmd, days);
+  const ov = await getDayOverrides('Registrar', d, addDays(d, 30));
+  for (let i = 0; i < 30; i++) {
+    const dow = new Date(d + 'T00:00:00').getDay() || 7;
+    if (s.openDays.includes(dow) && !(ov[d] && ov[d].isClosed)) break;
+    d = addDays(d, 1);
+  }
+  return d;
+}
+
+/** "Thu, Oct 22" */
+const shortDate = ymdStr => new Date(ymdStr + 'T00:00:00')
+  .toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
+
+/**
+ * For a paid Cashier ticket: each document that takes days to process, with
+ * its release date and whether it is ready (shown on the ticket and receipt).
+ */
+async function getReleaseInfo(txId) {
+  const rows = await q(
+    `SELECT td.id, td.document_name, d.processing_days, p.paid_at
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d ON d.id = td.document_id
+     LEFT JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     WHERE td.transaction_id = ? AND d.processing_days > 0 AND d.requires_claim = 1`, [txId]);
+  const out = [];
+  for (const r of rows) {
+    const days = Number(r.processing_days);
+    if (!r.paid_at) { out.push({ name: r.document_name, days, readyOn: null, ready: false }); continue; }
+    const readyOn = await releaseDate(ymd(new Date(r.paid_at)), days);
+    const left = Math.round((new Date(readyOn + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+    out.push({ name: r.document_name, days, readyOn, readyText: shortDate(readyOn), daysLeft: Math.max(0, left), ready: left <= 0 });
+  }
+  return out;
 }
 
 /** A Registrar document that collects something paid for at the Cashier. */
@@ -3192,7 +3260,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, joinOpensAt, isBeforeJoinOpens,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

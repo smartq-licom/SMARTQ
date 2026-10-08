@@ -92,6 +92,7 @@ CREATE TABLE documents (
   requires_claim   TINYINT(1)    NOT NULL DEFAULT 1,  -- produces a document to pick up
   guest_allowed    TINYINT(1)    NOT NULL DEFAULT 0,
   baseline_minutes INT           NOT NULL DEFAULT 8,
+  processing_days  SMALLINT      NOT NULL DEFAULT 0,  -- days after payment before it can be released (OTR: 14)
   is_active        TINYINT(1)    NOT NULL DEFAULT 1,
   deleted_at       TIMESTAMP     NULL DEFAULT NULL,   -- deleted but kept for old tickets
   INDEX idx_active (is_active)

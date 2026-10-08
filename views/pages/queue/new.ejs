@@ -207,7 +207,7 @@
                   <span class="doc-check" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
                   <span class="min-w-0 flex-1">
                     <span class="block text-[14px] font-semibold leading-tight"><%= sv.name %></span>
-                    <span class="block text-[11.5px] text-slateSoft/70 mt-0.5"><%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %><%= sv.needsPurpose ? ' · asks for a purpose' : '' %></span>
+                    <span class="block text-[11.5px] text-slateSoft/70 mt-0.5"><%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %><%= sv.needsPurpose ? ' · asks for a purpose' : '' %><%= sv.processingDays ? ' · ready ' + sv.processingDays + ' days after payment' : '' %></span>
                   </span>
                   <span class="doc-price"><%= sv.paymentRequired ? peso(sv.price).replace('.00', '') : 'Free' %></span>
                 </label>

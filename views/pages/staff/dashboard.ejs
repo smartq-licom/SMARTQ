@@ -138,6 +138,11 @@
             Paid at the Cashier:
             <%= current.claimItems.map(function(c){ return c.name + ' (' + (c.receiptNo || c.paidTicket) + ')'; }).join(', ') %>
           </div>
+          <% current.claimItems.filter(function (c) { return c.readyOn; }).forEach(function (c) { %>
+          <div class="mt-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold <%= c.early ? 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200' : 'bg-emerald-50 text-emerald-900' %>">
+            <%= c.early ? '⚠ ' + c.name + ' is due for release on ' + c.readyText + ': it may not be ready yet.' : '✓ ' + c.name + ' was due for release on ' + c.readyText + '.' %>
+          </div>
+          <% }) %>
           <% } %>
           <div class="flex justify-between items-baseline gap-3 mt-2 pt-2 border-t border-hair">
             <span class="text-[13px] font-bold"><%= dept === 'Cashier' ? 'Amount due' : 'Already paid' %></span>

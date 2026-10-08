@@ -17,6 +17,7 @@
         <th class="<%= UI.th %>">To claim</th>
         <th class="<%= UI.th %>">Guests</th>
         <th class="<%= UI.th %>">Minutes</th>
+        <th class="<%= UI.th %>">Release after</th>
         <th class="<%= UI.th %>">Status</th>
         <th class="<%= UI.th %>"></th>
       </tr></thead>
@@ -36,6 +37,7 @@
           <td class="<%= UI.td %>"><%= d.requiresClaim ? 'Yes' : 'No' %></td>
           <td class="<%= UI.td %>"><%= d.guestAllowed ? 'Yes' : 'No' %></td>
           <td class="<%= UI.td %> font-mono"><%= d.baselineMinutes %></td>
+          <td class="<%= UI.td %>"><%= d.processingDays ? d.processingDays + ' days' : 'same day' %></td>
           <td class="<%= UI.td %>">
             <span class="<%= pill %> <%= d.isActive ? tone('paid') : tone('cancelled') %>">
               <%= d.isActive ? 'active' : 'disabled' %>
@@ -56,7 +58,7 @@
         </tr>
         <% }) %>
         <% if (!documents.length) { %>
-        <tr><td colspan="7" class="px-4 py-8 text-center text-[13px] text-slateSoft/70">No documents yet.</td></tr>
+        <tr><td colspan="8" class="px-4 py-8 text-center text-[13px] text-slateSoft/70">No documents yet.</td></tr>
         <% } %>
       </tbody>
     </table>
@@ -80,6 +82,11 @@
             <label for="baselineMinutes" class="<%= UI.lbl %>">Typical minutes to serve</label>
             <input id="baselineMinutes" name="baselineMinutes" type="number" min="1" max="120"
                    value="10" class="<%= UI.input %>">
+          </div>
+          <div>
+            <label for="processingDays" class="<%= UI.lbl %>">Release after (days)</label>
+            <input id="processingDays" name="processingDays" type="number" min="0" max="60" value="0" class="<%= UI.input %>">
+            <span class="<%= UI.hint %>">Days after payment before it can be released. 0 = same day.</span>
           </div>
           <label class="flex items-center gap-2 text-[12.5px]">
             <input type="checkbox" name="requiresClaim" id="requiresClaim" value="1" class="rounded border-hair">
@@ -113,6 +120,7 @@ function editDoc(d){
   document.getElementById('docId').value = d.id;
   document.getElementById('name').value = d.name;
   document.getElementById('baselineMinutes').value = d.baselineMinutes;
+  document.getElementById('processingDays').value = d.processingDays || 0;
   document.getElementById('requiresClaim').checked = d.requiresClaim;
   document.getElementById('guestAllowed').checked = d.guestAllowed;
   document.getElementById('isActive').checked = d.isActive;

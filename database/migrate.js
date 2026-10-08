@@ -142,6 +142,20 @@ const STEPS = [
     add:   'ALTER TABLE transactions ADD COLUMN skip_count TINYINT NOT NULL DEFAULT 0',
   },
   {
+    name: 'processing days before a paid document can be released (OTR: 14)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'documents' AND column_name = 'processing_days'`,
+    add:   'ALTER TABLE documents ADD COLUMN processing_days SMALLINT NOT NULL DEFAULT 0',
+    // only when the column is new, so an admin's later change is never undone
+    after: "UPDATE documents SET processing_days = 14 WHERE name = 'Official Transcript of Records'",
+  },
+  {
+    name: 'when the "ready for release" alert was sent for a paid document',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transaction_documents' AND column_name = 'ready_notified_at'`,
+    add:   'ALTER TABLE transaction_documents ADD COLUMN ready_notified_at TIMESTAMP NULL DEFAULT NULL',
+  },
+  {
     name: 'decision log: why the system accepted, warned or held a ticket',
     sql: `CREATE TABLE IF NOT EXISTS decision_log (
       id             INT AUTO_INCREMENT PRIMARY KEY,
@@ -177,7 +191,7 @@ const STEPS = [
     if (s.sql) await db.query(s.sql);
     if (s.check) {
       const [[r]] = await db.query(s.check);
-      if (!Number(r.has)) await db.query(s.add);
+      if (!Number(r.has)) { await db.query(s.add); if (s.after) await db.query(s.after); }
     }
     console.log('  ok  ' + s.name);
   }

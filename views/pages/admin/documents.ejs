@@ -7,7 +7,7 @@
     <thead><tr>
       <th class="<%= UI.th %>">Document</th><th class="<%= UI.th %>">Price</th>
       <th class="<%= UI.th %>">Destination</th><th class="<%= UI.th %>">To claim</th><th class="<%= UI.th %>">Guests</th>
-      <th class="<%= UI.th %>">Est. minutes</th><th class="<%= UI.th %>">Active</th><th class="<%= UI.th %>"></th>
+      <th class="<%= UI.th %>">Est. minutes</th><th class="<%= UI.th %>">Release after</th><th class="<%= UI.th %>">Active</th><th class="<%= UI.th %>"></th>
     </tr></thead>
     <tbody>
       <% documents.forEach(function(s){ %>
@@ -31,6 +31,7 @@
           </label>
         </td>
         <td class="<%= UI.td %>"><input name="baselineMinutes" type="number" min="1" value="<%= s.baselineMinutes %>" class="<%= UI.input %> py-1.5 text-[12.5px] w-20"></td>
+        <td class="<%= UI.td %>"><div class="flex items-center gap-1.5"><input name="processingDays" type="number" min="0" max="60" value="<%= s.processingDays %>" class="<%= UI.input %> py-1.5 text-[12.5px] w-16" title="Days after payment before it can be released (0 = same day)"><span class="text-[11.5px] text-slateSoft/70">days</span></div></td>
         <td class="<%= UI.td %>">
           <label class="flex items-center gap-1.5 text-[12px]">
             <input type="checkbox" name="isActive" <%= s.isActive ? 'checked' : '' %> class="rounded border-hair">Active
@@ -66,6 +67,9 @@
         <input id="nprice" name="price" type="number" step="0.01" min="0" value="30" class="<%= UI.input %>" required></div>
       <div><label for="nmin" class="<%= UI.lbl %>">Estimated minutes</label>
         <input id="nmin" name="baselineMinutes" type="number" min="1" value="8" class="<%= UI.input %>"></div>
+      <div><label for="ndays" class="<%= UI.lbl %>">Release after (days)</label>
+        <input id="ndays" name="processingDays" type="number" min="0" max="60" value="0" class="<%= UI.input %>">
+        <span class="<%= UI.hint %>">Days after payment before it can be released. 0 = same day; the OTR is 14.</span></div>
       <div class="flex items-end gap-4 text-[12.5px]">
         <label class="flex items-center gap-1.5"><input type="checkbox" name="paymentRequired" checked class="rounded border-hair">Needs payment</label>
         <label class="flex items-center gap-1.5"><input type="checkbox" name="requiresClaim" checked class="rounded border-hair">To claim</label>

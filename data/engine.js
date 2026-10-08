@@ -359,11 +359,45 @@ async function ticketForecast(t) {
 }
 
 // ── 4. watcher: re-decide as the day moves, and alert phones ─────────────────
+/**
+ * A processed document (the OTR, 14 days) reached its release date: tell the
+ * phone that paid for it, once, during office hours. Not if already claimed.
+ */
+async function releaseAlerts(db, settings) {
+  const [h, m] = String(settings.openTime || '08:00').split(':').map(Number);
+  const now = new Date();
+  if (now.getHours() * 60 + now.getMinutes() < h * 60 + (m || 0)) return;   // in the morning, once open
+  const rows = await q(
+    `SELECT td.id, td.document_name, d.processing_days, p.paid_at, t.id AS tx_id, t.ticket_no, t.access_token
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d ON d.id = td.document_id
+     JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     WHERE d.processing_days > 0 AND d.requires_claim = 1 AND td.ready_notified_at IS NULL
+       AND t.department = 'Cashier' AND t.payment_status = 'paid'
+       AND DATE(p.paid_at) + INTERVAL d.processing_days DAY <= CURDATE()
+       AND DATE(p.paid_at) >= CURDATE() - INTERVAL 120 DAY
+       AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
+                       WHERE ci.line_id = td.id AND c.ticket_status = 'completed')
+     LIMIT 50`);
+  for (const r of rows) {
+    const readyOn = await db.releaseDate(db.ymd ? db.ymd(new Date(r.paid_at)) : new Date(r.paid_at).toISOString().slice(0, 10), Number(r.processing_days));
+    if (readyOn > db.today()) continue;               // moved past a closed day: not yet
+    await q('UPDATE transaction_documents SET ready_notified_at=NOW() WHERE id=?', [r.id]);
+    await push.sendToTicket(r.tx_id, {
+      title: `Your ${r.document_name} is ready`,
+      body: 'It can now be released at the Registrar. Bring your receipt and a valid ID.',
+      url: r.access_token ? '/queue/t/' + r.access_token : '/queue',
+    });
+  }
+}
+
 async function watch() {
   const db = require('./db');
   const settings = await db.getSettings();
   const now = new Date();
   if (db.isPastClosing(settings)) return;          // the day is over: nothing left to warn about
+  try { await releaseAlerts(db, settings); } catch (e) { console.error('[RELEASE]', e.message); }
   for (const department of ['Cashier', 'Registrar']) {
     const waiting = await q(
       `SELECT id, ticket_no, access_token, queue_at, risk_at, alerts_sent FROM transactions

@@ -29,6 +29,11 @@
         <span class="text-[15px] font-extrabold font-mono"><%= peso(r.amountPaid) %></span>
       </div>
     </div>
+    <% (typeof release !== 'undefined' ? release : []).filter(function (x) { return x.readyOn; }).forEach(function (rl) { %>
+    <div class="mt-4 rounded-xl bg-brand-wash ring-1 ring-inset ring-brand-line px-3.5 py-2.5 text-[12.5px] text-brand-night">
+      <strong><%= rl.name %>:</strong> ready for release on <strong><%= rl.readyText %></strong> (<%= rl.days %> days processing). Claim it at the Registrar.
+    </div>
+    <% }) %>
     <dl class="py-4 space-y-2 text-[12.5px]">
       <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Status</dt>
         <dd><span class="<%= pill %> <%= tone('paid') %>">PAID</span></dd></div>
