@@ -6,170 +6,170 @@
 <title><%= dept %> Queue | SmartQ</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="icon" href="/img/lcc-seal.jpg">
-<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
 <script>
-tailwind.config = { theme: { extend: { colors: {
-  brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', wash:'#E7F1FA' },
-  ink:'#303841', slateSoft:'#3A4750', mist:'#F3F3F3', hair:'#DFE2E6'
-}}}}
+tailwind.config = { theme: { extend: {
+  colors: { brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', night:'#0F4C81', wash:'#EAF3FB', line:'#C9E0F4' }, ink:'#1E2A36', slateSoft:'#4A5866', edge:'#E3E7ED' },
+  fontFamily: { sans:['"Plus Jakarta Sans"','system-ui','sans-serif'], mono:['"JetBrains Mono"','ui-monospace','monospace'] },
+}}}
 </script>
 <style>
-  body{font-family:'Public Sans',system-ui,sans-serif}
-  .blink{animation:bl 1.6s ease-in-out infinite}
-  @keyframes bl{0%,100%{opacity:1}50%{opacity:.55}}
+  body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:radial-gradient(90% 70% at 10% 0%,#EAF3FB 0%,#F2F4F8 55%)}
+  .font-mono{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .glow{text-shadow:0 4px 30px rgba(15,76,129,.35)}
+  .card{background:#fff;border:1px solid #E3E7ED;border-radius:24px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px -8px rgba(16,24,40,.08)}
+  .label{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.22em;color:#1A6CAE}
   /* a part that just changed glows once, instead of the whole screen reloading */
-  .live-changed{animation:lc 1.2s ease-out}
-  @keyframes lc{0%{background-color:rgba(33,133,213,.16)}100%{background-color:transparent}}
-  @media (prefers-reduced-motion:reduce){.live-changed{animation:none}}
+  .live-changed{animation:lc 1.4s ease-out}
+  @keyframes lc{0%{filter:brightness(1.12) saturate(1.3)}100%{filter:none}}
+  .serving-now{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(33,133,213,.0),0 20px 60px -20px rgba(33,133,213,.6)}50%{box-shadow:0 0 0 6px rgba(33,133,213,.18),0 20px 60px -20px rgba(33,133,213,.8)}}
+  .marquee{white-space:nowrap;display:inline-block;animation:mq 28s linear infinite;padding-left:100%}
+  @keyframes mq{to{transform:translateX(-100%)}}
+  @media (prefers-reduced-motion:reduce){.live-changed,.serving-now,.marquee{animation:none}.marquee{padding-left:0}}
 </style>
 </head>
-<body class="bg-white text-ink">
+<body class="text-ink antialiased">
 
-<div class="min-h-screen flex flex-col">
+<div class="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
 
   <!-- header -->
-  <header class="border-b-[6px] border-brand px-8 py-5 flex items-center justify-between gap-6">
-    <div class="flex items-center gap-5">
+  <header class="px-4 sm:px-8 pt-6 pb-4 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-4">
       <img src="/img/lcc-seal.jpg" alt="Libon Community College seal"
-           class="w-16 h-16 xl:w-20 xl:h-20 rounded-full ring-4 ring-brand/25 object-cover">
+           class="w-12 h-12 sm:w-16 sm:h-16 xl:w-[72px] xl:h-[72px] rounded-full ring-4 ring-brand-line bg-white object-cover">
       <div>
-        <div class="text-3xl xl:text-4xl font-black tracking-tight uppercase text-ink"><%= dept %></div>
-        <div class="text-[15px] text-slateSoft font-medium"><%= settings.institutionName %></div>
+        <div class="text-[26px] sm:text-[34px] xl:text-[40px] font-extrabold tracking-tight leading-none"><%= dept %></div>
+        <div class="text-[15px] text-slateSoft/70 font-medium mt-1.5"><%= settings.institutionName %> &middot; Smart<span class="text-brand">Q</span></div>
       </div>
     </div>
     <div class="text-right">
-      <div id="clock" class="text-4xl xl:text-5xl font-black tabular-nums text-brand-deep">--:--:--</div>
-      <div id="dateline" class="text-[14px] text-slateSoft font-semibold"></div>
+      <div id="clock" class="font-mono text-[30px] sm:text-[44px] xl:text-[52px] font-extrabold leading-none text-brand-night">--:--:--</div>
+      <div id="dateline" class="text-[14px] text-slateSoft/70 font-semibold mt-1.5"></div>
     </div>
   </header>
 
-  <!-- now serving (parts marked data-live update in place: partials/live) -->
-  <section class="px-8 py-7 border-b-2 border-hair" data-live="serving">
-    <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-5">Now Serving</div>
-    <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> gap-6">
-      <% windows.forEach(function(w){ %>
-      <% const s = serving.find(function(t){ return t.windowId === w.id }); %>
-      <div class="rounded-2xl border-4 <%= s ? 'border-brand bg-brand-wash/40' : 'border-hair' %> px-8 py-8 text-center">
-        <div class="text-[15px] font-extrabold uppercase tracking-widest text-slateSoft"><%= w.label %></div>
-        <% if (s) { %>
-          <div class="text-[110px] xl:text-[150px] leading-[0.95] font-black tracking-tighter mt-2 tabular-nums text-brand-deep"><%= s.ticketNo %></div>
-          <div class="mt-3 flex items-center justify-center gap-3">
-            <span class="rounded-full px-4 py-1.5 text-[15px] font-black uppercase tracking-wide
-              <%= s.queueCategory === 'priority' ? 'bg-ink text-white' : 'bg-brand text-white' %>">
-              <%= s.queueCategory %>
-            </span>
-          </div>
-          <div class="text-[19px] font-bold mt-3 text-ink"><%= s.name %></div>
-        <% } else { %>
-          <div class="text-[110px] xl:text-[150px] leading-[0.95] font-black tracking-tighter mt-2 text-hair">----</div>
-          <div class="text-[17px] font-bold text-slateSoft/60 mt-3">Available</div>
-          <div class="mt-2"><span class="rounded-full px-4 py-1 text-[13px] font-bold uppercase bg-mist text-slateSoft"><%= w.status %></span></div>
-        <% } %>
-      </div>
-      <% }) %>
-    </div>
-  </section>
-
-  <!-- SmartQ predicts: the real call order, the wait if you join now, today's average, a QR to join -->
   <% var nextNo = predict.nextUp.length ? predict.nextUp[0].ticketNo : null; %>
-  <section class="px-8 py-5 border-b-2 border-hair bg-mist/60" data-live="predict">
-    <div class="flex flex-wrap items-stretch gap-6">
-      <div class="flex-1 min-w-[16rem]">
-        <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-3">Next up</div>
-        <% if (predict.nextUp.length) { %>
-        <div class="flex flex-wrap gap-3">
-          <% predict.nextUp.forEach(function (n, i) { %>
-          <div class="rounded-xl border-2 <%= i === 0 ? 'border-brand bg-white' : 'border-hair bg-white' %> px-5 py-3 min-w-[9rem]">
-            <div class="text-4xl font-black tabular-nums <%= i === 0 ? 'text-brand-deep' : '' %>"><%= n.ticketNo %></div>
-            <div class="text-[13px] font-bold text-slateSoft mt-0.5"><%= i === 0 ? 'next' : 'then' %> &middot; about <%= n.at %></div>
+  <main class="flex-1 min-h-0 grid lg:grid-cols-12 gap-6 px-4 sm:px-8 pb-6">
+
+    <!-- left: now serving, then the two lanes -->
+    <div class="lg:col-span-8 flex flex-col gap-6 min-h-0 min-w-0">
+      <section data-live="serving">
+        <div class="label mb-3">Now serving</div>
+        <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> <%= windows.length > 2 ? 'xl:grid-cols-3' : '' %> gap-5">
+          <% windows.forEach(function(w){ %>
+          <% const s = serving.find(function(t){ return t.windowId === w.id }); %>
+          <% if (s) { %>
+          <div class="serving-now text-white rounded-[28px] bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night px-5 sm:px-8 py-7 text-center">
+            <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-white/80"><%= w.label %></div>
+            <div class="font-mono glow text-[72px] sm:text-[110px] xl:text-[140px] leading-[1] font-extrabold mt-2"><%= s.ticketNo %></div>
+            <div class="mt-3 flex items-center justify-center gap-3">
+              <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/20' %>"><%= s.queueCategory %></span>
+              <span class="text-[19px] font-bold text-white/90"><%= s.name %></span>
+            </div>
           </div>
+          <% } else { %>
+          <div class="card px-5 sm:px-8 py-7 text-center">
+            <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
+            <div class="font-mono text-[72px] sm:text-[110px] xl:text-[140px] leading-[1] font-extrabold mt-2 text-edge">----</div>
+            <div class="mt-3 flex items-center justify-center gap-3">
+              <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide bg-[#F5F7FA] text-slateSoft"><%= w.status %></span>
+              <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Available' : '' %></span>
+            </div>
+          </div>
+          <% } %>
           <% }) %>
         </div>
+      </section>
+
+      <section class="flex-1 min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes">
+        <% [['Priority', priority, 'bg-violet-500'], ['Regular', regular, 'bg-brand']].forEach(function (g) { %>
+        <div class="card px-6 py-5 min-h-0 overflow-hidden">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="w-2.5 h-2.5 rounded-full <%= g[2] %>"></span>
+            <span class="label !text-slateSoft"><%= g[0] %></span>
+            <span class="ml-auto rounded-full bg-brand-wash text-brand-night px-3 py-0.5 font-mono text-[15px] font-extrabold"><%= g[1].length %></span>
+          </div>
+          <div class="flex flex-wrap gap-3">
+            <% g[1].forEach(function(t){ %>
+            <div class="rounded-2xl px-4 py-2.5 <%= t.ticketNo === nextNo ? 'bg-brand text-white shadow-lg shadow-brand/30' : 'bg-[#F5F7FA] ring-1 ring-edge' %>">
+              <div class="font-mono text-[34px] font-extrabold leading-none"><%= t.ticketNo %></div>
+              <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-extrabold uppercase tracking-widest text-white/85 mt-1">Next</div><% } %>
+            </div>
+            <% }) %>
+            <% if (!g[1].length) { %>
+            <div class="text-[18px] text-slateSoft/45 font-semibold py-2">No one waiting</div>
+            <% } %>
+          </div>
+        </div>
+        <% }) %>
+      </section>
+    </div>
+
+    <!-- right: SmartQ predicts. The real call order, the wait if you join now, a QR to join -->
+    <aside class="lg:col-span-4 flex flex-col gap-5 min-h-0 min-w-0" data-live="predict">
+      <section class="card px-6 py-5">
+        <div class="label mb-3">Next up</div>
+        <% if (predict.nextUp.length) { %>
+        <ol class="space-y-2.5">
+          <% predict.nextUp.forEach(function (n, i) { %>
+          <li class="flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 <%= i === 0 ? 'bg-brand-wash ring-2 ring-brand' : 'bg-[#F5F7FA]' %>">
+            <span class="font-mono text-[34px] font-extrabold leading-none"><%= n.ticketNo %></span>
+            <span class="text-right">
+              <span class="block text-[12px] font-extrabold uppercase tracking-widest <%= i === 0 ? 'text-brand' : 'text-slateSoft/55' %>"><%= i === 0 ? 'Next' : 'Then' %></span>
+              <span class="block text-[16px] font-bold text-ink">~<%= n.at %></span>
+            </span>
+          </li>
+          <% }) %>
+        </ol>
         <% } else { %>
-        <div class="text-[19px] font-bold text-slateSoft/70 py-3">No one waiting</div>
+        <div class="text-[19px] font-bold text-slateSoft/45 py-2">No one waiting</div>
         <% } %>
-      </div>
-      <div class="w-px bg-hair hidden lg:block"></div>
-      <div class="min-w-[15rem]">
-        <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-3">If you join now</div>
+      </section>
+
+      <section class="card px-6 py-5">
+        <div class="label mb-2">If you join now</div>
         <% if (predict.join) { %>
-        <div class="text-4xl font-black text-ink leading-tight"><%= duration(predict.join.minutes).replace('about ', '') %></div>
-        <div class="text-[15px] font-bold text-slateSoft mt-1">your turn around <%= predict.join.startClock %></div>
-        <% if (!predict.join.fits) { %><div class="text-[14px] font-bold text-amber-700 mt-1">The line is long: you may not be served today</div><% } %>
+        <div class="text-[40px] font-extrabold leading-tight text-brand-night"><%= duration(predict.join.minutes).replace('about ', '') %></div>
+        <div class="text-[16px] font-semibold text-slateSoft mt-0.5">your turn around <strong class="text-ink"><%= predict.join.startClock %></strong></div>
+        <% if (!predict.join.fits) { %><div class="mt-2 rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-[14px] font-bold text-amber-800">The line is long: you may not be served today</div><% } %>
         <% } else { %>
-        <div class="text-[19px] font-bold text-slateSoft py-2 max-w-[16rem]"><%= predict.note || 'Estimate unavailable' %></div>
+        <div class="text-[20px] font-bold text-slateSoft py-1"><%= predict.note || 'Estimate unavailable' %></div>
         <% } %>
-        <div class="text-[14px] font-semibold text-slateSoft/80 mt-2">
-          <%= predict.avgWait ? "Today's actual average wait: " + duration(predict.avgWait.minutes).replace('about ', '') : 'No one called yet today' %>
+        <div class="text-[14px] font-medium text-slateSoft/60 mt-2">
+          <%= predict.avgWait ? "Today's real average wait: " + duration(predict.avgWait.minutes).replace('about ', '') : 'No one called yet today' %>
         </div>
-      </div>
-      <div class="w-px bg-hair hidden lg:block"></div>
-      <div class="flex items-center gap-4">
-        <div class="bg-white p-2.5 rounded-xl border-2 border-brand w-32 h-32 [&_svg]:w-full [&_svg]:h-full" aria-label="QR code to join the queue"><%- predict.qr %></div>
-        <div class="max-w-[9rem]">
-          <div class="text-[19px] font-black text-ink leading-tight">Scan to join</div>
-          <div class="text-[13px] font-semibold text-slateSoft mt-1">No account needed. Wait anywhere and get alerts.</div>
-        </div>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <!-- waiting lanes -->
-  <section class="flex-1 grid md:grid-cols-2 gap-0" data-live="lanes">
-    <div class="px-8 py-6 md:border-r-2 border-hair">
-      <div class="flex items-center gap-3 mb-4">
-        <span class="text-[15px] font-black uppercase tracking-[0.2em] text-slateSoft">Priority</span>
-        <span class="rounded-full bg-brand text-white px-3 py-0.5 text-[13px] font-black"><%= priority.length %></span>
-      </div>
-      <div class="flex flex-wrap gap-3">
-        <% priority.forEach(function(t, i){ %>
-        <div class="rounded-xl border-2 <%= t.ticketNo === nextNo ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
-          <div class="text-4xl font-black tabular-nums"><%= t.ticketNo %></div>
-          <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
+      <section class="card px-6 py-5 flex items-center gap-5 mt-auto">
+        <div class="bg-white p-2.5 rounded-2xl ring-2 ring-brand w-36 h-36 shrink-0 [&_svg]:w-full [&_svg]:h-full" aria-label="QR code to join the queue"><%- predict.qr %></div>
+        <div>
+          <div class="text-[24px] font-extrabold leading-tight">Scan to join</div>
+          <div class="text-[15px] font-medium text-slateSoft/75 mt-1.5 leading-snug">No account needed. Wait anywhere, get alerts on your phone.</div>
         </div>
-        <% }) %>
-        <% if (!priority.length) { %>
-        <div class="text-[17px] text-slateSoft/60 font-semibold py-3">No one waiting</div>
-        <% } %>
-      </div>
-    </div>
+      </section>
+    </aside>
+  </main>
 
-    <div class="px-8 py-6">
-      <div class="flex items-center gap-3 mb-4">
-        <span class="text-[15px] font-black uppercase tracking-[0.2em] text-slateSoft">Regular</span>
-        <span class="rounded-full bg-brand text-white px-3 py-0.5 text-[13px] font-black"><%= regular.length %></span>
-      </div>
-      <div class="flex flex-wrap gap-3">
-        <% regular.forEach(function(t, i){ %>
-        <div class="rounded-xl border-2 <%= t.ticketNo === nextNo ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
-          <div class="text-4xl font-black tabular-nums"><%= t.ticketNo %></div>
-          <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
-        </div>
-        <% }) %>
-        <% if (!regular.length) { %>
-        <div class="text-[17px] text-slateSoft/60 font-semibold py-3">No one waiting</div>
-        <% } %>
-      </div>
-    </div>
-  </section>
-
-  <!-- recently called -->
+  <!-- recently completed, then the announcement -->
   <div data-live="recent">
   <% if (recent.length) { %>
-  <section class="px-8 py-4 border-t-2 border-hair">
-    <div class="flex items-center gap-4 flex-wrap">
-      <span class="text-[13px] font-black uppercase tracking-[0.2em] text-slateSoft/70">Recently completed</span>
-      <% recent.forEach(function(t){ %>
-      <span class="text-2xl font-black text-slateSoft/50 tabular-nums"><%= t.ticketNo %></span>
-      <% }) %>
-    </div>
+  <section class="px-4 sm:px-8 py-3 border-t border-edge flex items-center gap-5 flex-wrap">
+    <span class="text-[12px] font-extrabold uppercase tracking-[.22em] text-slateSoft/50">Recently completed</span>
+    <% recent.forEach(function(t){ %>
+    <span class="font-mono text-[22px] font-extrabold text-slateSoft/40"><%= t.ticketNo %></span>
+    <% }) %>
   </section>
   <% } %>
   </div>
 
-  <!-- announcement -->
-  <footer class="bg-brand text-white px-8 py-4 text-center text-[19px] font-bold" data-live="announce">
-    <%= settings.announcement %>
+  <footer class="bg-brand text-white py-3.5 text-[20px] font-bold overflow-hidden" data-live="announce">
+    <% if (settings.announcement) { %>
+    <% if (String(settings.announcement).length > 70) { %><span class="marquee"><%= settings.announcement %></span>
+    <% } else { %><div class="text-center px-8"><%= settings.announcement %></div><% } %>
+    <% } %>
   </footer>
 </div>
 

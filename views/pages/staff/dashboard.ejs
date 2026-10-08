@@ -2,149 +2,132 @@
 <%- include('../../partials/nav', { active: '/staff/dashboard' }) %>
 <%# Updated in place every 10 s (partials/live) instead of reloading, so a
     reason being typed or an open menu is never lost. %>
-<div data-live="dash">
+<div data-live="dash" class="max-w-[1400px]">
 
-<div class="flex flex-wrap items-start justify-between gap-3 mb-5">
-  <div>
-    <h2 class="text-xl font-extrabold"><%= dept %> Counter</h2>
-    <p class="text-[13px] text-slateSoft/80 mt-0.5">
-      <%= me.fullName %>
-      <% const myWin = windows.find(function(w){ return w.id === me.windowId }); %>
-      <% if (myWin) { %> &middot; <%= myWin.label %> &middot; <span class="<%= pill %> <%= tone(myWin.status) %>"><%= myWin.status %></span><% } %>
-    </p>
+<%# ── who and where, and today's numbers in one strip ─────────────────────── %>
+<% const myWin = windows.find(function(w){ return w.id === me.windowId }); %>
+<div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+  <div class="min-w-0">
+    <p class="text-[12.5px] font-semibold text-brand"><%= me.fullName %></p>
+    <h2 class="text-[22px] font-extrabold tracking-tight leading-tight flex flex-wrap items-center gap-2">
+      <%= myWin ? myWin.label : dept + ' Counter' %>
+      <% if (myWin) { %><span class="<%= pill %> <%= tone(myWin.status) %> capitalize"><%= myWin.status %></span><% } %>
+    </h2>
   </div>
-  <div class="flex gap-2 no-print">
-    <% if (current) { %>
-    <form method="POST" action="/staff/recall/<%= current.id %>" data-once>
-      <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> px-5 py-3 text-[14px]">
-        Call <%= current.ticketNo %> Again
-      </button>
-    </form>
-    <% } %>
-    <form method="POST" action="/staff/call-next" data-once>
-      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px]"
-              <%= current ? 'disabled title="Finish the client at your window first"' : (onBreak ? 'disabled title="Break time until ' + breakEnds + '"' : '') %>>Call Next</button>
-    </form>
-  </div>
+  <dl class="flex rounded-2xl bg-white border border-hair/80 shadow-card divide-x divide-hair/70 overflow-hidden">
+    <% [['Waiting', load.waiting, 'text-brand-night'],['At windows', load.serving, 'text-ink'],
+        ['Done', load.completed, 'text-emerald-700'],['Dropped', load.dropped, 'text-slateSoft']].forEach(function(c){ %>
+    <div class="px-4 py-2 text-center min-w-[70px]">
+      <dd class="font-mono text-[20px] font-extrabold leading-none <%= c[2] %>"><%= c[1] %></dd>
+      <dt class="text-[10.5px] font-semibold uppercase tracking-wide text-slateSoft/60 mt-1"><%= c[0] %></dt>
+    </div>
+    <% }) %>
+  </dl>
 </div>
+
 <% if (onBreak) { %>
-<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-  &#9749; <strong>Break time until <%= breakEnds %>.</strong> Call Next is off until then; students in line are told they will be called after the break.
+<div class="mb-4 flex items-center gap-3 rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-900">
+  <span class="text-[18px]" aria-hidden="true">&#9749;</span>
+  <span><strong>Break time until <%= breakEnds %>.</strong> Call Next is off until then; students in line are told they will be called after the break.</span>
 </div>
 <% } %>
 
-<!-- load -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-  <% [['Waiting', load.waiting],['At the window', load.serving],
-      ['Completed', load.completed],['Dropped', load.dropped]].forEach(function(c){ %>
-  <div class="<%= UI.card %> p-4">
-    <div class="text-2xl font-extrabold"><%= c[1] %></div>
-    <div class="text-[11.5px] text-slateSoft/80 mt-0.5"><%= c[0] %></div>
-  </div>
-  <% }) %>
-</div>
-
-<!-- today's busy hours -->
 <% var nowSlot = peakHours.hours.find(function (h) { return h.hour === nowHour; }) || null; %>
-<div class="mb-5">
-  <% if (nowSlot && !nowSlot.isBreak && (nowSlot.level === 'peak' || nowSlot.level === 'busy')) { %>
-  <div class="rounded-lg border px-4 py-3 mb-3 text-[13px]
-       <%= nowSlot.level === 'peak' ? 'bg-red-50 border-red-200 text-red-900'
-                                    : 'bg-amber-50 border-amber-200 text-amber-900' %>">
-    <strong><%= nowSlot.label %> is usually
-      <%= nowSlot.level === 'peak' ? 'your busiest hour' : 'a busy hour' %>
-      on a <%= peakHours.weekdayName %>.</strong>
-    Around <%= nowSlot.arrivals %> requests come in, and
-    <%= nowSlot.crowding %> clients are typically waiting at once.
-  </div>
-  <% } %>
-  <%- include('../../partials/peak-hours', {
-        p: peakHours, compact: true,
-        heading: 'Busy hours on a ' + (peakHours.weekdayName || 'typical day') }) %>
+<% if (nowSlot && !nowSlot.isBreak && (nowSlot.level === 'peak' || nowSlot.level === 'busy')) { %>
+<div class="mb-4 flex items-center gap-3 rounded-2xl ring-1 ring-inset px-4 py-3 text-[13px]
+     <%= nowSlot.level === 'peak' ? 'bg-red-50 ring-red-200 text-red-900' : 'bg-amber-50 ring-amber-200 text-amber-900' %>">
+  <span class="text-[18px]" aria-hidden="true">&#128200;</span>
+  <span><strong><%= nowSlot.label %> is usually <%= nowSlot.level === 'peak' ? 'your busiest hour' : 'a busy hour' %>
+    on a <%= peakHours.weekdayName %>.</strong> Around <%= nowSlot.arrivals %> requests come in, and
+    <%= nowSlot.crowding %> clients are typically waiting at once.</span>
 </div>
+<% } %>
 
-<div class="grid lg:grid-cols-12 gap-4">
-  <!-- current client -->
-  <div class="lg:col-span-5">
-    <div class="<%= UI.card %>">
-      <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Current client</h3></div>
-      <div class="<%= UI.body %>">
-        <% if (!current) { %>
-        <div class="text-center py-10">
-          <div class="font-mono text-4xl font-extrabold text-hair">----</div>
-          <p class="text-[13px] font-semibold mt-3">No client at your window</p>
-          <p class="text-[12px] text-slateSoft/80 mt-1">
-            <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)<% if (nextUp._decision && nextUp._decision.reserved) { %><span class="block text-[11.5px] text-amber-700 mt-0.5">Smart match: saved for <%= nextUp._decision.forWindow %>, <%= nextUp._decision.reason.split(nextUp._decision.forWindow + ', ')[1] %>. Yours if they do not call within <%= Math.ceil(nextUp._decision.secondsLeft / 60) %> min.</span><% } else if (nextUp._decision && nextUp._decision.reason) { %><span class="block text-[11.5px] text-brand-deep mt-0.5">Smart match: <%= nextUp._decision.reason %></span><% } %>
-            <% } else { %>The queue is empty.<% } %>
-          </p>
-          <form method="POST" action="/staff/call-next" class="mt-4 no-print" data-once>
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>"<%- onBreak ? ' disabled title="Break time until ' + breakEnds + '"' : '' %>>Call Next</button>
-          </form>
-        </div>
+<div class="grid lg:grid-cols-12 gap-4 items-start">
+  <%# ── the window: who is here, or who is next ─────────────────────────── %>
+  <div class="lg:col-span-5 lg:sticky lg:top-20 min-w-0">
+    <% if (!current) { %>
+    <section class="<%= UI.card %>">
+      <div class="bg-hero text-white px-6 pt-6 pb-7 text-center">
+        <div class="text-[11px] uppercase tracking-[.2em] text-white/70">Next in line</div>
+        <% if (nextUp) { %>
+        <div class="font-mono text-[56px] font-extrabold leading-none mt-2"><%= nextUp.ticket_no %></div>
+        <span class="inline-block mt-3 rounded-full bg-white/15 px-2.5 py-1 text-[11.5px] font-semibold capitalize"><%= nextUp.queue_category %></span>
         <% } else { %>
-        <div class="text-center border-b border-hair pb-4">
-          <div class="font-mono text-5xl font-extrabold"><%= current.ticketNo %></div>
-          <form method="POST" action="/staff/recall/<%= current.id %>" class="mt-3 no-print" data-once>
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">
-              Call again
-            </button>
-          </form>
-          <div class="flex justify-center gap-2 mt-2.5">
-            <span class="<%= pill %> <%= tone(current.queueCategory) %>"><%= current.queueCategory %></span>
-            <% if (current.priorityType !== 'none') { %>
-            <span class="<%= pill %> <%= tone(current.priorityType) %>"><%= current.priorityType %></span>
-            <% } %>
-            <span class="<%= pill %> <%= tone(current.ticketStatus) %>"><%= current.ticketStatus %></span>
-          </div>
-          <%# Called but not here: back 5 places (second time: cancelled). %>
-          <% if (current.paymentStatus !== 'paid') { %>
-          <form method="POST" action="/staff/missed/<%= current.id %>" class="mt-3 no-print"
-                data-confirm data-confirm-danger="<%= current.missedCount >= 1 ? 1 : '' %>"
-                data-confirm-title="<%= current.ticketNo %> is not at the window?"
-                data-confirm-body="<%= current.missedCount >= 1
-                  ? 'This is the second missed turn, so the ticket will be cancelled and the client notified.'
-                  : 'The ticket moves back 5 places in the line and the client is notified why. Your window is freed.' %>"
-                data-confirm-ok="<%= current.missedCount >= 1 ? 'Cancel ticket' : 'Move back 5 places' %>" data-confirm-back="Wait">
-            <button type="submit" class="text-[12.5px] font-semibold text-amber-800 underline">
-              Not here? <%= current.missedCount >= 1 ? 'Missed again: cancel ticket' : 'Missed turn: move back 5 places' %>
-            </button>
-          </form>
-          <% } %>
-          <%# Priority was approved from a photo; the real ID is checked here. %>
-          <% if (current.queueCategory === 'priority' && current.priorityType !== 'none') { %>
-          <div class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2.5 text-left no-print">
-            <div class="text-[12.5px] font-bold text-violet-900">Check the <%= current.priorityType === 'pregnant' ? 'proof of pregnancy' : (current.priorityType === 'senior' ? 'Senior Citizen ID' : 'PWD ID') %></div>
-            <form method="POST" action="/staff/move-regular/<%= current.id %>" class="mt-1.5"
-                  data-confirm data-confirm-title="Move <%= current.ticketNo %> to the regular lane?"
-                  data-confirm-body="The ID does not match the approved proof. The ticket gets a new regular number at the end of the line and your window is freed."
-                  data-confirm-ok="Move to regular" data-confirm-back="Keep priority">
-              <button type="submit" class="text-[12px] font-semibold text-violet-800 underline">Not valid? Move to regular line</button>
-            </form>
-          </div>
-          <% } %>
+        <div class="font-mono text-[56px] font-extrabold leading-none mt-2 text-white/35">----</div>
+        <p class="mt-3 text-[13px] text-white/80">The queue is empty. New clients appear here by themselves.</p>
+        <% } %>
+      </div>
+      <div class="p-5">
+        <% if (nextUp && nextUp._decision && nextUp._decision.reserved) { %>
+        <div class="mb-4 flex gap-2.5 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">
+          <span aria-hidden="true">&#129504;</span>
+          <span><strong>Smart match:</strong> saved for <%= nextUp._decision.forWindow %>, <%= nextUp._decision.reason.split(nextUp._decision.forWindow + ', ')[1] %>.
+            Yours if they do not call within <%= Math.ceil(nextUp._decision.secondsLeft / 60) %> min.</span>
         </div>
+        <% } else if (nextUp && nextUp._decision && nextUp._decision.reason) { %>
+        <div class="mb-4 flex gap-2.5 rounded-xl bg-brand-wash ring-1 ring-inset ring-brand-line px-3.5 py-2.5 text-[12.5px] text-brand-night">
+          <span aria-hidden="true">&#129504;</span>
+          <span><strong>Smart match:</strong> <%= nextUp._decision.reason %></span>
+        </div>
+        <% } %>
+        <form method="POST" action="/staff/call-next" class="no-print" data-once>
+          <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-4 text-[16px]"<%- onBreak ? ' disabled title="Break time until ' + breakEnds + '"' : '' %>>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+            Call Next
+          </button>
+        </form>
+      </div>
+    </section>
+    <% } else { %>
+    <section class="<%= UI.card %>">
+      <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white px-6 pt-5 pb-6">
+        <div class="flex items-center justify-between text-[11px] uppercase tracking-[.2em] text-white/75">
+          <span>At your window</span>
+          <span class="inline-flex items-center gap-1.5 normal-case tracking-normal font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span><%= label(current.ticketStatus) %></span>
+        </div>
+        <div class="flex items-end justify-between gap-3 mt-2">
+          <div class="min-w-0">
+            <div class="font-mono text-[52px] font-extrabold leading-none"><%= current.ticketNo %></div>
+            <div class="text-[15px] font-bold mt-2 truncate"><%= current.fullName %></div>
+          </div>
+          <form method="POST" action="/staff/recall/<%= current.id %>" class="no-print shrink-0" data-once>
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnSm %> bg-white/15 hover:bg-white/25 text-white">&#128264; Call again</button>
+          </form>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-3 text-[11.5px] font-semibold">
+          <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= current.queueCategory %></span>
+          <% if (current.priorityType !== 'none') { %><span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= current.priorityType %></span><% } %>
+          <span class="rounded-full bg-white/15 px-2.5 py-1 uppercase"><%= label(current.paymentStatus) %></span>
+        </div>
+      </div>
 
-        <dl class="py-4 space-y-2 text-[13px] border-b border-hair">
-          <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Name</dt><dd class="font-semibold text-right"><%= current.fullName %></dd></div>
-          <% if (current.studentNo) { %>
-          <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Student no.</dt><dd class="font-mono"><%= current.studentNo %></dd></div>
-          <% } %>
-          <% if (current.course) { %>
-          <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Course</dt><dd><%= current.course %><%= current.yearLevel ? ' - Year ' + current.yearLevel : '' %></dd></div>
-          <% } %>
-          <% if (current.purposeText) { %><div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Purpose</dt><dd class="text-right font-semibold"><%= current.purposeText %></dd></div><% } %>
-          <% if (current.parentTicket) { %>
-          <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Cashier ticket</dt><dd class="font-mono font-bold"><%= current.parentTicket %></dd></div>
-          <% } %>
-          <% if (current.receiptNo) { %>
-          <div class="flex justify-between gap-3"><dt class="text-slateSoft/80">Receipt</dt><dd class="font-mono text-[12px]"><%= current.receiptNo %></dd></div>
-          <% } %>
+      <div class="p-5">
+        <%# Priority was approved from a photo; the real ID is checked here. %>
+        <% if (current.queueCategory === 'priority' && current.priorityType !== 'none') { %>
+        <div class="mb-4 rounded-xl bg-violet-50 ring-1 ring-inset ring-violet-200 px-3.5 py-2.5 no-print">
+          <div class="text-[12.5px] font-bold text-violet-900">Check the <%= current.priorityType === 'pregnant' ? 'proof of pregnancy' : (current.priorityType === 'senior' ? 'Senior Citizen ID' : 'PWD ID') %></div>
+          <form method="POST" action="/staff/move-regular/<%= current.id %>" class="mt-1"
+                data-confirm data-confirm-title="Move <%= current.ticketNo %> to the regular lane?"
+                data-confirm-body="The ID does not match the approved proof. The ticket gets a new regular number at the end of the line and your window is freed."
+                data-confirm-ok="Move to regular" data-confirm-back="Keep priority">
+            <button type="submit" class="text-[12px] font-semibold text-violet-800 underline">Not valid? Move to regular line</button>
+          </form>
+        </div>
+        <% } %>
+
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+          <% if (current.studentNo) { %><div><dt class="text-[11px] text-slateSoft/60">Student no.</dt><dd class="font-mono font-semibold"><%= current.studentNo %></dd></div><% } %>
+          <% if (current.course) { %><div><dt class="text-[11px] text-slateSoft/60">Course</dt><dd class="font-semibold"><%= current.course %><%= current.yearLevel ? ' · Year ' + current.yearLevel : '' %></dd></div><% } %>
+          <% if (current.purposeText) { %><div><dt class="text-[11px] text-slateSoft/60">Purpose</dt><dd class="font-semibold"><%= current.purposeText %></dd></div><% } %>
+          <% if (current.parentTicket) { %><div><dt class="text-[11px] text-slateSoft/60">Cashier ticket</dt><dd class="font-mono font-bold"><%= current.parentTicket %></dd></div><% } %>
+          <% if (current.receiptNo) { %><div><dt class="text-[11px] text-slateSoft/60">Receipt</dt><dd class="font-mono text-[12px]"><%= current.receiptNo %></dd></div><% } %>
         </dl>
 
-        <div class="py-4 border-b border-hair">
-          <div class="text-[11px] uppercase tracking-wider text-slateSoft/80 mb-2">Requested document<%= current.items.length > 1 ? 's' : '' %></div>
+        <div class="mt-4 rounded-xl bg-mist px-4 py-3">
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-slateSoft/60 mb-1.5">Requested document<%= current.items.length > 1 ? 's' : '' %></div>
           <% current.items.forEach(function(i){ %>
-          <div class="flex justify-between gap-3 text-[13px] py-1">
+          <div class="flex justify-between gap-3 text-[13px] py-0.5">
             <span class="font-medium"><%= i.label %><% if (i.copies > 1) { %>
               <span class="text-[11.5px] text-slateSoft/70">(<%= peso(i.unitPrice) %> each)</span><% } %></span>
             <span class="font-mono"><%= i.price > 0 ? peso(i.price) : '—' %></span>
@@ -156,19 +139,14 @@
             <%= current.claimItems.map(function(c){ return c.name + ' (' + (c.receiptNo || c.paidTicket) + ')'; }).join(', ') %>
           </div>
           <% } %>
-          <div class="flex justify-between gap-3 mt-2.5 pt-2.5 border-t border-hair">
-            <span class="text-[13px] font-extrabold"><%= dept === 'Cashier' ? 'Amount due' : 'Already paid' %></span>
-            <span class="text-lg font-extrabold font-mono"><%= peso(dept === 'Cashier' ? current.amountDue : current.paidAmount) %></span>
-          </div>
-          <div class="flex justify-end mt-1.5">
-            <span class="<%= pill %> <%= tone(current.paymentStatus) %>"><%= label(current.paymentStatus).toUpperCase() %></span>
+          <div class="flex justify-between items-baseline gap-3 mt-2 pt-2 border-t border-hair">
+            <span class="text-[13px] font-bold"><%= dept === 'Cashier' ? 'Amount due' : 'Already paid' %></span>
+            <span class="text-[22px] font-extrabold font-mono text-brand-night"><%= peso(dept === 'Cashier' ? current.amountDue : current.paidAmount) %></span>
           </div>
         </div>
 
-
-        <!-- representative -->
         <% if (current.claimant === 'representative') { %>
-        <div class="mt-4 rounded-lg bg-amber-50 border border-amber-300 px-3.5 py-3">
+        <div class="mt-4 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-3.5 py-3">
           <div class="text-[12.5px] font-bold text-amber-900">Claimed by a representative</div>
           <div class="text-[12.5px] text-amber-800 mt-1">
             <strong><%= current.repName %></strong>
@@ -182,18 +160,15 @@
         </div>
         <% } %>
 
-        <!-- requirements -->
         <%# What the client was told to bring. Shown for reference only: staff no
             longer tick items off. %>
         <% if (requirements.length) { %>
-        <div class="mt-4 rounded-lg border border-hair">
-          <div class="px-3.5 py-2.5 border-b border-hair">
-            <span class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Client should bring</span>
-          </div>
-          <ul class="p-3.5 space-y-1.5">
+        <div class="mt-4">
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-slateSoft/60 mb-1.5">Client should bring</div>
+          <ul class="space-y-1.5">
             <% requirements.forEach(function(r){ %>
             <li class="flex items-start gap-2 text-[13px]">
-              <span class="text-brand">&bull;</span>
+              <span class="mt-0.5 grid place-items-center w-4 h-4 rounded-full bg-brand-wash text-brand text-[10px] font-bold shrink-0">&#10003;</span>
               <span><%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
             </li>
             <% }) %>
@@ -201,9 +176,8 @@
         </div>
         <% } %>
 
-
         <% if (current.warnedAt && current.paymentStatus !== 'paid' && timeLeft != null) { %>
-        <div class="mt-4 rounded-lg bg-amber-50 border border-amber-300 px-3.5 py-3 flex items-center gap-3">
+        <div class="mt-4 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-3.5 py-3 flex items-center gap-3">
           <div>
             <div class="text-[12.5px] font-bold text-amber-900">Auto-cancel pending</div>
             <div class="text-[11.5px] text-amber-800">Finish or cancel before the timer ends.</div>
@@ -212,7 +186,7 @@
         </div>
         <% } %>
 
-        <div class="grid gap-2 mt-4 no-print">
+        <div class="grid gap-2 mt-5 no-print">
           <%# No Accept step: Call Next already starts serving. The Cashier has one
               button that records the payment, issues the receipt and finishes. %>
           <% if (dept === 'Cashier') { %>
@@ -223,10 +197,10 @@
                 data-confirm-body="<%= current.amountDue > 0 ? 'Received ' + peso(current.amountDue) + ' for ticket ' + current.ticketNo + '? This records the payment, issues the official receipt and finishes the ticket.' : 'Finish ticket ' + current.ticketNo + '? Nothing to pay.' %>"
                 data-confirm-note="<%= current.amountDue > 0 ? 'The receipt cannot be undone.' : '' %>"
                 data-confirm-ok="<%= current.amountDue > 0 ? 'Paid & complete' : 'Complete' %>" data-confirm-back="Not yet">
-              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full"><%= current.amountDue > 0 ? 'Paid & Complete' : 'Complete' %></button>
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full py-3.5 text-[15px]"><%= current.amountDue > 0 ? 'Paid & Complete' : 'Complete' %></button>
             </form>
             <% } else { %>
-              <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 text-[12.5px] text-emerald-900">
+              <div class="rounded-xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-3.5 py-2.5 text-[12.5px] text-emerald-900">
                 Payment recorded. Hand over the printed receipt.
                 <% if (current.requiresClaim) { %>
                 If the client also needs the Registrar, they request their own
@@ -238,76 +212,93 @@
                     data-confirm-title="Complete transaction"
                     data-confirm-body="Finish ticket <%= current.ticketNo %> and free your window?"
                     data-confirm-ok="Complete">
-                <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Complete Transaction</button>
+                <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3.5 text-[15px]">Complete Transaction</button>
               </form>
             <% } %>
           <% } else { %>
             <form method="POST" action="/staff/complete/<%= current.id %>" data-once>
-              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full">Complete Transaction</button>
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full py-3.5 text-[15px]">Complete Transaction</button>
             </form>
           <% } %>
 
-          <% if (current.paymentStatus !== 'paid') { %>
-          <form method="POST" action="/staff/cancel/<%= current.id %>"
-                data-confirm
-                data-confirm-title="Cancel this ticket"
-                data-confirm-body="Cancel ticket <%= current.ticketNo %>?"
-                data-confirm-note="The client will need to request a new number."
-                data-confirm-ok="Cancel ticket"
-                data-confirm-danger="1">
-            <input type="hidden" name="reason" value="Cancelled at the window">
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnBad %> w-full">Cancel Ticket</button>
-          </form>
-          <% } %>
+          <div class="grid grid-cols-2 gap-2">
+            <%# Called but not here: back 5 places (second time: cancelled). %>
+            <% if (current.paymentStatus !== 'paid') { %>
+            <form method="POST" action="/staff/missed/<%= current.id %>"
+                  data-confirm data-confirm-danger="<%= current.missedCount >= 1 ? 1 : '' %>"
+                  data-confirm-title="<%= current.ticketNo %> is not at the window?"
+                  data-confirm-body="<%= current.missedCount >= 1
+                    ? 'This is the second missed turn, so the ticket will be cancelled and the client notified.'
+                    : 'The ticket moves back 5 places in the line and the client is notified why. Your window is freed.' %>"
+                  data-confirm-ok="<%= current.missedCount >= 1 ? 'Cancel ticket' : 'Move back 5 places' %>" data-confirm-back="Wait">
+              <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> w-full text-amber-800"><%= current.missedCount >= 1 ? 'Missed again' : 'Not here' %></button>
+            </form>
+            <form method="POST" action="/staff/cancel/<%= current.id %>"
+                  data-confirm
+                  data-confirm-title="Cancel this ticket"
+                  data-confirm-body="Cancel ticket <%= current.ticketNo %>?"
+                  data-confirm-note="The client will need to request a new number."
+                  data-confirm-ok="Cancel ticket"
+                  data-confirm-danger="1">
+              <input type="hidden" name="reason" value="Cancelled at the window">
+              <button type="submit" class="<%= UI.btn %> w-full ring-1 ring-inset ring-red-200 bg-red-50 text-red-700 hover:bg-red-100">Cancel ticket</button>
+            </form>
+            <% } %>
+          </div>
         </div>
-        <% } %>
       </div>
-    </div>
+    </section>
+    <% } %>
   </div>
 
-  <!-- waiting lanes -->
-  <div class="lg:col-span-7 space-y-4">
+  <%# ── the two lanes, as short rows that also fit a phone ───────────────── %>
+  <div class="lg:col-span-7 space-y-4 min-w-0">
     <% [['Priority lane', waitingPriority, 'priority'], ['Regular lane', waitingRegular, 'regular']].forEach(function(g){ %>
-    <div class="<%= UI.card %>">
+    <section class="<%= UI.card %>">
       <div class="<%= UI.cardHd %>">
-        <h3 class="<%= UI.cardTtl %>"><%= g[0] %></h3>
+        <h3 class="<%= UI.cardTtl %> flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full <%= g[2] === 'priority' ? 'bg-violet-500' : 'bg-brand' %>"></span><%= g[0] %>
+        </h3>
         <span class="<%= pill %> <%= tone(g[2]) %>"><%= g[1].length %> waiting</span>
       </div>
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead><tr>
-            <th class="<%= UI.th %>">Ticket</th><th class="<%= UI.th %>">Name</th>
-            <th class="<%= UI.th %>">Document</th><th class="<%= UI.th %>">Purpose</th>
-            <th class="<%= UI.th %>"><%= dept === 'Cashier' ? 'Amount' : 'Payment' %></th>
-            <th class="<%= UI.th %>">Time</th>
-          </tr></thead>
-          <tbody>
-            <% g[1].forEach(function(t){ %>
-            <tr class="<%= UI.tr %>">
-              <td class="<%= UI.td %>"><span class="<%= chip %>"><%= t.ticketNo %></span></td>
-              <td class="<%= UI.td %> font-semibold"><%= t.name %>
-                <% if (t.clientType === 'guest') { %><span class="<%= pill %> <%= tone('guest') %> ml-1">guest</span><% } %>
-              </td>
-              <td class="<%= UI.td %> text-[12px]"><%= t.items.map(function(i){return i.name}).join(', ') %></td>
-              <td class="<%= UI.td %> text-[12px] text-slateSoft"><%= t.purposeText || "-" %></td>
-              <td class="<%= UI.td %> font-mono text-[12px]">
-                <% if (dept === 'Cashier') { %><%= peso(t.amountDue) %>
-                <% } else { %><span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span><% } %>
-              </td>
-              <td class="<%= UI.td %> font-mono text-[12px]"><%= t.timeIn %></td>
-            </tr>
-            <% }) %>
-            <% if (!g[1].length) { %>
-            <tr><td colspan="6" class="px-4 py-6 text-center text-[13px] text-slateSoft/80">No one in this lane.</td></tr>
-            <% } %>
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <% if (!g[1].length) { %>
+      <p class="px-5 py-6 text-center text-[13px] text-slateSoft/60">No one in this lane.</p>
+      <% } else { %>
+      <ol class="divide-y divide-hair/60">
+        <% g[1].forEach(function(t, i){ %>
+        <li class="flex items-center gap-3 px-5 py-3 hover:bg-brand-wash/30 transition-colors <%= nextUp && nextUp.ticket_no === t.ticketNo ? 'bg-brand-wash/50' : '' %>">
+          <span class="w-5 text-[11px] font-bold text-slateSoft/40 text-right shrink-0"><%= i + 1 %></span>
+          <span class="<%= chip %> shrink-0"><%= t.ticketNo %></span>
+          <div class="min-w-0 flex-1">
+            <div class="text-[13.5px] font-semibold truncate"><%= t.name %>
+              <% if (t.clientType === 'guest') { %><span class="<%= pill %> <%= tone('guest') %> ml-1">guest</span><% } %>
+              <% if (nextUp && nextUp.ticket_no === t.ticketNo) { %><span class="<%= pill %> bg-brand text-white ml-1">next</span><% } %>
+            </div>
+            <div class="text-[12px] text-slateSoft/70 truncate"><%= t.items.map(function(i){return i.name}).join(', ') %><%= t.purposeText ? ' · ' + t.purposeText : '' %></div>
+          </div>
+          <div class="text-right shrink-0">
+            <% if (dept === 'Cashier') { %><div class="font-mono text-[13px] font-semibold"><%= peso(t.amountDue) %></div>
+            <% } else { %><span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span><% } %>
+            <div class="font-mono text-[11px] text-slateSoft/55"><%= t.timeIn %></div>
+          </div>
+        </li>
+        <% }) %>
+      </ol>
+      <% } %>
+    </section>
     <% }) %>
+
   </div>
 </div>
 
+</div>
+
+<%# Today's busy-hour shape, so staff can time breaks and see a rush coming.
+    Outside the live part: it does not change during the day. %>
+<div class="mt-4 max-w-[1400px]">
+  <%- include('../../partials/peak-hours', {
+        p: peakHours, compact: true,
+        heading: 'Busy hours on a ' + (peakHours.weekdayName || 'typical day') }) %>
 </div>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/live', { liveEvery: 10 }) %>

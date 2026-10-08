@@ -120,6 +120,7 @@ router.get('/', async (req, res, next) => {
       title: 'Get a Queue Number', settings, offices,
       active: mine.filter(ACTIVE), past: mine.filter(t => !ACTIVE(t)).slice(0, 3),
       sameDay: sameDayStatus(settings), officeHours: officeHours(settings),
+      breakEnds: db.isBreakTime(settings) ? db.clock12(settings.breakEnd) : null,
     });
   } catch (e) { next(e); }
 });

@@ -52,7 +52,7 @@
             <div class="grid sm:grid-cols-2 gap-2.5">
               <% ['Cashier','Registrar'].forEach(function(off){ %>
               <% const busy = !!activeBy[off]; %>
-              <label class="rounded-lg border-2 px-4 py-3.5 <%= busy ? 'border-hair bg-mist/60 opacity-60 cursor-not-allowed' : 'cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash' %>">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 <%= busy ? 'border-hair bg-mist/60 opacity-60 cursor-not-allowed' : 'cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10' %>">
                 <input type="radio" name="office" value="<%= off %>" class="sr-only"
                        <%= busy ? 'disabled' : '' %>
                        <%= form.office === off ? 'checked' : '' %> onchange="pickOffice()">
@@ -85,7 +85,7 @@
                   ticket is made (the Registrar checks the ID before releasing). %>
               <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
                  const picked = [].concat(form.documentIds || []).map(String).includes(String(sv.id)); %>
-              <div class="doc-row rounded-lg border border-hair px-3.5 py-3 has-[:checked]:border-brand has-[:checked]:bg-brand-wash"
+              <div class="doc-row rounded-2xl border-2 border-hair px-4 py-3.5 transition has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10"
                    data-office="<%= sv.office %>" hidden>
                 <label class="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" name="documentIds" value="<%= sv.id %>" <%= picked ? 'checked' : '' %>
@@ -136,9 +136,9 @@
             <p id="noDocs" class="text-[13px] text-slateSoft/70" hidden>No documents are available for this office.</p>
           </fieldset>
 
-          <div class="mt-4 rounded-lg bg-ink text-white px-4 py-3.5 flex items-center justify-between">
+          <div class="mt-4 rounded-2xl bg-hero text-white shadow-lift px-5 py-4 flex items-center justify-between">
             <div>
-              <div class="text-[11px] uppercase tracking-wider text-white/55">Amount due</div>
+              <div class="text-[11px] uppercase tracking-wider text-white/70">Amount due</div>
               <div class="text-[11.5px] text-white/70" id="destLabel">Select a document to continue</div>
             </div>
             <div class="text-2xl font-extrabold font-mono" id="amountDue">₱0.00</div>
@@ -183,14 +183,14 @@
               <%# "Request now" is greyed out outside office hours, on closed days, or
                   when same-day requests are switched off (the server checks too). %>
               <% if (settings.allowSameDay) { %>
-              <label class="rounded-lg border-2 px-4 py-3.5 border-hair <%= sameDay.open ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash' : 'cursor-not-allowed bg-mist/60 opacity-60' %>">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 border-hair <%= sameDay.open ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10' : 'cursor-not-allowed bg-mist/60 opacity-60' %>">
                 <input type="radio" name="mode" value="now" class="sr-only" <%= sameDay.open ? '' : 'disabled' %>
                        <%= sameDay.open && form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
                 <div class="text-[14px] font-bold">Join the line now</div>
                 <div class="text-[12px] text-slateSoft/80 mt-0.5"><%= sameDay.open ? "Even from class: your place starts now, and we alert you when to come" : 'Not available right now' %></div>
               </label>
               <% } %>
-              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="mode" value="schedule" class="sr-only"
                        <%= (!sameDay.open || form.mode === 'schedule') ? 'checked' : '' %> onchange="toggleMode()">
                 <div class="text-[14px] font-bold">Book a time</div>
@@ -323,13 +323,13 @@
           <fieldset class="mb-4">
             <legend class="sr-only">Are you a student?</legend>
             <div class="grid grid-cols-2 gap-2.5">
-              <label class="rounded-lg border-2 px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="clientType" value="student" class="sr-only"
                        <%= form.clientType !== 'guest' ? 'checked' : '' %> onchange="toggleClient()">
                 <div class="text-[14px] font-bold">I am a student</div>
                 <div class="text-[12px] text-slateSoft/80 mt-0.5">Enrolled or former LICOM student</div>
               </label>
-              <label class="rounded-lg border-2 px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="clientType" value="guest" class="sr-only"
                        <%= form.clientType === 'guest' ? 'checked' : '' %> onchange="toggleClient()">
                 <div class="text-[14px] font-bold">I am a visitor</div>
@@ -380,7 +380,7 @@
             <legend class="text-[13px] text-slateSoft mb-2.5">PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <% [['', 'No, regular'], ['pwd', priorityLabels.pwd], ['senior', priorityLabels.senior], ['pregnant', priorityLabels.pregnant]].forEach(function (p) { %>
-              <label class="rounded-lg border-2 px-3 py-2.5 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-3 py-2.5 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="priorityType" value="<%= p[0] %>" class="sr-only"
                        <%= (form.priorityType || '') === p[0] ? 'checked' : '' %> onchange="toggleProof()">
                 <span class="text-[13px] font-bold"><%= p[1] %></span>
@@ -412,13 +412,13 @@
           <fieldset>
             <legend class="sr-only">Claimant</legend>
             <div class="grid sm:grid-cols-2 gap-2.5">
-              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="claimant" value="self" class="sr-only"
                        <%= form.claimant !== 'representative' ? 'checked' : '' %> onchange="toggleRep()">
                 <div class="text-[14px] font-bold">I will claim it myself</div>
                 <div class="text-[12px] text-slateSoft/80 mt-0.5">Bring a valid ID to the window</div>
               </label>
-              <label class="rounded-lg border-2 px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash">
+              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
                 <input type="radio" name="claimant" value="representative" class="sr-only"
                        <%= form.claimant === 'representative' ? 'checked' : '' %> onchange="toggleRep()">
                 <div class="text-[14px] font-bold">Someone will claim it for me</div>
@@ -520,8 +520,8 @@ function loadSlots(){
       d.slots.forEach(function (x) {
         if (x.past) return;
         var lab = document.createElement('label');
-        lab.className = 'rounded-lg border-2 px-3 py-2.5 text-center border-hair ' +
-          (x.available ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash' : 'opacity-50 cursor-not-allowed bg-mist');
+        lab.className = 'rounded-2xl border-2 transition has-[:checked]:shadow-card px-3 py-2.5 text-center border-hair ' +
+          (x.available ? 'cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10' : 'opacity-50 cursor-not-allowed bg-mist');
         lab.innerHTML = '<input type="radio" name="slot" class="sr-only" required>' +
           '<span class="block text-[13px] font-bold"></span><span class="block text-[11px] text-slateSoft/80 mt-0.5"></span>';
         var inp = lab.querySelector('input');

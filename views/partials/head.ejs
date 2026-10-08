@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title><%= title %> | SmartQ</title>
 <link rel="icon" type="image/png" href="/img/favicon.png">
 <%# Lets students add SmartQ to the Home Screen (needed for alerts on iPhone). %>
@@ -12,21 +12,42 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-tailwind.config = { theme: { extend: { colors: {
-  brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', wash:'#E7F1FA', line:'#C3DCF2' },
-  ink:'#303841', slateSoft:'#3A4750',
-  mist:'#F3F3F3', page:'#E9EBEF', hair:'#DFE2E6'
-}}}}
+tailwind.config = { theme: { extend: {
+  colors: {
+    brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', night:'#0F4C81', wash:'#EAF3FB', line:'#C9E0F4' },
+    ink:'#1E2A36', slateSoft:'#4A5866',
+    mist:'#F5F7FA', page:'#F2F4F8', hair:'#E3E7ED'
+  },
+  fontFamily: {
+    sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+    mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+  },
+  boxShadow: {
+    card: '0 1px 2px rgba(16,24,40,.04), 0 4px 14px -4px rgba(16,24,40,.06)',
+    lift: '0 6px 18px -6px rgba(33,133,213,.55)',
+    pop:  '0 18px 40px -12px rgba(16,24,40,.25)',
+  },
+}}}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  body{font-family:'Public Sans',system-ui,sans-serif}
-  .fade-in{animation:fi .25s ease}
-  @keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  [hidden]{display:none!important}
+  body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+  .font-mono,[data-eta]{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .fade-in{animation:fi .3s cubic-bezier(.2,.7,.3,1)}
+  @keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  /* a gentle stagger for card lists: add .rise to children */
+  .rise{animation:fi .45s cubic-bezier(.2,.7,.3,1) both}
+  .rise:nth-child(2){animation-delay:.06s}.rise:nth-child(3){animation-delay:.12s}.rise:nth-child(4){animation-delay:.18s}
+  /* the brand hero used on headers and the big ticket card */
+  .bg-hero{background:radial-gradient(120% 140% at 0% 0%,#3B9BE6 0%,#2185D5 40%,#0F4C81 100%)}
+  /* iPhone: 16px inputs never trigger the zoom-on-focus */
+  @media (max-width:640px){input,select,textarea{font-size:16px!important}}
   @media print{.no-print{display:none!important}body{background:#fff}}
   :focus-visible{outline:2px solid #2185D5;outline-offset:2px}
+  ::selection{background:#C9E0F4}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>

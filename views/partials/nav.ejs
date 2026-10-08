@@ -24,25 +24,25 @@
   const activePath = typeof active !== 'undefined' ? active : '';
   const initials = (me.firstName || '?').charAt(0) + (me.lastName || '').charAt(0);
 %>
-<aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 bg-brand text-white flex flex-col
-       -translate-x-full lg:translate-x-0 transition-transform no-print">
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 bg-hero text-white flex flex-col shadow-pop lg:shadow-none
+       -translate-x-full lg:translate-x-0 transition-transform duration-300 no-print">
 
   <!-- seal and wordmark -->
-  <div class="px-5 py-5 border-b border-white/20 flex items-center gap-3">
+  <div class="px-5 py-5 flex items-center gap-3">
     <img src="/img/lcc-seal.jpg" alt="Libon Community College seal"
          class="w-11 h-11 rounded-full bg-white ring-2 ring-white/40 object-cover shrink-0">
     <div class="min-w-0">
-      <div class="text-[19px] font-extrabold tracking-tight leading-none">SmartQ</div>
+      <div class="text-[19px] font-extrabold tracking-tight leading-none">Smart<span class="text-sky-200">Q</span></div>
       <div class="text-[11px] text-white/70 leading-tight mt-1">Libon Community College</div>
     </div>
   </div>
 
-  <nav class="flex-1 py-3 overflow-y-auto">
+  <nav class="flex-1 px-3 py-2 overflow-y-auto space-y-0.5">
     <% links.forEach(function(l){ var isPr = /\/priority$/.test(l[0]); %>
-    <a href="<%= l[0] %>" class="flex items-center gap-2 px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] transition-colors <%=
+    <a href="<%= l[0] %>" class="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-[13.5px] font-medium transition-colors <%=
       activePath === l[0]
-        ? 'bg-white text-brand-deep border-white font-semibold'
-        : 'border-transparent text-white/75 hover:text-white hover:bg-white/12' %>"><%= l[1] %>
+        ? 'bg-white text-brand-night font-semibold shadow-card'
+        : 'text-white/75 hover:text-white hover:bg-white/10' %>"><%= l[1] %>
       <% if (isPr) { %>
       <%# Red dot: priority proofs waiting for review (kept live by the script below). %>
       <span data-priority-dot data-priority-count class="pr-dot ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center"
@@ -51,14 +51,15 @@
     </a>
     <% }) %>
 
-    <div class="px-5 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/45">Public Display</div>
+    <div class="px-3.5 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/45">Public Display</div>
     <% boards.forEach(function(b){ %>
     <a href="<%= b[0] %>" target="_blank" rel="noopener"
-       class="block px-5 py-2.5 text-[13.5px] font-medium border-l-[3px] border-transparent text-white/75 hover:text-white hover:bg-white/12 transition-colors"><%= b[1] %></a>
+       class="flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[13.5px] font-medium text-white/75 hover:text-white hover:bg-white/10 transition-colors"><%= b[1] %>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" class="opacity-60"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
     <% }) %>
   </nav>
 
-  <div class="px-5 py-4 border-t border-white/20">
+  <div class="m-3 rounded-2xl bg-white/10 px-4 py-3.5">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-full bg-white/20 grid place-items-center text-[12.5px] font-bold shrink-0 uppercase"><%= initials %></div>
       <div class="min-w-0">
@@ -66,13 +67,13 @@
         <div class="text-[11px] text-white/65 capitalize"><%= me.role %></div>
       </div>
     </div>
-    <a href="/logout" class="mt-3 block text-center rounded-lg bg-white/15 hover:bg-white/25 px-3 py-2 text-[12.5px] font-semibold transition-colors">Log out</a>
+    <a href="/logout" class="mt-3 block text-center rounded-xl bg-white/15 hover:bg-white/25 px-3 py-2 text-[12.5px] font-semibold transition-colors">Log out</a>
   </div>
 </aside>
 
-<div class="lg:ml-60 flex flex-col min-h-screen">
-<header class="bg-white border-b border-hair h-14 flex items-center gap-3 px-5 sticky top-0 z-30 no-print">
-  <button id="menuBtn" class="lg:hidden relative rounded-lg border border-hair px-3 py-1.5 text-[12.5px] text-slateSoft" aria-label="Open menu">Menu
+<div class="lg:ml-64 flex flex-col min-h-screen">
+<header class="bg-white/80 backdrop-blur-md border-b border-hair/70 h-16 flex items-center gap-3 px-5 lg:px-8 sticky top-0 z-30 no-print">
+  <button id="menuBtn" class="lg:hidden relative inline-flex items-center gap-1.5 rounded-xl border border-hair bg-white px-3 py-2 text-[12.5px] font-semibold text-slateSoft" aria-label="Open menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>Menu
     <% if (priorityPending != null) { %>
     <span data-priority-dot class="pr-dot absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-red-600 ring-2 ring-white" <%= priorityPending ? '' : 'hidden' %>></span>
     <% } %>
@@ -109,13 +110,8 @@
   </script>
   <% } %>
   <img src="/img/lcc-seal.jpg" alt="" width="26" height="26" class="rounded-full lg:hidden">
-  <h1 class="text-[15px] font-bold text-ink"><%= title %></h1>
+  <h1 class="text-[16px] font-extrabold tracking-tight text-ink truncate"><%= title %></h1>
   <span class="<%= pill %> <%= tone(me.role) %> ml-auto capitalize"><%= me.role %></span>
 </header>
-<main id="main" class="flex-1 p-5 fade-in">
-<% if (flash) { %>
-<div role="status" class="mb-4 rounded-lg bg-brand-wash border-l-4 border-brand px-4 py-3 text-[13px] font-medium text-brand-deep"><%= flash %></div>
-<% } %>
-<% if (error) { %>
-<div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= error %></div>
-<% } %>
+<main id="main" class="flex-1 p-4 sm:p-5 lg:p-8 fade-in">
+<%- include('flash') %>

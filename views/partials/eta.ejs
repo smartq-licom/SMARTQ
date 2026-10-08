@@ -3,66 +3,77 @@
   // time it maps to, plus what the figure is based on.
   const e = eta;
 %>
-<% if (e && e.state === 'waiting') { %>
-<div class="rounded-lg bg-ink text-white px-4 py-3.5">
-  <div class="flex items-baseline justify-between gap-3">
-    <span class="text-[11px] uppercase tracking-wider text-white/50">Estimated time</span>
-    <span class="text-[11.5px] text-white/60">about <%= e.atClock %></span>
+<% if (e && e.state === 'waiting') { var aheadAll = e.ahead + (e.jumpers || 0); %>
+<div class="bg-white rounded-2xl border border-hair/80 shadow-card px-5 py-4">
+  <div class="flex items-center justify-between gap-3">
+    <span class="text-[11px] font-semibold uppercase tracking-wider text-slateSoft/65">Estimated wait</span>
+    <span class="rounded-full bg-brand-wash px-2.5 py-0.5 text-[12px] font-semibold text-brand-night">your turn ~<%= e.atClock %></span>
   </div>
-  <div class="flex items-baseline gap-2 mt-1">
-    <span class="text-3xl font-extrabold font-mono leading-none"
+  <div class="flex items-baseline gap-2 mt-1.5">
+    <span class="text-[44px] font-extrabold font-mono leading-none text-brand-night"
           data-eta data-seconds="<%= e.seconds %>"><%= e.minutes %></span>
-    <span class="text-[13px] text-white/70" data-eta-unit>minutes</span>
+    <span class="text-[15px] font-semibold text-slateSoft" data-eta-unit>minutes</span>
   </div>
+
+  <%# how many are in front, as a short row of dots (the dark one is you) %>
+  <div class="mt-3.5 flex items-center gap-1" aria-hidden="true">
+    <% for (var i = 0; i < Math.min(aheadAll, 12); i++) { %><span class="h-2 flex-1 max-w-[22px] rounded-full bg-brand-line"></span><% } %>
+    <% if (aheadAll > 12) { %><span class="text-[11px] font-bold text-slateSoft/60 px-0.5">+<%= aheadAll - 12 %></span><% } %>
+    <span class="h-2 flex-1 max-w-[22px] rounded-full bg-brand"></span>
+  </div>
+  <div class="mt-1.5 text-[12.5px] text-slateSoft">
+    <strong class="text-ink"><%= e.ahead %></strong> ahead of you<% if (e.jumpers) { %> plus <strong class="text-ink"><%= e.jumpers %></strong> priority<% } %>
+  </div>
+
   <%# The window Smart Call Next will most likely give them (data/dispatch.js),
       shown once the turn is near; the call itself has the final say. %>
   <% if (e.window && e.minutes <= 20 && !e.paused) { %>
-  <div class="mt-2 rounded bg-white/10 px-2.5 py-1.5 text-[12.5px] font-semibold">Your window: <%= e.window %> <span class="font-normal text-white/70">(most likely)</span></div>
-  <% } %>
-  <div class="text-[11px] text-white/50 mt-2">
-    <%= e.ahead %> ahead of you<% if (e.jumpers) { %> plus <%= e.jumpers %> priority<% } %>
-    &middot; <%= e.basisLabel %>
+  <div class="mt-3 flex items-center gap-2 rounded-xl bg-brand-wash px-3 py-2 text-[13px] font-semibold text-brand-night">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+    Your window: <%= e.window %> <span class="font-normal text-brand-night/70">(most likely)</span>
   </div>
+  <% } %>
   <% if (e.onBreak) { %>
-  <div class="mt-2.5 rounded bg-white/10 px-2.5 py-2 text-[11.5px] text-white/85">
+  <div class="mt-3 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 text-[12px] text-amber-900">
     &#9749; Break time: the windows call again at <%= e.breakEnds %>. Your estimate already counts the break.
   </div>
   <% } %>
   <% if (e.paused) { %>
-  <div class="mt-2.5 rounded bg-white/10 px-2.5 py-2 text-[11.5px] text-white/85">
+  <div class="mt-3 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 text-[12px] text-amber-900">
     &#9208; The line is paused: no one has been called<%= e.idleMinutes != null ? ' in the last ' + e.idleMinutes + ' minutes' : ' yet today' %>.
     Until the windows start calling, this time moves later.
   </div>
   <% } %>
+  <div class="mt-3 pt-2.5 border-t border-hair/70 text-[11px] text-slateSoft/60 leading-snug">&#10024; <%= e.basisLabel %></div>
 </div>
 <% } else if (e && e.state === 'next') { %>
-<div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
-  <div class="text-[11px] uppercase tracking-wider text-white/60">Estimated time</div>
-  <div class="text-2xl font-extrabold mt-0.5"><%= e.onBreak ? 'You are next after the break' : 'You are next' %></div>
-  <% if (e.window) { %><div class="text-[13px] font-semibold mt-1">Most likely at <%= e.window %></div><% } %>
-  <div class="text-[11.5px] text-white/70 mt-1"><%= e.onBreak ? 'The windows call again at ' + e.breakEnds + '. Please be back by then.' : 'Stay close to the window.' %></div>
+<div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-card px-5 py-4">
+  <div class="text-[11px] font-semibold uppercase tracking-wider text-white/70">Estimated wait</div>
+  <div class="text-[26px] font-extrabold leading-tight mt-0.5"><%= e.onBreak ? 'You are next after the break' : 'You are next' %></div>
+  <% if (e.window) { %><div class="text-[13.5px] font-semibold mt-1">Most likely at <%= e.window %></div><% } %>
+  <div class="text-[12px] text-white/80 mt-1"><%= e.onBreak ? 'The windows call again at ' + e.breakEnds + '. Please be back by then.' : 'Stay close to the window.' %></div>
   <% if (e.paused) { %>
-  <div class="mt-2.5 rounded bg-white/15 px-2.5 py-2 text-[11.5px] text-white/90">
+  <div class="mt-2.5 rounded-xl bg-white/15 px-3 py-2 text-[11.5px] text-white/90">
     &#9208; The line is paused: no one has been called<%= e.idleMinutes != null ? ' in the last ' + e.idleMinutes + ' minutes' : ' yet today' %>.
     You will be called when the windows start calling.
   </div>
   <% } %>
 </div>
 <% } else if (e && e.state === 'now') { %>
-<div class="rounded-lg bg-emerald-600 text-white px-4 py-3.5">
-  <div class="text-2xl font-extrabold">It is your turn</div>
-  <div class="text-[12px] text-white/80 mt-0.5">Please proceed to the window.</div>
+<div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white px-5 py-4">
+  <div class="text-[24px] font-extrabold">It is your turn</div>
+  <div class="text-[12.5px] text-white/85 mt-0.5">Please proceed to the window.</div>
 </div>
 <% } else if (e && e.state === 'closed') { %>
-<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
+<div class="rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
   <%= e.label %>. Your number stays valid.
 </div>
 <% } else if (e && e.state === 'opens') { %>
-<div class="rounded-lg bg-brand-wash border border-brand-line px-4 py-3 text-[12.5px] text-brand-deep">
+<div class="rounded-2xl bg-brand-wash ring-1 ring-inset ring-brand-line px-4 py-3 text-[12.5px] text-brand-night">
   <strong><%= e.label %>.</strong> You are in line; your estimate starts when the windows open.
 </div>
 <% } else if (e && e.state === 'scheduled') { %>
-<div class="rounded-lg bg-mist border border-hair px-4 py-3 text-[12.5px] text-slateSoft">
+<div class="rounded-2xl bg-white border border-hair px-4 py-3 text-[12.5px] text-slateSoft">
   <%= e.label %>. <%= /today$/.test(e.label) ? 'Your estimate appears when your slot starts.' : 'An estimate appears on the day.' %>
 </div>
 <% } %>

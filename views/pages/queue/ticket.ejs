@@ -1,125 +1,168 @@
 <%- include('../../partials/head') %>
 <%- include('../../partials/public-nav') %>
-<div class="max-w-lg mx-auto">
+<style>
+  /* the ticket stub: two notches where it would tear */
+  .stub{position:relative}
+  .stub::before,.stub::after{content:"";position:absolute;top:var(--tear,70%);width:22px;height:22px;border-radius:999px;background:#F2F4F8;transform:translateY(-50%)}
+  .stub::before{left:-11px}.stub::after{right:-11px}
+  .tear{border-top:2px dashed rgba(255,255,255,.28)}
+</style>
+<div class="max-w-lg mx-auto" data-live-key="<%= t.ticketStatus %>|<%= t.ticketNo %>|<%= t.queueCategory %>|<%= t.serviceDate %>">
   <%# Live parts (data-live) are updated in place by partials/live; a change of
       status or number (data-live-key) loads the page fresh instead. %>
-  <div class="<%= UI.card %> text-center p-8" data-live-key="<%= t.ticketStatus %>|<%= t.ticketNo %>|<%= t.queueCategory %>|<%= t.serviceDate %>">
-    <div class="text-[11px] uppercase tracking-widest text-slateSoft/80">Your queue number</div>
-    <div class="font-mono text-6xl font-extrabold tracking-tight mt-1"><%= t.ticketNo %></div>
-    <div class="flex justify-center gap-2 mt-3">
-      <span class="<%= pill %> <%= tone(t.queueCategory) %>"><%= t.queueCategory %></span>
-      <span class="<%= pill %> <%= tone(t.ticketStatus) %>"><%= t.ticketStatus %></span>
-      <span class="<%= pill %> <%= tone(t.paymentStatus) %>"><%= label(t.paymentStatus) %></span>
+
+  <%# ── the ticket itself ─────────────────────────────────────────────────── %>
+  <% var atWindow = ['called','serving'].includes(t.ticketStatus); %>
+  <section class="stub rise <%= atWindow ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : 'bg-hero' %> text-white rounded-3xl shadow-lift overflow-hidden" style="--tear:<%= t.bookingCode && !['completed','cancelled'].includes(t.overallStatus) ? '64%' : '78%' %>">
+    <div class="px-6 pt-6 pb-5 text-center">
+      <div class="flex items-center justify-between text-[11.5px] font-semibold text-white/75">
+        <span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-white/80"></span><%= t.department %></span>
+        <span><%= t.visitDateText %></span>
+      </div>
+      <div class="mt-4 text-[11px] uppercase tracking-[.2em] text-white/70">Your queue number</div>
+      <div class="font-mono text-[68px] sm:text-[76px] font-extrabold leading-none tracking-tight mt-1"><%= t.ticketNo %></div>
+      <div class="flex flex-wrap justify-center gap-1.5 mt-4 text-[11.5px] font-semibold">
+        <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= t.queueCategory %></span>
+        <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= label(t.ticketStatus) %></span>
+        <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= label(t.paymentStatus) %></span>
+      </div>
+      <% if (atWindow) { %>
+      <div class="mt-5 rounded-2xl bg-white/15 px-4 py-3">
+        <div class="text-[20px] font-extrabold">&#128075; It is your turn</div>
+        <div class="text-[13px] text-white/85">Proceed to <strong><%= t.windowLabel || t.department %></strong>.</div>
+        <% if (timeLeft != null && t.paymentStatus !== 'paid') { %>
+        <div class="font-mono text-3xl font-extrabold mt-1" data-countdown data-seconds="<%= timeLeft %>">--:--</div>
+        <% } %>
+      </div>
+      <% } %>
     </div>
 
     <%# No account: this phone remembers the ticket. The code finds it on
         any other phone, together with the student number or last name. %>
     <% if (t.bookingCode && !['completed','cancelled'].includes(t.overallStatus)) { %>
-    <div class="mt-5 rounded-lg border-2 border-dashed border-brand-line bg-brand-wash px-4 py-3">
-      <div class="text-[11px] uppercase tracking-widest text-brand-deep/80">Booking code</div>
-      <div class="font-mono text-2xl font-extrabold tracking-[.25em] text-brand-deep mt-0.5"><%= t.bookingCode %></div>
-      <p class="text-[11.5px] text-brand-deep/80 mt-1">
-        This phone remembers your ticket. Take a screenshot too: with this code and your
-        <%= t.studentNo ? 'student number' : 'last name' %> you can open it on any phone under "Find my ticket".
+    <div class="tear mx-6"></div>
+    <div class="px-6 py-4 flex items-center gap-4">
+      <div class="min-w-0 flex-1">
+        <div class="text-[10.5px] uppercase tracking-[.2em] text-white/65 whitespace-nowrap">Booking code</div>
+        <div class="font-mono text-[26px] font-extrabold tracking-[.22em] leading-tight"><%= t.bookingCode %></div>
+      </div>
+      <p class="text-[11px] text-white/75 leading-snug max-w-[11rem] text-right">
+        Screenshot this. With the code and your <%= t.studentNo ? 'student number' : 'last name' %>, open it on any phone.
       </p>
     </div>
     <% } %>
-    <%# Priority proof sent with this ticket: where its review stands. %>
-    <div data-live="priority">
-    <% if (priorityRequest) { var pr = priorityRequest; %>
-    <div class="mt-3 rounded-lg border px-3.5 py-2.5 text-[12.5px] text-left
-                <%= pr.status === 'rejected' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-violet-50 border-violet-200 text-violet-900' %>">
-      <% if (pr.status === 'pending') { %>
-      <div class="font-bold">&#9203; <%= pr.categoryLabel %> proof is being reviewed</div>
-      <div class="mt-0.5">You are in the regular line for now. Once staff approve your proof, this page
-        moves you to the priority lane with a new number.</div>
-      <% } else if (pr.status === 'approved') { %>
-      <div class="font-bold">&#10003; <%= pr.categoryLabel %> priority approved</div>
-      <div class="mt-0.5">Bring the same ID to the window.</div>
+  </section>
+
+  <%# ── how long: the estimate, right under the number ──────────────────────── %>
+  <div data-live="details">
+    <% if (!atWindow) { %>
+    <div class="mt-4 rise">
+      <%- include('../../partials/eta', { eta: eta }) %>
+    </div>
+    <% } %>
+  </div>
+
+  <%# Priority proof sent with this ticket: where its review stands. %>
+  <div data-live="priority">
+  <% if (priorityRequest) { var pr = priorityRequest; %>
+  <div class="mt-4 rounded-2xl ring-1 ring-inset px-4 py-3 text-[12.5px]
+              <%= pr.status === 'rejected' ? 'bg-red-50 ring-red-200 text-red-900' : 'bg-violet-50 ring-violet-200 text-violet-900' %>">
+    <% if (pr.status === 'pending') { %>
+    <div class="font-bold">&#9203; <%= pr.categoryLabel %> proof is being reviewed</div>
+    <div class="mt-0.5">You are in the regular line for now. Once staff approve your proof, this page
+      moves you to the priority lane with a new number.</div>
+    <% } else if (pr.status === 'approved') { %>
+    <div class="font-bold">&#10003; <%= pr.categoryLabel %> priority approved</div>
+    <div class="mt-0.5">Bring the same ID to the window.</div>
+    <% } else { %>
+    <div class="font-bold">Priority not approved</div>
+    <div class="mt-0.5"><%= pr.reason %> You stay in the regular line.</div>
+    <% } %>
+  </div>
+  <% } %>
+  </div>
+
+  <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
+      a vibration and (if allowed) a phone notification at 5 ahead and when
+      next. Kept up to date by the ticket's /pulse check every 1.5 s. %>
+  <% if (t.ticketStatus === 'waiting' && isToday) { %>
+  <div id="nearBox" class="mt-4 rounded-2xl bg-amber-50 ring-2 ring-inset ring-amber-300 px-4 py-3" hidden
+       data-tx="<%= t.id %>" data-no="<%= t.ticketNo %>" data-office="<%= t.department %>" data-ahead="<%= ahead %>">
+    <div class="text-[14px] font-bold text-amber-900" data-near-title></div>
+    <div class="text-[12.5px] text-amber-900/85 mt-0.5" data-near-body></div>
+  </div>
+  <% } %>
+
+  <div data-live="notices">
+  <%# The capacity decision (data/engine.js): even at a slow pace, would this
+      ticket finish before closing? If not, say so early and offer choices. %>
+  <% var dayEnded = t.ticketStatus === 'waiting' && isToday && eta && eta.state === 'ended'; %>
+  <% var atRisk = t.ticketStatus === 'waiting' && isToday && t.paymentStatus !== 'paid' && (eta && eta.fits === false); %>
+  <% if (dayEnded) { %>
+  <div class="mt-4 rounded-2xl bg-red-50 ring-2 ring-inset ring-red-300 px-4 py-3.5 no-print" role="alert">
+    <div class="text-[14px] font-bold text-red-900"><%= eta.label %></div>
+    <p class="text-[12.5px] text-red-900/85 mt-1">Your turn was not reached today. Book a time on the next open day and keep your documents ready.</p>
+    <% if (t.paymentStatus !== 'paid') { %>
+    <form method="POST" action="<%= base %>/rebook" class="mt-3" data-once>
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Book the earliest time on the next open day</button>
+    </form>
+    <% } %>
+  </div>
+  <% } else if (atRisk) { %>
+  <div class="mt-4 rounded-2xl bg-red-50 ring-2 ring-inset ring-red-300 px-4 py-3.5 no-print" role="alert" data-risk>
+    <div class="text-[14px] font-bold text-red-900">&#9888;&#65039; You may not be served today</div>
+    <p class="text-[12.5px] text-red-900/85 mt-1">
+      <% if (eta.paused) { %>
+      No one has been called for a while, so your turn may not come before closing (<%= eta.closeClock %>).
       <% } else { %>
-      <div class="font-bold">Priority not approved</div>
-      <div class="mt-0.5"><%= pr.reason %> You stay in the regular line.</div>
+      The line is slower than expected. At this pace your turn could end around
+      <strong><%= eta.slowEndClock %></strong>, after closing (<%= eta.closeClock %>).
       <% } %>
-    </div>
-    <% } %>
-    </div>
-
-    <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
-        a vibration and (if allowed) a phone notification at 5 ahead and when
-        next. Kept up to date by the ticket's /pulse check every 1.5 s. %>
-    <% if (t.ticketStatus === 'waiting' && isToday) { %>
-    <div id="nearBox" class="mt-5 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3 text-left" hidden
-         data-tx="<%= t.id %>" data-no="<%= t.ticketNo %>" data-office="<%= t.department %>" data-ahead="<%= ahead %>">
-      <div class="text-[14px] font-bold text-amber-900" data-near-title></div>
-      <div class="text-[12.5px] text-amber-900/85 mt-0.5" data-near-body></div>
-    </div>
-    <% } %>
-
-    <div data-live="notices">
-    <%# The capacity decision (data/engine.js): even at a slow pace, would this
-        ticket finish before closing? If not, say so early and offer choices. %>
-    <% var dayEnded = t.ticketStatus === 'waiting' && isToday && eta && eta.state === 'ended'; %>
-    <% var atRisk = t.ticketStatus === 'waiting' && isToday && t.paymentStatus !== 'paid' && (eta && eta.fits === false); %>
-    <% if (dayEnded) { %>
-    <div class="mt-5 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3.5 text-left no-print" role="alert">
-      <div class="text-[14px] font-bold text-red-900"><%= eta.label %></div>
-      <p class="text-[12.5px] text-red-900/85 mt-1">Your turn was not reached today. Book a time on the next open day and keep your documents ready.</p>
-      <% if (t.paymentStatus !== 'paid') { %>
-      <form method="POST" action="<%= base %>/rebook" class="mt-3" data-once>
-        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Book the earliest time on the next open day</button>
+      What would you like to do?
+    </p>
+    <div class="grid gap-2 mt-3">
+      <form method="POST" action="<%= base %>/rebook" data-once
+            data-confirm data-confirm-title="Book tomorrow instead?"
+            data-confirm-body="Your ticket moves to the first open 30-minute slot on the next open day, with a new number."
+            data-confirm-ok="Book tomorrow" data-confirm-back="Keep my place">
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Book the earliest time tomorrow</button>
       </form>
-      <% } %>
+      <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> w-full" data-keep-place>Keep my place and wait</button>
+      <a href="#cancelBox" class="text-center text-[12.5px] font-semibold text-red-700 underline" onclick="document.getElementById('cancelBox').open=true">Cancel my ticket</a>
     </div>
-    <% } else if (atRisk) { %>
-    <div class="mt-5 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3.5 text-left no-print" role="alert" data-risk>
-      <div class="text-[14px] font-bold text-red-900">&#9888;&#65039; You may not be served today</div>
-      <p class="text-[12.5px] text-red-900/85 mt-1">
-        <% if (eta.paused) { %>
-        No one has been called for a while, so your turn may not come before closing (<%= eta.closeClock %>).
-        <% } else { %>
-        The line is slower than expected. At this pace your turn could end around
-        <strong><%= eta.slowEndClock %></strong>, after closing (<%= eta.closeClock %>).
-        <% } %>
-        What would you like to do?
-      </p>
-      <div class="grid gap-2 mt-3">
-        <form method="POST" action="<%= base %>/rebook" data-once
-              data-confirm data-confirm-title="Book tomorrow instead?"
-              data-confirm-body="Your ticket moves to the first open 30-minute slot on the next open day, with a new number."
-              data-confirm-ok="Book tomorrow" data-confirm-back="Keep my place">
-          <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">Book the earliest time tomorrow</button>
-        </form>
-        <button type="button" class="<%= UI.btn %> <%= UI.btnGh %> w-full" data-keep-place>Keep my place and wait</button>
-        <a href="#cancelBox" class="text-center text-[12.5px] font-semibold text-red-700 underline" onclick="document.getElementById('cancelBox').open=true">Cancel my ticket</a>
-      </div>
-    </div>
-    <% } %>
+  </div>
+  <% } %>
 
-    <%# Missed turn once: moved back 5 places; a second miss cancels. %>
-    <% if (t.missedCount === 1 && t.ticketStatus === 'waiting') { %>
-    <div class="mt-4 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3 text-left text-[12.5px] text-amber-900" role="status">
-      <div class="text-[13.5px] font-bold">You missed your turn once</div>
-      You were called but were not at the window, so you moved back 5 places.
-      <strong>If you miss it again, your ticket will be cancelled.</strong>
-    </div>
-    <% } %>
+  <%# Missed turn once: moved back 5 places; a second miss cancels. %>
+  <% if (t.missedCount === 1 && t.ticketStatus === 'waiting') { %>
+  <div class="mt-4 rounded-2xl bg-amber-50 ring-2 ring-inset ring-amber-300 px-4 py-3 text-[12.5px] text-amber-900" role="status">
+    <div class="text-[13.5px] font-bold">You missed your turn once</div>
+    You were called but were not at the window, so you moved back 5 places.
+    <strong>If you miss it again, your ticket will be cancelled.</strong>
+  </div>
+  <% } %>
 
-    <%# "Available from": busy (a class, for example) until a time, up to 2
-        hours. The place is kept; others are called meanwhile. Once per ticket. %>
-    <% var holding = t.holdUntil && new Date(t.holdUntil) > new Date(); %>
-    <% if (t.ticketStatus === 'waiting' && isToday && t.paymentStatus !== 'paid') { %>
-      <% if (holding) { %>
-      <div class="mt-4 rounded-lg border-2 border-brand-line bg-brand-wash px-4 py-3 text-left no-print">
-        <div class="text-[13.5px] font-bold text-brand-deep">&#128338; Available from <%= new Date(t.holdUntil).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) %></div>
-        <p class="text-[12px] text-brand-deep/85 mt-0.5">You keep your place. Others are called until then; after that you are next in your lane.</p>
-        <form method="POST" action="<%= base %>/hold/clear" class="mt-2" data-once>
-          <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">I'm available now</button>
-        </form>
-      </div>
-      <% } else if (!t.holdUsed && holdChoices.length) { %>
-      <details class="mt-4 rounded-lg border border-hair bg-white px-4 py-3 text-left no-print">
-        <summary class="cursor-pointer text-[13px] font-semibold text-ink">Busy right now? Keep your place until you're free</summary>
-        <form method="POST" action="<%= base %>/hold" class="mt-3 flex flex-wrap items-end gap-2" data-once>
+  <%# "Available from": busy (a class, for example) until a time, up to 2
+      hours. The place is kept; others are called meanwhile. Once per ticket. %>
+  <% var holding = t.holdUntil && new Date(t.holdUntil) > new Date(); %>
+  <% if (t.ticketStatus === 'waiting' && isToday && t.paymentStatus !== 'paid') { %>
+    <% if (holding) { %>
+    <div class="mt-4 rounded-2xl bg-brand-wash ring-1 ring-inset ring-brand-line px-4 py-3 no-print">
+      <div class="text-[13.5px] font-bold text-brand-night">&#128338; Available from <%= new Date(t.holdUntil).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) %></div>
+      <p class="text-[12px] text-brand-night/80 mt-0.5">You keep your place. Others are called until then; after that you are next in your lane.</p>
+      <form method="POST" action="<%= base %>/hold/clear" class="mt-2" data-once>
+        <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">I'm available now</button>
+      </form>
+    </div>
+    <% } else if (!t.holdUsed && holdChoices.length) { %>
+    <details class="group mt-4 <%= UI.card %> no-print">
+      <summary class="cursor-pointer list-none flex items-center gap-3 px-4 py-3.5 text-[13.5px] font-semibold text-ink">
+        <span class="grid place-items-center w-9 h-9 rounded-xl bg-brand-wash text-brand shrink-0" aria-hidden="true">&#128338;</span>
+        <span class="flex-1">Busy right now? <span class="block text-[12px] font-normal text-slateSoft/75">Keep your place until you're free</span></span>
+        <svg class="text-slateSoft/50 transition-transform group-open:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="px-4 pb-4">
+        <form method="POST" action="<%= base %>/hold" class="flex flex-wrap items-end gap-2" data-once>
           <div class="flex-1 min-w-[9rem]">
             <label for="holdUntil" class="<%= UI.lbl %>">I'm available from</label>
             <select id="holdUntil" name="until" class="<%= UI.input %>" required>
@@ -132,42 +175,84 @@
           Up to 2 hours, once per ticket.<% if (eta && eta.atClock) { %> Your turn is predicted around <strong><%= eta.atClock %></strong>;
           if that's after you're free, you don't need this.<% } %>
         </p>
-      </details>
-      <% } %>
+      </div>
+    </details>
     <% } %>
-    </div>
+  <% } %>
+  </div>
 
-    <%# Phone alerts without SMS (Web Push): arrive even with this page closed.
-        Without them, the page itself must stay open. %>
-    <% if (['waiting','called','serving'].includes(t.ticketStatus)) { %>
-    <div id="pushBox" class="mt-4 text-left no-print" data-key="<%= pushKey %>" data-url="<%= base %>/push">
-      <div data-push="offer" class="rounded-lg border-2 border-brand-line bg-brand-wash px-4 py-3" hidden>
-        <div class="text-[13.5px] font-bold text-brand-deep">&#128276; Turn on alerts</div>
-        <p class="text-[12px] text-brand-deep/85 mt-0.5">We'll notify you when to leave (15 minutes before your turn), when you're called,
-          and if the line runs late, even if you close this page.</p>
-        <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> <%= UI.btnSm %> mt-2.5">Turn on alerts</button>
+  <%# Phone alerts without SMS (Web Push): arrive even with this page closed.
+      Without them, the page itself must stay open. %>
+  <% if (['waiting','called','serving'].includes(t.ticketStatus)) { %>
+  <div id="pushBox" class="mt-4 no-print" data-key="<%= pushKey %>" data-url="<%= base %>/push">
+    <div data-push="offer" class="<%= UI.card %> flex items-center gap-3 px-4 py-3.5" hidden>
+      <span class="grid place-items-center w-10 h-10 rounded-xl bg-brand text-white shrink-0" aria-hidden="true">&#128276;</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-[13.5px] font-bold text-ink">Turn on alerts</div>
+        <p class="text-[12px] text-slateSoft/80 leading-snug">When to leave, when you're called, and if the line runs late. Even with this page closed.</p>
       </div>
-      <div data-push="on" class="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-[12.5px] text-emerald-900" hidden>
-        &#10003; <strong>Alerts are on.</strong> You can close this page; we'll notify this phone.
-      </div>
-      <div data-push="off" class="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-[12.5px] text-amber-900" hidden>
-        <strong>&#9888;&#65039; Alerts are off.</strong> Keep this page open and your phone unlocked, or you may miss your turn.
-        <span data-push-ios hidden><br>On iPhone: tap <strong>Share</strong> &rarr; <strong>Add to Home Screen</strong>, open SmartQ from there, then turn on alerts.</span>
-      </div>
+      <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> <%= UI.btnSm %> shrink-0">Turn on</button>
     </div>
-    <% } %>
-    <div data-live="details">
-    <dl class="mt-6 text-left space-y-2.5 text-[13px]">
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Name</dt><dd class="font-semibold text-right"><%= t.fullName %></dd></div>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Destination</dt><dd class="font-semibold"><%= t.department %></dd></div>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Requested</dt>
+    <div data-push="on" class="rounded-2xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-2.5 text-[12.5px] text-emerald-900" hidden>
+      &#10003; <strong>Alerts are on.</strong> You can close this page; we'll notify this phone.
+    </div>
+    <div data-push="off" class="rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-4 py-3 text-[12.5px] text-amber-900" hidden>
+      <strong>&#9888;&#65039; Alerts are off.</strong> Keep this page open and your phone unlocked, or you may miss your turn.
+      <span data-push-ios hidden><br>On iPhone: tap <strong>Share</strong> &rarr; <strong>Add to Home Screen</strong>, open SmartQ from there, then turn on alerts.</span>
+    </div>
+  </div>
+  <% } %>
+
+  <div data-live="info">
+  <%# A reminder of the requirements: on a Registrar ticket, what to bring to
+      the window now; on a Cashier ticket (e.g. the OTR), what to bring later
+      when claiming it at the Registrar. Nothing is ticked off any more. %>
+  <% var bring = (requirements && requirements.length) ? requirements : (claimRequirements || []); %>
+  <% if (bring.length) { %>
+  <div class="mt-4 <%= UI.card %> px-4 py-3.5">
+    <div class="flex items-center gap-2 text-[14px] font-bold text-ink">&#128203; Don't forget your requirements</div>
+    <p class="text-[12.5px] text-slateSoft/80 mt-0.5">
+      <%= requirements && requirements.length
+            ? 'Bring these to the Registrar window:'
+            : 'When you claim this at the Registrar, bring:' %>
+    </p>
+    <ul class="mt-2.5 space-y-2">
+      <% bring.forEach(function(r){ %>
+      <li class="flex items-start gap-2.5 text-[13px] text-ink">
+        <span class="mt-0.5 grid place-items-center w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold shrink-0">&#10003;</span>
+        <span><%= r.label %><% if (!r.isRequired) { %> <span class="text-slateSoft/60">(optional)</span><% } %></span>
+      </li>
+      <% }) %>
+    </ul>
+  </div>
+  <% } %>
+
+  <% if (t.claimant === 'representative') { %>
+  <div class="mt-4 rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3">
+    <div class="text-[12.5px] font-bold text-amber-900">To be claimed by a representative</div>
+    <div class="text-[12.5px] text-amber-800 mt-1">
+      <%= t.repName %><% if (t.repRelationship) { %> (<%= t.repRelationship %>)<% } %><% if (t.repContact) { %> &middot; <%= t.repContact %><% } %>
+    </div>
+    <div class="text-[11.5px] text-amber-800/85 mt-1.5">
+      They must bring a signed authorisation letter, their own valid ID, and a copy of yours.
+    </div>
+  </div>
+  <% } %>
+
+  <%# ── the details, out of the way but one look away ───────────────────────── %>
+  <section class="mt-4 <%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h2 class="<%= UI.cardTtl %>">Ticket details</h2>
+      <span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span></div>
+    <dl class="px-5 py-2 text-[13px] divide-y divide-hair/60">
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75">Name</dt><dd class="font-semibold text-right"><%= t.fullName %></dd></div>
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75">Requested</dt>
         <dd class="font-semibold text-right"><%= t.items.map(function(i){return i.name}).join(', ') %></dd></div>
-      <% if (t.purposeText) { %><div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Purpose</dt><dd class="font-semibold text-right"><%= t.purposeText %></dd></div><% } %>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Amount</dt>
+      <% if (t.purposeText) { %><div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75">Purpose</dt><dd class="font-semibold text-right"><%= t.purposeText %></dd></div><% } %>
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75">Amount</dt>
         <dd class="font-extrabold font-mono"><%= t.amountDue > 0 ? peso(t.amountDue) : 'No payment' %></dd></div>
       <%# A booking has a 30-minute slot: come within it. A "join now" ticket
           has no slot; its place in line counts from when it was taken. %>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80"><%= t.slotStart ? 'Your visit' : 'Visit date' %></dt>
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75"><%= t.slotStart ? 'Your visit' : 'Visit date' %></dt>
         <dd class="text-right"><span class="font-bold"><%= t.visitDateText %></span>
           <% if (t.slotStart) { %>
           <span class="block text-[13px] font-extrabold text-brand-deep"><%= t.slotLabel %></span>
@@ -175,95 +260,47 @@
           <% } else { %>
           <span class="block text-[11.5px] text-slateSoft/75">In line since <%= new Date(t.queueAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) %> &middot; office hours <%= officeHours %></span>
           <% } %></dd></div>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80"><%= t.isScheduled ? 'Booked on' : 'Requested at' %></dt>
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75"><%= t.isScheduled ? 'Booked on' : 'Requested at' %></dt>
         <dd class="text-[12.5px] text-right"><%= t.requestedOnText %></dd></div>
       <% if (t.parentTicket) { %>
-      <div class="flex justify-between gap-4 border-b border-mist pb-2"><dt class="text-slateSoft/80">Cashier ticket</dt><dd class="font-mono text-[12px]"><%= t.parentTicket %></dd></div>
+      <div class="flex justify-between gap-4 py-2.5"><dt class="text-slateSoft/75">Cashier ticket</dt><dd class="font-mono text-[12px]"><%= t.parentTicket %></dd></div>
       <% } %>
-      <div class="flex justify-between gap-4"><dt class="text-slateSoft/80">Transaction status</dt>
-        <dd><span class="<%= pill %> <%= tone(t.overallStatus) %>"><%= label(t.overallStatus) %></span></dd></div>
     </dl>
-    <div class="mt-5 text-left">
-      <%- include('../../partials/eta', { eta: eta }) %>
-    </div>
-
-    <% if (t.claimant === 'representative') { %>
-    <div class="mt-4 text-left rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-      <div class="text-[12.5px] font-bold text-amber-900">To be claimed by a representative</div>
-      <div class="text-[12.5px] text-amber-800 mt-1">
-        <%= t.repName %><% if (t.repRelationship) { %> (<%= t.repRelationship %>)<% } %><% if (t.repContact) { %> &middot; <%= t.repContact %><% } %>
-      </div>
-      <div class="text-[11.5px] text-amber-800/85 mt-1.5">
-        They must bring a signed authorisation letter, their own valid ID, and a copy of yours.
-      </div>
-    </div>
-    <% } %>
-
-    <%# A reminder of the requirements: on a Registrar ticket, what to bring to
-        the window now; on a Cashier ticket (e.g. the OTR), what to bring later
-        when claiming it at the Registrar. Nothing is ticked off any more. %>
-    <% var bring = (requirements && requirements.length) ? requirements : (claimRequirements || []); %>
-    <% if (bring.length) { %>
-    <div class="mt-4 text-left rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3.5">
-      <div class="text-[14px] font-bold text-amber-900">&#128203; Don't forget your requirements</div>
-      <p class="text-[12.5px] text-amber-900/85 mt-0.5">
-        <%= requirements && requirements.length
-              ? 'Bring these to the Registrar window:'
-              : 'When you claim this at the Registrar, bring:' %>
-      </p>
-      <ul class="mt-2 space-y-1.5">
-        <% bring.forEach(function(r){ %>
-        <li class="flex items-start gap-2 text-[13px] text-amber-950">
-          <span>&bull;</span>
-          <span><%= r.label %><% if (!r.isRequired) { %> <span class="text-amber-900/60">(optional)</span><% } %></span>
-        </li>
-        <% }) %>
-      </ul>
-    </div>
-    <% } %>
-    <% if (['called','serving'].includes(t.ticketStatus)) { %>
-    <div class="mt-5 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3">
-      <div class="text-[14px] font-bold text-emerald-900">It is your turn</div>
-      <div class="text-[12.5px] text-emerald-800">Proceed to <%= t.windowLabel || t.department %>.</div>
-      <% if (timeLeft != null && t.paymentStatus !== 'paid') { %>
-      <div class="font-mono text-2xl font-extrabold text-emerald-900 mt-1" data-countdown data-seconds="<%= timeLeft %>">--:--</div>
-      <% } %>
-    </div>
-    <% } %>
-    </div>
-    <div class="flex flex-wrap justify-center gap-2 mt-6 no-print">
-      <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Back</a>
-      <% if (t.paymentStatus === 'paid') { %>
-      <a href="<%= base %>/receipt" class="<%= UI.btn %> <%= UI.btnOk %> <%= UI.btnSm %>">View receipt</a>
-      <% } %>
-      <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</button>
-    </div>
-
-    <%# A student can cancel their own BOOKED ticket while it is still waiting
-        and unpaid; same-day tickets and anything later go through the office
-        (checked again on the server). %>
-    <% if ((t.isScheduled || t.slotStart || t.riskAt || atRisk || dayEnded) && t.ticketStatus === 'waiting' && t.paymentStatus !== 'paid') { %>
-    <details id="cancelBox" class="mt-6 pt-4 border-t border-mist no-print">
-      <summary class="cursor-pointer text-center text-[12.5px] font-semibold text-red-700">Can't make it? Cancel this ticket</summary>
-      <form method="POST" action="<%= base %>/cancel" class="mt-3 space-y-2.5"
-            data-confirm data-confirm-danger="1"
-            data-confirm-title="Cancel ticket <%= t.ticketNo %>?"
-            data-confirm-body="Your number <%= t.ticketNo %> for <%= t.visitDateText %> will be released. This cannot be undone."
-            data-confirm-note="You can request a new ticket for this office any time."
-            data-confirm-ok="Yes, cancel ticket" data-confirm-back="Keep ticket">
-        <label for="cancelReason" class="<%= UI.lbl %>">Reason <span class="text-slateSoft/60 font-normal">optional</span></label>
-        <input id="cancelReason" name="reason" maxlength="90" class="<%= UI.input %>" placeholder="Schedule conflict, no longer needed">
-        <button type="submit" class="<%= UI.btn %> w-full border border-red-200 bg-red-50 text-red-800 hover:bg-red-100">Cancel ticket <%= t.ticketNo %></button>
-      </form>
-    </details>
-    <% } %>
-
-    <% if (['completed','cancelled'].includes(t.overallStatus)) { %>
-    <form method="POST" action="<%= base %>/forget" class="mt-5 no-print">
-      <button type="submit" class="text-[12px] text-slateSoft/70 underline">Remove this ticket from this phone</button>
-    </form>
-    <% } %>
+  </section>
   </div>
+
+  <div class="grid grid-cols-3 gap-2 mt-4 no-print">
+    <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %>">&larr; Home</a>
+    <% if (t.paymentStatus === 'paid') { %>
+    <a href="<%= base %>/receipt" class="<%= UI.btn %> <%= UI.btnMain %>">Receipt</a>
+    <% } else { %><span></span><% } %>
+    <button onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %>">Print</button>
+  </div>
+
+  <%# A student can cancel their own BOOKED ticket while it is still waiting
+      and unpaid; same-day tickets and anything later go through the office
+      (checked again on the server). %>
+  <% if ((t.isScheduled || t.slotStart || t.riskAt || atRisk || dayEnded) && t.ticketStatus === 'waiting' && t.paymentStatus !== 'paid') { %>
+  <details id="cancelBox" class="mt-5 no-print">
+    <summary class="cursor-pointer list-none text-center text-[12.5px] font-semibold text-red-700">Can't make it? Cancel this ticket</summary>
+    <form method="POST" action="<%= base %>/cancel" class="mt-3 space-y-2.5 <%= UI.card %> p-4"
+          data-confirm data-confirm-danger="1"
+          data-confirm-title="Cancel ticket <%= t.ticketNo %>?"
+          data-confirm-body="Your number <%= t.ticketNo %> for <%= t.visitDateText %> will be released. This cannot be undone."
+          data-confirm-note="You can request a new ticket for this office any time."
+          data-confirm-ok="Yes, cancel ticket" data-confirm-back="Keep ticket">
+      <label for="cancelReason" class="<%= UI.lbl %>">Reason <span class="text-slateSoft/60 font-normal">optional</span></label>
+      <input id="cancelReason" name="reason" maxlength="90" class="<%= UI.input %>" placeholder="Schedule conflict, no longer needed">
+      <button type="submit" class="<%= UI.btn %> w-full ring-1 ring-inset ring-red-200 bg-red-50 text-red-800 hover:bg-red-100">Cancel ticket <%= t.ticketNo %></button>
+    </form>
+  </details>
+  <% } %>
+
+  <% if (['completed','cancelled'].includes(t.overallStatus)) { %>
+  <form method="POST" action="<%= base %>/forget" class="mt-5 text-center no-print">
+    <button type="submit" class="text-[12px] text-slateSoft/70 underline">Remove this ticket from this phone</button>
+  </form>
+  <% } %>
 </div>
 <%- include('../../partials/foot') %>
 <script>

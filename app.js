@@ -141,24 +141,24 @@ app.set('views', path.join(__dirname, 'views'));
 
 // ── Shared UI helpers (on app.locals so partials can use them too) ───────────
 app.locals.UI = {
-  card:    'bg-white rounded-xl border border-hair shadow-sm overflow-hidden',
-  cardHd:  'px-5 py-3.5 border-b border-hair flex items-center justify-between gap-3',
-  cardTtl: 'text-[13.5px] font-bold text-ink',
+  card:    'bg-white rounded-2xl border border-hair/80 shadow-card overflow-hidden',
+  cardHd:  'px-5 py-4 border-b border-hair/70 flex items-center justify-between gap-3',
+  cardTtl: 'text-[14px] font-bold text-ink tracking-tight',
   body:    'p-5',
-  btn:     'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-  btnMain: 'bg-brand text-white hover:bg-brand-deep',
-  btnOk:   'bg-brand text-white hover:bg-brand-deep',
-  btnGh:   'bg-mist text-ink border border-hair hover:bg-hair',
-  btnBad:  'bg-red-700 text-white hover:bg-red-800',
-  btnSm:   'px-3 py-1.5 text-[12px]',
-  input:   'w-full rounded-lg border border-hair px-3 py-2.5 text-[13.5px] text-ink bg-white focus:border-brand focus:ring-1 focus:ring-brand outline-none',
-  lbl:     'block text-[12.5px] font-semibold text-slateSoft mb-1.5',
-  hint:    'block text-[11.5px] text-slateSoft/70 mt-1',
-  th:      'px-3.5 py-2.5 text-left text-[10.5px] font-bold uppercase tracking-wider text-slateSoft/80 bg-mist whitespace-nowrap',
-  td:      'px-3.5 py-2.5 text-[13px] text-ink align-middle',
-  tr:      'border-b border-hair/70 last:border-0 hover:bg-brand-wash/40',
+  btn:     'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 min-h-[44px] text-[13.5px] font-semibold transition duration-150 active:scale-[.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100',
+  btnMain: 'bg-brand text-white shadow-lift hover:bg-brand-deep',
+  btnOk:   'bg-brand text-white shadow-lift hover:bg-brand-deep',
+  btnGh:   'bg-white text-ink border border-hair hover:bg-mist hover:border-slateSoft/25',
+  btnBad:  'bg-red-600 text-white hover:bg-red-700',
+  btnSm:   'px-3 py-1.5 min-h-[34px] text-[12.5px] rounded-lg',
+  input:   'w-full rounded-xl border border-hair bg-white px-3.5 py-3 text-[14px] text-ink placeholder:text-slateSoft/45 focus:border-brand focus:ring-4 focus:ring-brand/15 outline-none transition',
+  lbl:     'block text-[12.5px] font-semibold text-ink/80 mb-1.5',
+  hint:    'block text-[11.5px] text-slateSoft/70 mt-1.5',
+  th:      'px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slateSoft/70 bg-mist whitespace-nowrap',
+  td:      'px-4 py-3 text-[13.5px] text-ink align-middle',
+  tr:      'border-b border-hair/60 last:border-0 hover:bg-brand-wash/40 transition-colors',
 };
-app.locals.pill = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold';
+app.locals.pill = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ring-1 ring-inset ring-black/5';
 app.locals.tone = s => ({
   waiting:'bg-amber-100 text-amber-800', called:'bg-brand-wash text-brand-deep',
   serving:'bg-brand-wash text-brand-deep', completed:'bg-emerald-100 text-emerald-800',
@@ -183,7 +183,7 @@ app.locals.tone = s => ({
   admin:'bg-ink text-white', cashier:'bg-brand text-white', registrar:'bg-brand text-white',
 }[s] || 'bg-mist text-slateSoft');
 app.locals.peso  = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-app.locals.chip  = 'font-mono font-bold text-[12.5px] bg-brand-wash border border-brand-line rounded px-2 py-0.5 text-brand-deep';
+app.locals.chip  = 'font-mono font-bold text-[12.5px] bg-brand-wash ring-1 ring-inset ring-brand-line rounded-md px-2 py-0.5 text-brand-deep';
 app.locals.label = s => String(s || '').replace(/_/g, ' ');
 // 472 -> "about 7 hours and 52 minutes"; 25 -> "about 25 minutes".
 // short: "~7 h 52 min" (small labels).
