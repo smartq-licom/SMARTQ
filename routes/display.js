@@ -59,4 +59,26 @@ async function pulse(dept, res, next) {
 router.get('/cashier/pulse',   (req, res, next) => pulse('Cashier', res, next));
 router.get('/registrar/pulse', (req, res, next) => pulse('Registrar', res, next));
 
+// Public "now serving" summary for the phone widgets (widgets/README.md).
+// Ticket numbers only, never names: anyone with the link can read it.
+// Flat keys (cashier_1, registrar_2, ...) keep KWGT's JSON paths short.
+router.get('/widget.json', async (req, res, next) => {
+  try {
+    const windows = await db.getWindows();
+    const out = { updated: new Date().toISOString() };
+    for (const dept of ['Cashier', 'Registrar']) {
+      const key  = dept.toLowerCase();
+      const mine = windows.filter(w => w.department === dept);
+      out[key] = {
+        waiting: mine.length ? mine[0].waitingDept : 0,
+        windows: mine.map(w => ({ label: w.label, status: w.status, serving: w.serving || '—' })),
+      };
+      out[key + '_waiting'] = out[key].waiting;
+      mine.forEach((w, i) => { out[key + '_' + (i + 1)] = w.serving || '—'; });
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
 module.exports = router;
