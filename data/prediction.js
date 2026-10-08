@@ -409,11 +409,15 @@ async function ticketEta(t) {
             SUM(ticket_status IN ('called','serving')) AS busy
      FROM transactions WHERE department=? AND service_date=CURDATE()`, [t.department]);
   const idle = lastCall[0].idle == null ? null : Number(lastCall[0].idle);
-  const paused = !Number(lastCall[0].busy) && (idle == null || idle >= PAUSED_AFTER_MIN);
+  // Over the break nobody is called by design: that is not a paused line.
+  const onBreak = db.isBreakTime(settings);
+  const breakEnds = onBreak ? db.clock12(settings.breakEnd) : null;
+  const paused = !onBreak && !Number(lastCall[0].busy) && (idle == null || idle >= PAUSED_AFTER_MIN);
 
   if (effective <= 0) {
     return {
-      state: 'next', label: 'You are next', minutes: 0, seconds: 0, paused, idleMinutes: idle,
+      state: 'next', label: onBreak ? 'You are next after the break' : 'You are next',
+      minutes: 0, seconds: 0, paused, idleMinutes: idle, onBreak, breakEnds,
       ahead: 0, jumpers, inService, pace: Math.round(pace * 10) / 10,
       basis, basisLabel, openWindows, fits, slowEndClock, closeClock, window,
     };
@@ -426,7 +430,7 @@ async function ticketEta(t) {
 
   return {
     state: 'waiting',
-    paused, idleMinutes: idle,
+    paused, idleMinutes: idle, onBreak, breakEnds,
     minutes,
     seconds: minutes * 60,
     atClock: `${h}:${pad(at.getMinutes())} ${ampm}`,

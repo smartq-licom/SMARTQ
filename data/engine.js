@@ -205,7 +205,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   const all = await dispatch.officeWindows(department);
   const open = all.filter(w => w.status === 'open');
   const slots = (open.length ? open : all.length ? all : [{ id: null, label: department, speed: 1, workToday: 0 }])
-    .map(w => ({ id: w.id, label: w.label, speed: w.speed || 1, work: w.workToday || 0, free: base }));
+    .map(w => ({ id: w.id, label: w.label, speed: w.speed || 1, work: w.workToday || 0, rr: w.rr || 0, free: base }));
 
   const rows = await q(
     `SELECT id, ticket_no, queue_category, ticket_status, queue_at, hold_until, called_at, started_at,
@@ -267,9 +267,13 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   const realLeft = () => lane.regular.length || lane.priority.some(x => !x.expected);
   const readyAt = x => Math.max(new Date(x.queue_at).getTime(), x.hold_until ? new Date(x.hold_until).getTime() : 0);
   while (realLeft() && guard++ < 5000) {
-    // the window that frees up first
-    const win = slots.reduce((a, b) => (b.free < a.free ? b : a));
-    let t0 = win.free;
+    // the window that frees up first; when several are free together, the
+    // best one (dispatch rule 0: faster, less work today, next in turn)
+    const first = slots.reduce((a, b) => (b.free < a.free ? b : a));
+    const at = Math.max(first.free.getTime(), now.getTime());
+    const win = slots.filter(x => x.free.getTime() <= at)
+      .sort((a, b) => dispatch.compareWindows({ ...a, workToday: a.work }, { ...b, workToday: b.work }))[0];
+    let t0 = new Date(Math.max(win.free.getTime(), first.free.getTime()));
     if (t0 >= brStart && t0 < brEnd) t0 = brEnd;    // nobody is called over lunch
 
     // Who is ready by t0 (a booking waits for its slot start; "available from"
@@ -277,7 +281,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     const ready = { priority: lane.priority.filter(x => readyAt(x) <= t0.getTime()),
                     regular:  lane.regular.filter(x => readyAt(x) <= t0.getTime()) };
     const others = slots.filter(o => o !== win).map(o => ({ label: o.label, speed: o.speed, free: o.free <= t0, workToday: o.work }));
-    const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others);
+    const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others, { reserve: false });
     if (!d) {                                        // nobody ready yet: jump to the next one who is
       win.free = new Date(Math.min(...lane.priority.concat(lane.regular).map(readyAt)));
       continue;

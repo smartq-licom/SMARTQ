@@ -23,10 +23,15 @@
     <% } %>
     <form method="POST" action="/staff/call-next" data-once>
       <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> px-6 py-3 text-[14px]"
-              <%= current ? 'disabled title="Finish the client at your window first"' : '' %>>Call Next</button>
+              <%= current ? 'disabled title="Finish the client at your window first"' : (onBreak ? 'disabled title="Break time until ' + breakEnds + '"' : '') %>>Call Next</button>
     </form>
   </div>
 </div>
+<% if (onBreak) { %>
+<div class="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+  &#9749; <strong>Break time until <%= breakEnds %>.</strong> Call Next is off until then; students in line are told they will be called after the break.
+</div>
+<% } %>
 
 <!-- load -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -69,11 +74,11 @@
           <div class="font-mono text-4xl font-extrabold text-hair">----</div>
           <p class="text-[13px] font-semibold mt-3">No client at your window</p>
           <p class="text-[12px] text-slateSoft/80 mt-1">
-            <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)<% if (nextUp._decision && nextUp._decision.reason) { %><span class="block text-[11.5px] text-brand-deep mt-0.5">Smart match: <%= nextUp._decision.reason %></span><% } %>
+            <% if (nextUp) { %>Next in line: <strong class="font-mono"><%= nextUp.ticket_no %></strong> (<%= nextUp.queue_category %>)<% if (nextUp._decision && nextUp._decision.reserved) { %><span class="block text-[11.5px] text-amber-700 mt-0.5">Smart match: saved for <%= nextUp._decision.forWindow %>, <%= nextUp._decision.reason.split(nextUp._decision.forWindow + ', ')[1] %>. Yours if they do not call within <%= Math.ceil(nextUp._decision.secondsLeft / 60) %> min.</span><% } else if (nextUp._decision && nextUp._decision.reason) { %><span class="block text-[11.5px] text-brand-deep mt-0.5">Smart match: <%= nextUp._decision.reason %></span><% } %>
             <% } else { %>The queue is empty.<% } %>
           </p>
           <form method="POST" action="/staff/call-next" class="mt-4 no-print" data-once>
-            <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Call Next</button>
+            <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>"<%- onBreak ? ' disabled title="Break time until ' + breakEnds + '"' : '' %>>Call Next</button>
           </form>
         </div>
         <% } else { %>

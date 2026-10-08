@@ -1795,6 +1795,15 @@ function isPastClosing(s) {
   return now.getHours() * 60 + now.getMinutes() >= h * 60 + (m || 0);
 }
 
+/** True during the office break (Settings, e.g. 12:00-13:00). No break when start >= end. */
+function isBreakTime(s) {
+  const toMin = t => { const [h, m] = String(t || '').split(':').map(Number); return isNaN(h) ? null : h * 60 + (m || 0); };
+  const a = toMin(s.breakStart), b = toMin(s.breakEnd);
+  if (a == null || b == null || a >= b) return false;
+  const now = new Date(), n = now.getHours() * 60 + now.getMinutes();
+  return n >= a && n < b;
+}
+
 /** '08:00' -> '8:00 AM' */
 function clock12(hhmmStr) {
   const [h, m] = String(hhmmStr || '').split(':').map(Number);
@@ -1925,7 +1934,7 @@ async function getQueue(department, { date = null } = {}) {
 /** Clients ready to be called, per lane, first come first served (for data/dispatch.js). */
 async function readyLanes(department, settings) {
   const rows = await q(
-    `SELECT id, ticket_no, queue_category, predicted_service, skip_count FROM transactions
+    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
        AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
      ORDER BY queue_at ASC, id ASC`, [department]);
@@ -1933,6 +1942,7 @@ async function readyLanes(department, settings) {
   rows.forEach(r => lanes[r.queue_category === 'priority' ? 'priority' : 'regular'].push({
     id: r.id, ticketNo: r.ticket_no, skip: Number(r.skip_count) || 0,
     svc: Number(r.predicted_service) || settings.avgServiceMinutes,
+    readyAt: Math.max(new Date(r.queue_at).getTime(), r.hold_until ? new Date(r.hold_until).getTime() : 0),
   }));
   return lanes;
 }
@@ -1962,7 +1972,8 @@ async function pickNextTicket(department, staff = null) {
   const others = mine ? wins.filter(w => w.id !== win.id && w.status === 'open' && w.staffId) : [];
   const d = dispatch.decide(win, lanes, await lastCalledLane(department), others);
   if (!d) return null;
-  const r = await q('SELECT * FROM transactions WHERE id=?', [d.pick.id]);
+  // saved for a better free window: the row is the client, flagged as reserved
+  const r = await q('SELECT * FROM transactions WHERE id=?', [(d.pick || d.head).id]);
   if (!r.length) return null;
   r[0]._decision = d;
   return r[0];
@@ -2004,6 +2015,9 @@ async function pickWindow(department, staff) {
 }
 
 async function callNext(staff, department) {
+  const s = await getSettings();
+  if (isBreakTime(s))
+    return { error: `It is break time until ${clock12(s.breakEnd)}. Call Next works again after the break.` };
   const win = await pickWindow(department, staff);
   if (!win)       return { error: 'No window is open and free right now.' };
   if (win.error)  return { error: win.error };
@@ -2014,6 +2028,10 @@ async function callNext(staff, department) {
   for (let attempt = 0; attempt < 3 && !t; attempt++) {
     const cand = await pickNextTicket(department, { ...staff, windowId: win.id });
     if (!cand) return { error: 'There are no clients waiting in this queue.' };
+    const cd = cand._decision;
+    if (cd && cd.reserved)
+      return { error: `${cd.reason}. If ${cd.forWindow} does not call within ` +
+                      `${cd.secondsLeft >= 60 ? Math.ceil(cd.secondsLeft / 60) + ' min' : cd.secondsLeft + ' s'}, you can take them.` };
     // Calling a number also starts serving it: there is no separate Accept step.
     // A client who never comes is cleared by Cancel or the inactivity auto-cancel.
     const u = await run(
@@ -3174,7 +3192,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, joinOpensAt, isBeforeJoinOpens,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

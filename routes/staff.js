@@ -47,6 +47,7 @@ router.get('/dashboard', async (req, res, next) => {
       waitingRegular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular'),
       completed:       queue.filter(t => t.ticketStatus === 'completed'),
       nextUp: await db.pickNextTicket(dept, me),   // who Call Next would give THIS window
+      onBreak: db.isBreakTime(settings), breakEnds: db.clock12(settings.breakEnd),
     });
   } catch (e) { next(e); }
 });
