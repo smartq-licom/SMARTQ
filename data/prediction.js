@@ -310,7 +310,7 @@ async function ticketEta(t) {
   // scheduled for a later day
   const today = db.today();
   if (t.serviceDate && t.serviceDate > today)
-    return { state: 'scheduled', label: 'Scheduled for ' + t.serviceDate, minutes: null };
+    return { state: 'scheduled', label: 'Scheduled for ' + db.longDate(t.serviceDate), minutes: null };
 
   // Office hours are over and this ticket was not reached: no estimate (a
   // prediction made from "now" would just slide later with the clock).
@@ -382,12 +382,12 @@ async function ticketEta(t) {
 
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
   // rest of the day forward window by window, with each ticket's own documents.
-  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, patternUsed = false, window = null;
+  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, claimsAhead = 0, patternUsed = false, window = null;
   try {
     const f = await require('./engine').ticketForecast(t);
     if (f) {
       minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
-      expectedAhead = f.expectedAhead; patternUsed = f.patternUsed; window = f.window;
+      expectedAhead = f.expectedAhead; claimsAhead = f.claimsAhead || 0; patternUsed = f.patternUsed; window = f.window;
       basis = 'simulated';
     }
   } catch (e) { /* fall back to the position estimate */ }
@@ -395,7 +395,8 @@ async function ticketEta(t) {
   basisLabel = basis === 'simulated'
       ? "simulated from the line ahead, each client's documents, today's pace" +
         (patternUsed ? ' and past ' + ['Sundays','Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays'][new Date().getDay()] : '') +
-        (expectedAhead ? `, including about ${expectedAhead} priority client${expectedAhead === 1 ? '' : 's'} expected to arrive` : '')
+        (expectedAhead ? `, including about ${expectedAhead} priority client${expectedAhead === 1 ? '' : 's'} expected to arrive` : '') +
+        (claimsAhead ? `, and about ${claimsAhead} student${claimsAhead === 1 ? '' : 's'} coming for an OTR due today` : '')
     : basis === 'observed'
       ? `based on the last ${obs.gaps + 1} clients served`
     : basis === 'history'

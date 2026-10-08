@@ -117,7 +117,7 @@ router.get('/', async (req, res, next) => {
     const settings = await db.getSettings();
     const [offices, mine] = await Promise.all([officeSnapshot(sameDayStatus(settings).open), myTickets(req)]);
     res.render('pages/queue/home', {
-      title: 'Get a Queue Number', settings, offices,
+      title: 'Get a Queue Number', settings, offices, todayStr: db.today(),
       active: mine.filter(ACTIVE), past: mine.filter(t => !ACTIVE(t)).slice(0, 3),
       sameDay: sameDayStatus(settings), officeHours: officeHours(settings),
       breakEnds: db.isBreakTime(settings) ? db.clock12(settings.breakEnd) : null,
@@ -140,7 +140,9 @@ async function renderForm(req, res, form, formError) {
   ]);
   // an office where this phone already holds an open ticket
   const activeBy = { Cashier: null, Registrar: null };
-  mine.filter(ACTIVE).forEach(t => { if (!activeBy[t.department]) activeBy[t.department] = t; });
+  const todayStr = db.today();
+  mine.filter(ACTIVE).filter(t => t.serviceDate === todayStr || ['called', 'serving'].includes(t.ticketStatus))
+    .forEach(t => { if (!activeBy[t.department]) activeBy[t.department] = t; });
   res.status(formError ? 400 : 200).render('pages/queue/new', {
     title: 'Get a Queue Number', documents, settings, requirements, activeBy,
     purposes: db.PURPOSES, priorityTypes: db.PRIORITY_TYPES, priorityLabels: db.PRIORITY_LABELS,
@@ -371,6 +373,21 @@ router.post('/t/:token/hold/clear', async (req, res, next) => {
 });
 
 // "Book tomorrow" after a warning: the earliest open slot on the next open day.
+// "Book my claim": the earliest free Registrar time on or after the release date
+router.post('/t/:token/book-claim', async (req, res, next) => {
+  try {
+    const t = await ticketOr404(req, res);
+    if (!t) return;
+    const r = await db.bookClaim(t);
+    if (r.error) { req.session.error = r.error; return res.redirect('/queue/t/' + t.accessToken); }
+    remember(req, res, r.ticket.accessToken);
+    req.session.flash = r.joined
+      ? `Added to your claim ${r.ticket.ticketNo} on ${r.dateText}${r.slotLabel ? ', ' + r.slotLabel : ''}: one visit releases both.`
+      : `Claim booked: ${r.ticket.ticketNo} on ${r.dateText}, ${r.slotLabel}. Bring your receipt and a valid ID.`;
+    res.redirect('/queue/t/' + r.ticket.accessToken + (r.joined ? '' : '?new=1'));
+  } catch (e) { next(e); }
+});
+
 router.post('/t/:token/rebook', async (req, res, next) => {
   try {
     const t = await ticketOr404(req, res);

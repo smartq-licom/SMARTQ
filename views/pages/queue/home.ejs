@@ -7,8 +7,14 @@
                  icon: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>' },
   };
   const mins = m => duration(m);
-  const mineAt = {};
-  active.forEach(function (t) { if (!mineAt[t.department]) mineAt[t.department] = t; });
+  // an office counts as "yours" for today only; a booking for a later day
+  // shows as a note and never hides "Get a number"
+  const mineAt = {}, laterAt = {};
+  active.forEach(function (t) {
+    var now = t.serviceDate === todayStr || ['called', 'serving'].indexOf(t.ticketStatus) >= 0;
+    if (now && !mineAt[t.department]) mineAt[t.department] = t;
+    if (!now && !laterAt[t.department]) laterAt[t.department] = t;
+  });
   const hr = new Date().getHours();
   const hello = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
 %>
@@ -146,6 +152,11 @@
       <% if (mine) { %>
       <a href="/queue/t/<%= mine.accessToken %>" class="<%= UI.btn %> <%= UI.btnGh %> w-full py-3.5">You have <%= mine.ticketNo %> here &rarr;</a>
       <% } else { %>
+      <% if (laterAt[off]) { %>
+      <a href="/queue/t/<%= laterAt[off].accessToken %>" class="mb-2 flex items-center gap-2 rounded-xl bg-brand-wash px-3 py-2 text-[12.5px] text-brand-night">
+        <span aria-hidden="true">&#128197;</span><span>Booked: <strong class="font-mono"><%= laterAt[off].ticketNo %></strong> &middot; <%= laterAt[off].visitDateText %></span><span class="ml-auto">&rarr;</span>
+      </a>
+      <% } %>
       <a href="/queue/new?office=<%= off %>" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3.5 text-[14.5px]">Get a <%= off %> number
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <% } %>

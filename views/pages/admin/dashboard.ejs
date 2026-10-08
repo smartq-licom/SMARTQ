@@ -51,6 +51,10 @@
   <% }) %>
 </div>
 
+<div class="mb-4">
+  <%- include('../../partials/release-outlook', { outlook: releaseOutlook, compact: true }) %>
+</div>
+
 <div class="grid lg:grid-cols-12 gap-4 items-start">
   <section class="lg:col-span-7 min-w-0 <%= UI.card %>">
     <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Latest transactions</h3>

@@ -1360,15 +1360,21 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   const sched = await validateSchedule(b.mode, b.scheduledDate, department);
   if (sched.error) return { error: sched.error };
 
-  // one unfinished ticket per office
-  const open = await getBlockingTransaction(user.id, department);
+  // one unfinished ticket per office per day, and at most MAX_OPEN_PER_OFFICE
+  // in all (a claim booked for next week does not block today)
+  const open = await getBlockingTransaction(user.id, department, sched.serviceDate);
   if (open) {
     return {
-      error: `You already have an active ${department} transaction (${open.ticketNo}). ` +
-             'Finish it before requesting another number for this office.',
+      error: `You already have a ${department} ticket for ${open.serviceDate === today() ? 'today' : longDate(open.serviceDate)} (${open.ticketNo}). ` +
+             'Finish it before requesting another number for this office on that day.',
       blockedBy: open,
     };
   }
+  const [[openCount]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM transactions WHERE user_id=? AND department=? AND overall_status NOT IN ('completed','cancelled')`,
+    [user.id, department]);
+  if (Number(openCount.n) >= MAX_OPEN_PER_OFFICE)
+    return { error: `You already have ${openCount.n} open ${department} tickets. Finish or cancel one before requesting another.` };
 
   // ---- claiming a released document ------------------------------------------
   // Only documents already paid at the Cashier can be claimed, and each paid
@@ -1563,13 +1569,16 @@ async function createRequest(user, b, { walkIn = false } = {}) {
  * through createRequest, so a student is never locked out of finishing what
  * they already started and paid for.
  */
-async function getBlockingTransaction(userId, department = null) {
+async function getBlockingTransaction(userId, department = null, serviceDate = null) {
+  // With a date: only a ticket for that same day blocks (or one already at a
+  // window), so a claim booked for next week never stops a visit today.
   const rows = await q(
     `SELECT * FROM transactions
      WHERE user_id = ? AND overall_status NOT IN ('completed','cancelled')
        ${department ? 'AND department = ?' : ''}
+       ${serviceDate ? "AND (service_date = ? OR ticket_status IN ('called','serving'))" : ''}
      ORDER BY requested_at ASC LIMIT 1`,
-    department ? [userId, department] : [userId]);
+    [userId, ...(department ? [department] : []), ...(serviceDate ? [serviceDate] : [])]);
   if (!rows.length) return null;
   const t = mapTx(rows[0]);
   await attachDocuments([t]);
@@ -1945,12 +1954,163 @@ async function getReleaseInfo(txId) {
   const out = [];
   for (const r of rows) {
     const days = Number(r.processing_days);
-    if (!r.paid_at) { out.push({ name: r.document_name, days, readyOn: null, ready: false }); continue; }
+    if (!r.paid_at) { out.push({ lineId: r.id, name: r.document_name, days, readyOn: null, ready: false }); continue; }
     const readyOn = await releaseDate(ymd(new Date(r.paid_at)), days);
     const left = Math.round((new Date(readyOn + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
-    out.push({ name: r.document_name, days, readyOn, readyText: shortDate(readyOn), daysLeft: Math.max(0, left), ready: left <= 0 });
+    out.push({ lineId: r.id, name: r.document_name, days, readyOn, readyText: shortDate(readyOn),
+               daysLeft: Math.max(0, left), ready: left <= 0, claim: await claimFor(r.id) });
   }
   return out;
+}
+
+/** The claim ticket that covers a paid line (waiting, at a window or done), if any. */
+async function claimFor(lineId) {
+  const c = await q(
+    `SELECT c.id, c.ticket_no, c.access_token, c.service_date, c.slot_start, c.slot_end, c.ticket_status
+     FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
+     WHERE ci.line_id = ? AND c.ticket_status NOT IN ('cancelled','no-show')
+     ORDER BY c.id DESC LIMIT 1`, [lineId]);
+  if (!c.length) return null;
+  const x = c[0], date = ymd(new Date(x.service_date));
+  return { id: x.id, ticketNo: x.ticket_no, accessToken: x.access_token, status: x.ticket_status,
+           date, dateText: shortDate(date), done: x.ticket_status === 'completed',
+           slotLabel: x.slot_start ? `${clock12(String(x.slot_start).slice(0, 5))} – ${clock12(String(x.slot_end).slice(0, 5))}` : '' };
+}
+
+/**
+ * "Book my claim": reserve the earliest free 30-minute Registrar slot on or
+ * after the release date, for the paid documents of this Cashier ticket.
+ * The student does not pick a date, so nobody comes before it is ready.
+ */
+async function bookClaim(cashierTx) {
+  const lines = (await getReleaseInfo(cashierTx.id)).filter(l => l.readyOn && !l.claim);
+  if (!lines.length) return { error: 'There is nothing left to book a claim for on this ticket.' };
+  const doc = (await getDocuments({ office: 'Registrar' })).find(d => d.requiresClaim && /claim/i.test(d.name))
+           || (await getDocuments({ office: 'Registrar' })).find(d => d.requiresClaim);
+  if (!doc) return { error: 'Claiming is not set up at the Registrar yet. Please ask at the office.' };
+  const user = await getUser(cashierTx.userId);
+  if (!user) return { error: 'Your student record was not found. Please ask at the Registrar.' };
+
+  const s = await getSettings();
+  const from = lines.map(l => l.readyOn).sort().pop();          // every line must be ready
+  // Already booked a claim on or after that date? Release this one with it.
+  const booked = await q(
+    `SELECT id, ticket_no, access_token, service_date, slot_start, slot_end FROM transactions
+     WHERE user_id=? AND department='Registrar' AND ticket_status='waiting' AND requires_claim=1
+       AND service_date >= ? AND id IN (SELECT claim_tx_id FROM claim_items)
+     ORDER BY service_date, slot_start LIMIT 1`, [cashierTx.userId, from]);
+  if (booked.length) {
+    const c = booked[0], date = ymd(new Date(c.service_date));
+    for (const l of lines) await run('INSERT INTO claim_items (claim_tx_id, line_id) VALUES (?,?)', [c.id, l.lineId]);
+    const slotLabel = c.slot_start ? `${clock12(String(c.slot_start).slice(0, 5))} – ${clock12(String(c.slot_end).slice(0, 5))}` : '';
+    await engine.logDecision(c.id, 'Registrar', 'claim_booked',
+      `${c.ticket_no}: ${lines.map(l => l.name).join(', ')} (${cashierTx.ticketNo}) added to the claim already booked for ${shortDate(date)}, ` +
+      `ready by then (${shortDate(from)}), so one visit releases both.`, { joined: cashierTx.ticketNo, date });
+    return { ok: true, joined: true, ticket: await getTransaction(c.id), dateText: shortDate(date), slotLabel };
+  }
+  const svc = (await predict.estimateService([doc], 'Registrar', s)).minutes;
+  const last = addDays(today(), s.scheduleMaxDays);
+  if (from > last) return { error: `Booking opens on ${shortDate(addDays(from, -s.scheduleMaxDays))}.` };
+  for (let d = from < today() ? today() : from; d <= last; d = addDays(d, 1)) {
+    const ok = await validateSchedule('schedule', d, 'Registrar');
+    if (ok.error) continue;                                      // closed day: try the next
+    const plan = await engine.slotPlan('Registrar', d, svc, s);
+    const slot = plan.slots.find(x => x.available);
+    if (!slot) continue;
+    const r = await createRequest(user, {
+      documentIds: [String(doc.id)], claimLines: lines.map(l => l.lineId),
+      firstName: cashierTx.firstName, middleName: cashierTx.middleName, lastName: cashierTx.lastName,
+      course: cashierTx.course || user.course, yearLevel: cashierTx.yearLevel || user.yearLevel,
+      mode: 'schedule', scheduledDate: d, slot: slot.start, queueCategory: 'regular',
+    }, { walkIn: true });
+    if (r.error) return r;
+    await engine.logDecision(r.id, 'Registrar', 'claim_booked',
+      `${r.ticketNo}: claim booked for ${shortDate(d)}, ${slot.label}, the earliest free slot on or after the release date (${shortDate(from)}).`,
+      { releaseDate: from, date: d, slot: slot.label });
+    return { ok: true, ticket: r, dateText: shortDate(d), slotLabel: slot.label };
+  }
+  return { error: 'No free time was found in the next weeks. Please ask at the Registrar.' };
+}
+
+/** A student may hold this many unfinished tickets per office (one per day). */
+const MAX_OPEN_PER_OFFICE = 2;
+
+/** Planning figures: share of students expected to come for a ready document
+    on its release day, and on each later day while it is still uncollected
+    (up to a week; after that it is not counted in the forecast). */
+const CLAIM_SHOW_RATE = 0.6, CLAIM_LATE_RATE = 0.15, CLAIM_LATE_DAYS = 7;
+
+/**
+ * Processed documents (the OTR) that are paid and not yet collected, with
+ * their release date and any booked claim: the Registrar's "Due for release"
+ * list, oldest payment first (first come, first served).
+ */
+async function releasesDue(daysAhead = 7, daysBack = 14) {
+  const rows = await q(
+    `SELECT td.id AS line_id, td.document_name, td.copies, d.processing_days, p.paid_at,
+            t.id AS tx_id, t.ticket_no, t.first_name, t.middle_name, t.last_name, t.student_no
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d ON d.id = td.document_id
+     JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     WHERE d.processing_days > 0 AND d.requires_claim = 1
+       AND t.department = 'Cashier' AND t.payment_status = 'paid'
+       AND DATE(p.paid_at) >= CURDATE() - INTERVAL 120 DAY
+       AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
+                       WHERE ci.line_id = td.id AND c.ticket_status = 'completed')
+     ORDER BY p.paid_at ASC, td.id ASC`);
+  const until = addDays(today(), daysAhead), since = addDays(today(), -daysBack), out = [];
+  for (const r of rows) {
+    const readyOn = await releaseDate(ymd(new Date(r.paid_at)), Number(r.processing_days));
+    if (readyOn > until || readyOn < since) continue;
+    const left = Math.round((new Date(readyOn + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+    out.push({
+      lineId: r.line_id, name: r.document_name, copies: Number(r.copies) || 1, paidTicket: r.ticket_no,
+      student: fullName(r), studentNo: r.student_no || '',
+      paidOn: ymd(new Date(r.paid_at)), paidText: shortDate(ymd(new Date(r.paid_at))),
+      readyOn, readyText: shortDate(readyOn), daysLeft: left,
+      status: left < 0 ? 'overdue' : left === 0 ? 'today' : 'soon',
+      claim: await claimFor(r.line_id),
+    });
+  }
+  return out;
+}
+
+/**
+ * The next few open days: how many processed documents come due each day, and
+ * how many students that means at the Registrar (due x show rate). A day well
+ * above the usual Registrar load is flagged, so staff can plan the morning.
+ */
+async function releaseOutlook(days = 5) {
+  const s = await getSettings();
+  const due = await releasesDue(21);
+  const out = [];
+  for (let d = today(), n = 0; n < days && d <= addDays(today(), 30); d = addDays(d, 1)) {
+    const dow = new Date(d + 'T00:00:00').getDay() || 7;
+    if (!s.openDays.includes(dow)) continue;
+    n++;
+    const dueThat = due.filter(x => x.readyOn === d && !(x.claim && x.claim.date !== d));
+    const booked = due.filter(x => x.claim && x.claim.date === d && !x.claim.done).length;
+    const late = d === today() ? due.filter(x => x.readyOn < d && x.daysLeft >= -CLAIM_LATE_DAYS && !x.claim).length : 0;
+    const expect = Math.round(booked + dueThat.filter(x => !x.claim).length * CLAIM_SHOW_RATE + late * CLAIM_LATE_RATE);
+    out.push({ date: d, label: d === today() ? 'Today' : shortDate(d), due: dueThat.length, booked, late, expect });
+  }
+  // usual Registrar visitors per open day (last 30 days), to judge "busy"
+  const [[u]] = await pool.query(
+    `SELECT COUNT(*) / GREATEST(1, COUNT(DISTINCT service_date)) AS per_day FROM transactions
+     WHERE department='Registrar' AND service_date >= CURDATE() - INTERVAL 30 DAY AND service_date < CURDATE()`);
+  const usual = Math.max(5, Math.round(Number(u.per_day) || 0));
+  out.forEach(o => { o.level = o.expect >= usual ? 'heavy' : o.expect >= usual * 0.5 ? 'busy' : 'normal'; });
+  return { days: out, usual, showRate: CLAIM_SHOW_RATE, lateRate: CLAIM_LATE_RATE };
+}
+
+/** Students expected today for ready, uncollected documents without a booked
+    claim (booked ones are already real tickets in the line). */
+async function expectedClaimsToday() {
+  const due = (await releasesDue(0, CLAIM_LATE_DAYS)).filter(x => !x.claim);
+  const onDay = due.filter(x => x.readyOn === today()).length;
+  const late  = due.filter(x => x.readyOn < today()).length;
+  return Math.round(onDay * CLAIM_SHOW_RATE + late * CLAIM_LATE_RATE);
 }
 
 /** A Registrar document that collects something paid for at the Cashier. */
@@ -3260,7 +3420,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, joinOpensAt, isBeforeJoinOpens,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, bookClaim, releasesDue, releaseOutlook, expectedClaimsToday, CLAIM_SHOW_RATE, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

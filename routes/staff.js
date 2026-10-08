@@ -48,6 +48,8 @@ router.get('/dashboard', async (req, res, next) => {
       completed:       queue.filter(t => t.ticketStatus === 'completed'),
       nextUp: await db.pickNextTicket(dept, me),   // who Call Next would give THIS window
       onBreak: db.isBreakTime(settings), breakEnds: db.clock12(settings.breakEnd),
+      // the Registrar plans OTR releases: due list (payment order) and the coming days
+      release: dept === 'Registrar' ? { outlook: await db.releaseOutlook(), due: await db.releasesDue() } : null,
     });
   } catch (e) { next(e); }
 });

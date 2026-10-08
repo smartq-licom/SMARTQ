@@ -231,15 +231,37 @@
       <% if (!rl.readyOn) { %>
       <div class="text-[13.5px] font-bold text-ink"><%= rl.name %> takes <%= rl.days %> days to process</div>
       <div class="text-[12px] text-slateSoft/75">Counted from your payment. The release date shows here once you've paid.</div>
+      <% } else if (rl.claim && rl.claim.done) { %>
+      <div class="text-[13.5px] font-bold text-emerald-900"><%= rl.name %> released</div>
+      <div class="text-[12px] text-emerald-800/80">Collected with <%= rl.claim.ticketNo %>.</div>
       <% } else if (rl.ready) { %>
       <div class="text-[13.5px] font-bold text-emerald-900">Your <%= rl.name %> is ready for release</div>
-      <div class="text-[12px] text-emerald-800/80">Get a Registrar number and choose "Claim Released Document". Bring your receipt and a valid ID.</div>
+      <div class="text-[12px] text-emerald-800/80"><%= rl.claim ? 'Your claim is booked below.' : 'Book your claim below, or get a Registrar number and choose "Claim Released Document".' %> Bring your receipt and a valid ID.</div>
       <% } else { %>
       <div class="text-[13.5px] font-bold text-ink">Ready for release on <%= rl.readyText %></div>
-      <div class="text-[12px] text-slateSoft/75"><%= rl.name %> &middot; in <%= rl.daysLeft %> day<%= rl.daysLeft === 1 ? '' : 's' %> (it takes <%= rl.days %> days to process). Claim it at the Registrar on or after that date.</div>
+      <div class="text-[12px] text-slateSoft/75"><%= rl.name %> &middot; in <%= rl.daysLeft %> day<%= rl.daysLeft === 1 ? '' : 's' %> (it takes <%= rl.days %> days to process).</div>
       <% } %>
     </div>
   </div>
+  <%# The claim: already booked (a link to it), or one tap to book the earliest
+      free time on or after the release date. %>
+  <% if (rl.readyOn && rl.claim && !rl.claim.done) { %>
+  <a href="/queue/t/<%= rl.claim.accessToken %>" class="mt-2 flex items-center gap-3 rounded-2xl bg-brand-wash ring-1 ring-inset ring-brand-line px-4 py-3 hover:brightness-[.98] no-print">
+    <span class="font-mono text-[18px] font-extrabold text-brand-night"><%= rl.claim.ticketNo %></span>
+    <span class="min-w-0 flex-1 text-[12.5px] text-brand-night"><strong>Claim booked</strong> &middot; <%= rl.claim.dateText %><%= rl.claim.slotLabel ? ', ' + rl.claim.slotLabel : '' %></span>
+    <span aria-hidden="true" class="text-brand">&rarr;</span>
+  </a>
+  <% } else if (rl.readyOn && !rl.claim) { %>
+  <form method="POST" action="<%= base %>/book-claim" class="mt-2 no-print" data-once
+        data-confirm data-confirm-title="Book your claim?"
+        data-confirm-body="SmartQ reserves the earliest free 30-minute time at the Registrar on or after <%= rl.readyText %>, when your <%= rl.name %> is ready."
+        data-confirm-ok="Book my claim" data-confirm-back="Not now">
+    <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9.5 15l2 2 3.5-4"/></svg>
+      Book my claim for <%= rl.ready ? 'the earliest time' : rl.readyText %>
+    </button>
+  </form>
+  <% } %>
   <% }) %>
   <%# A reminder of the requirements: on a Registrar ticket, what to bring to
       the window now; on a Cashier ticket (e.g. the OTR), what to bring later

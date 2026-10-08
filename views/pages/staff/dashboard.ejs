@@ -298,6 +298,12 @@
 
 </div>
 
+<% if (release) { %>
+<div class="mt-4 max-w-[1400px]">
+  <%- include('../../partials/release-outlook', { outlook: release.outlook, due: release.due }) %>
+</div>
+<% } %>
+
 <%# Today's busy-hour shape, so staff can time breaks and see a rush coming.
     Outside the live part: it does not change during the day. %>
 <div class="mt-4 max-w-[1400px]">

@@ -11,7 +11,7 @@ router.get('/dashboard', async (req, res, next) => {
       db.getLoad(), db.getWindows(), db.getReports(), db.getQueue('Cashier'), db.getQueue('Registrar'),
     ]);
     res.render('pages/admin/dashboard', {
-      title: 'Admin Dashboard', load, windows, reports,
+      title: 'Admin Dashboard', load, windows, reports, releaseOutlook: await db.releaseOutlook(),
       recent: [...cashierQ, ...registrarQ]
         .sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt)).slice(0, 10),
     });

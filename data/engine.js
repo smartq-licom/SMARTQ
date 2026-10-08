@@ -249,7 +249,24 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     }
     lane.priority.sort((a, b) => new Date(a.queue_at) - new Date(b.queue_at));
   }
-  let expectedServed = 0;
+  // Registrar: students expected today for ready OTRs (paid, due, not collected,
+  // no claim booked), spread over the rest of the day as regular arrivals.
+  let expectedClaims = 0;
+  if (expected && department === 'Registrar') {
+    try {
+      const n = await db.expectedClaimsToday();
+      const span = Math.max(1, (close - base) / 60000 - Math.max(0, (Math.min(close, brEnd) - Math.max(base, brStart)) / 60000));
+      for (let i = 0; i < n; i++) {
+        let t = addMin(base, (i + 0.5) * span / n);
+        if (t >= brStart) t = addMin(t, Math.max(0, (brEnd - brStart) / 60000));
+        if (t >= close) break;
+        lane.regular.push({ id: 'claim' + i, queue_at: t, expected: true, claimExpected: true });
+        expectedClaims++;
+      }
+      lane.regular.sort((a, b) => new Date(a.queue_at) - new Date(b.queue_at));
+    } catch (e) { /* a forecast must never fail */ }
+  }
+  let expectedServed = 0, claimsServed = 0;
 
   const last = await q(
     `SELECT queue_category FROM transactions
@@ -264,7 +281,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   });
 
   let guard = 0;
-  const realLeft = () => lane.regular.length || lane.priority.some(x => !x.expected);
+  const realLeft = () => lane.regular.some(x => !x.expected) || lane.priority.some(x => !x.expected);
   const readyAt = x => Math.max(new Date(x.queue_at).getTime(), x.hold_until ? new Date(x.hold_until).getTime() : 0);
   while (realLeft() && guard++ < 5000) {
     // the window that frees up first; when several are free together, the
@@ -291,13 +308,13 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     lane[d.lane].splice(lane[d.lane].indexOf(tk), 1);
     const mins = serviceOf(tk, pr, t0) * win.speed * factor;
     const start = t0, end = addMin(start, mins);
-    if (tk.expected) expectedServed++;
-    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed, window: win.label };
+    if (tk.expected) { if (tk.claimExpected) claimsServed++; else expectedServed++; }
+    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed, claimsAhead: claimsServed, window: win.label };
     win.free = end;
     win.work += mins;
     lastCat = d.lane;
   }
-  return { result, close, windows: c, assumed: !open.length, profile: pr, factor, expectedCount };
+  return { result, close, windows: c, assumed: !open.length, profile: pr, factor, expectedCount, expectedClaims };
 }
 
 // ── 3. decisions ─────────────────────────────────────────────────────────────
@@ -324,7 +341,7 @@ async function evaluateJoin(department, { lane = 'regular', service = null } = {
   const fits = sl.end <= slow.close;
   return {
     decision: fits ? 'accept' : 'accept_warned',
-    fits, minutes, expectedAhead: e.expectedAhead || 0,
+    fits, minutes, expectedAhead: e.expectedAhead || 0, claimsAhead: e.claimsAhead || 0,
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     startClock: clock(e.start),
     slowEndClock: clock(sl.end),
@@ -352,7 +369,7 @@ async function ticketForecast(t) {
     slowEndClock: b ? clock(b.end) : null,
     closeClock: clock(slow.close),
     live: profile.live, liveBasis: profile.liveBasis,
-    expectedAhead: a.expectedAhead || 0,
+    expectedAhead: a.expectedAhead || 0, claimsAhead: a.claimsAhead || 0,
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     window: a.window || null,
   };

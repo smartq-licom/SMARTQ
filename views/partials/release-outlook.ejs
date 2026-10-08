@@ -1,0 +1,79 @@
+<%#
+  OTR releases: the next open days (how many come due, how many students that
+  means at the Registrar) and, for the Registrar, the "Due for release" list in
+  payment order (first come, first served). From db.releaseOutlook / releasesDue.
+  Locals: outlook, due (optional list), compact (true = outlook only)
+%>
+<% var o = outlook, rush = o.days.filter(function (d) { return d.level !== 'normal'; })[0]; %>
+<section class="<%= UI.card %>">
+  <div class="<%= UI.cardHd %>">
+    <h3 class="<%= UI.cardTtl %> flex items-center gap-2">
+      <span class="grid place-items-center w-7 h-7 rounded-lg bg-brand-wash text-brand" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+      OTR releases coming up
+    </h3>
+    <span class="text-[11.5px] text-slateSoft/60">usual Registrar day: ~<%= o.usual %> students</span>
+  </div>
+
+  <% if (rush) { %>
+  <div class="mx-5 mt-4 flex items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-[12.5px] <%= rush.level === 'heavy' ? 'bg-red-50 text-red-900 ring-1 ring-inset ring-red-200' : 'bg-amber-50 text-amber-900 ring-1 ring-inset ring-amber-200' %>">
+    <span aria-hidden="true">&#128200;</span>
+    <span><strong><%= rush.due + (rush.late || 0) %> OTR<%= rush.due + (rush.late || 0) === 1 ? '' : 's' %> due <%= rush.label === 'Today' ? 'today' : 'on ' + rush.label %></strong>:
+      expect about <%= rush.expect %> extra student<%= rush.expect === 1 ? '' : 's' %> at the Registrar<%= rush.level === 'heavy' ? ', as many as a usual day' : '' %>. Have them ready that morning.</span>
+  </div>
+  <% } %>
+
+  <%# one tile per open day %>
+  <div class="grid grid-cols-5 gap-2 p-5">
+    <% o.days.forEach(function (d) { %>
+    <div class="rounded-xl px-2 py-2.5 text-center <%= d.level === 'heavy' ? 'bg-red-50 ring-1 ring-inset ring-red-200' : d.level === 'busy' ? 'bg-amber-50 ring-1 ring-inset ring-amber-200' : 'bg-mist' %>">
+      <% var dt = new Date(d.date + 'T00:00:00'); %>
+      <div class="text-[11px] font-semibold text-slateSoft/70 leading-tight"><%= d.label === 'Today' ? 'Today' : dt.toLocaleDateString('en-PH', { weekday: 'short' }) %></div>
+      <div class="text-[10.5px] text-slateSoft/55 leading-tight"><%= dt.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) %></div>
+      <div class="font-mono text-[22px] font-extrabold leading-tight"><%= d.due + (d.late || 0) %></div>
+      <div class="text-[10.5px] text-slateSoft/70 leading-tight">due<% if (d.booked) { %> &middot; <%= d.booked %> booked<% } %></div>
+      <div class="text-[10.5px] font-semibold text-brand-night mt-0.5">~<%= d.expect %> coming</div>
+    </div>
+    <% }) %>
+  </div>
+  <p class="px-5 -mt-2 pb-4 text-[11px] text-slateSoft/55">
+    Expected = booked claims + <%= Math.round(o.showRate * 100) %>% of OTRs due that day<%= o.lateRate ? ' + ' + Math.round(o.lateRate * 100) + '% of those still uncollected from the past week (today only)' : '' %>.
+    Today's figure is already in the Registrar's wait estimates.
+  </p>
+
+  <% if (typeof due !== 'undefined' && due && !(typeof compact !== 'undefined' && compact)) { %>
+  <div class="border-t border-hair/70">
+    <div class="px-5 pt-4 pb-2 flex items-center justify-between">
+      <h4 class="text-[13px] font-bold">Due for release <span class="font-normal text-slateSoft/60">&middot; oldest payment first</span></h4>
+      <span class="<%= pill %> bg-mist text-slateSoft"><%= due.length %></span>
+    </div>
+    <% if (!due.length) { %>
+    <p class="px-5 pb-5 text-[13px] text-slateSoft/60">Nothing due this week.</p>
+    <% } else { %>
+    <ol class="divide-y divide-hair/60">
+      <% due.forEach(function (x, i) { %>
+      <li class="flex items-center gap-3 px-5 py-2.5 <%= i >= 12 ? 'due-more' : '' %>" <%= i >= 12 ? 'hidden' : '' %>>
+        <span class="w-2 h-2 rounded-full shrink-0 <%= x.status === 'overdue' ? 'bg-red-500' : x.status === 'today' ? 'bg-emerald-500' : 'bg-brand-line' %>" aria-hidden="true"></span>
+        <div class="min-w-0 flex-1">
+          <div class="text-[13px] font-semibold truncate"><%= x.student %> <span class="font-normal text-slateSoft/60"><%= x.studentNo %></span></div>
+          <div class="text-[11.5px] text-slateSoft/70 truncate"><%= x.name %><%= x.copies > 1 ? ' ×' + x.copies : '' %> &middot; paid <%= x.paidText %> (<%= x.paidTicket %>)</div>
+        </div>
+        <div class="text-right shrink-0">
+          <% if (x.claim) { %><span class="<%= pill %> bg-brand-wash text-brand-night">booked <%= x.claim.dateText %></span>
+          <% } else if (x.status === 'overdue') { %><span class="<%= pill %> bg-red-100 text-red-800"><%= -x.daysLeft %>d overdue</span>
+          <% } else if (x.status === 'today') { %><span class="<%= pill %> bg-emerald-100 text-emerald-800">due today</span>
+          <% } else { %><span class="<%= pill %> bg-mist text-slateSoft">in <%= x.daysLeft %>d</span><% } %>
+          <div class="text-[11px] text-slateSoft/55 mt-0.5"><%= x.readyText %></div>
+        </div>
+      </li>
+      <% }) %>
+    </ol>
+    <% if (due.length > 12) { %>
+    <button type="button" class="w-full px-5 py-3 text-[12.5px] font-semibold text-brand hover:bg-brand-wash/40 border-t border-hair/60"
+            onclick="this.closest('section').querySelectorAll('.due-more').forEach(function (li) { li.hidden = false; }); this.remove();">
+      Show all <%= due.length %>
+    </button>
+    <% } %>
+    <% } %>
+  </div>
+  <% } %>
+</section>
