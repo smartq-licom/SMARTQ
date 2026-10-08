@@ -7,7 +7,7 @@
 %>
 <div id="intro" class="intro" hidden aria-hidden="true">
   <span class="intro-orb a"></span><span class="intro-orb b"></span>
-  <div class="intro-seal"><i></i><i></i></div>
+  <div class="intro-seal"><i></i><i></i><i></i></div>
   <div class="intro-word">
     <% 'SMARTQ'.split('').forEach(function (ch, i) { %><span style="--i:<%= i %>"><%= ch %></span><% }) %>
   </div>
@@ -33,10 +33,12 @@
   @keyframes intro-orb{ to{ transform:translate(8vmax,6vmax) scale(1.1) } }
   /* two rings ripple out from the seal */
   .intro-seal{ position:relative }
-  .intro-seal i{ position:absolute; inset:-6px; border-radius:50%; border:2px solid rgba(255,255,255,.55);
-                 animation:intro-ripple 1.6s cubic-bezier(.2,.8,.2,1) .45s both }
-  .intro-seal i + i{ animation-delay:.75s }
-  @keyframes intro-ripple{ from{ opacity:.9; transform:scale(1) } to{ opacity:0; transform:scale(2.2) } }
+  .intro-seal i{ position:absolute; inset:-4px; border-radius:50%; border:3px solid rgba(255,255,255,.85);
+                 box-shadow:0 0 18px rgba(191,225,251,.6), inset 0 0 12px rgba(191,225,251,.35);
+                 animation:intro-ripple 1.8s cubic-bezier(.2,.7,.3,1) .35s infinite both }
+  .intro-seal i:nth-child(2){ animation-delay:.95s }
+  .intro-seal i:nth-child(3){ animation-delay:1.55s }
+  @keyframes intro-ripple{ 0%{ opacity:0; transform:scale(.9) } 12%{ opacity:1 } 100%{ opacity:0; transform:scale(3) } }
 
   .intro-seal{
     width:84px; height:84px; border-radius:50%;
@@ -92,6 +94,11 @@
   var el = document.getElementById('intro');
   var seen = false;
   try { seen = sessionStorage.getItem('smartq.intro') === '1'; } catch (e) {}
+  // /login?intro=1 plays it again on demand (handy for a demo)
+  if (/[?&]intro=1(&|$)/.test(location.search)) {
+    seen = false;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  }
   var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!el || seen || calm) { if (el) el.remove(); return; }
 
@@ -109,7 +116,7 @@
       document.documentElement.style.overflow = '';
     }, 700);
   }
-  var timer = setTimeout(leave, 2100);
+  var timer = setTimeout(leave, 2600);
   function skip() { clearTimeout(timer); leave(); }
   el.addEventListener('click', skip);
   document.addEventListener('keydown', skip, { once: true });
