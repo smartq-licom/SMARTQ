@@ -5,6 +5,20 @@ const db      = require('../data/db');
 
 const deptOf = u => (u.role === 'cashier' ? 'Cashier' : 'Registrar');
 
+// The admin can move a staff member to another window while they are signed
+// in (Service Windows page), so read the current window on every request
+// instead of trusting the one saved in the session at login.
+router.use(async (req, res, next) => {
+  try {
+    const me = req.session.user;
+    if (me && me.id) {
+      const fresh = await db.getUser(me.id);
+      if (fresh && fresh.windowId !== me.windowId) me.windowId = fresh.windowId;   // same object as res.locals.me
+    }
+    next();
+  } catch (e) { next(e); }
+});
+
 router.get('/dashboard', async (req, res, next) => {
   try {
     const me   = req.session.user;
