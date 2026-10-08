@@ -6,6 +6,14 @@
   .stub::before,.stub::after{content:"";position:absolute;top:var(--tear,70%);width:22px;height:22px;border-radius:999px;background:#F2F4F8;transform:translateY(-50%)}
   .stub::before{left:-11px}.stub::after{right:-11px}
   .tear{border-top:2px dashed rgba(255,255,255,.28)}
+  /* a brand-new ticket comes out of the printer once */
+  .printing{animation:print 1.15s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes print{0%{clip-path:inset(0 0 100% 0 round 24px);transform:translateY(-24px) scale(.97)}
+                   70%{clip-path:inset(0 0 0 0 round 24px);transform:translateY(4px)}
+                   100%{clip-path:inset(0 0 0 0 round 24px);transform:none}}
+  .hello-new{animation:hello .5s cubic-bezier(.34,1.56,.64,1) .9s both}
+  @keyframes hello{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.printing,.hello-new{animation:none}}
 </style>
 <div class="max-w-lg mx-auto" data-live-key="<%= t.ticketStatus %>|<%= t.ticketNo %>|<%= t.queueCategory %>|<%= t.serviceDate %>">
   <%# Live parts (data-live) are updated in place by partials/live; a change of
@@ -13,7 +21,15 @@
 
   <%# ── the ticket itself ─────────────────────────────────────────────────── %>
   <% var atWindow = ['called','serving'].includes(t.ticketStatus); %>
-  <section class="stub rise <%= atWindow ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : 'bg-hero' %> text-white rounded-3xl shadow-lift overflow-hidden" style="--tear:<%= t.bookingCode && !['completed','cancelled'].includes(t.overallStatus) ? '64%' : '78%' %>">
+  <% var fresh = query && query.new === '1' && t.ticketStatus === 'waiting'; %>
+  <% if (fresh) { %>
+  <div class="hello-new mb-3 flex items-center gap-3 rounded-2xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3">
+    <span class="text-[22px]" aria-hidden="true">&#127881;</span>
+    <div><div class="text-[14px] font-bold text-emerald-900">You're in line!</div>
+      <div class="text-[12px] text-emerald-800/80">Keep this page, or turn on alerts below. You can wait anywhere.</div></div>
+  </div>
+  <% } %>
+  <section class="stub <%= fresh ? 'printing' : 'rise' %> <%= atWindow ? 'bg-gradient-to-br from-emerald-500 to-emerald-700' : 'bg-hero' %> text-white rounded-3xl shadow-lift overflow-hidden" style="--tear:<%= t.bookingCode && !['completed','cancelled'].includes(t.overallStatus) ? '64%' : '78%' %>">
     <div class="px-6 pt-6 pb-5 text-center">
       <div class="flex items-center justify-between text-[11.5px] font-semibold text-white/75">
         <span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-white/80"></span><%= t.department %></span>
@@ -303,6 +319,13 @@
   <% } %>
 </div>
 <%- include('../../partials/foot') %>
+<% if (fresh) { %>
+<script>
+(function () {
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+})();
+</script>
+<% } %>
 <script>
 (function () {
   var box = document.getElementById('nearBox');

@@ -18,9 +18,48 @@ document.querySelectorAll('[data-pw]').forEach(function (btn) {
 document.querySelectorAll('form[data-once]').forEach(function (f) {
   f.addEventListener('submit', function () {
     var b = f.querySelector('[type=submit]');
-    if (b) { b.disabled = true; b.textContent = b.dataset.busy || 'Working...'; }
+    if (b) { b.disabled = true; b.innerHTML = '<span class="spin" aria-hidden="true"></span>' + (b.dataset.busy || 'Working...'); }
   });
 });
+
+// The mini board on the panel shows the real queue: who is at each window right
+// now (the public widget feed), cycling through the busy windows.
+(function () {
+  var no = document.getElementById('miniNo'), sub = document.getElementById('miniSub'), wait = document.getElementById('miniWait');
+  if (!no) return;
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var busy = [], at = 0, shown = '';
+  function paint(n, s) {
+    if (n + '|' + s === shown) return;
+    shown = n + '|' + s;
+    if (!calm) { no.classList.remove('flip'); void no.offsetWidth; no.classList.add('flip'); }
+    no.textContent = n; sub.textContent = s;
+  }
+  function next() {
+    if (!busy.length) return;
+    var w = busy[at++ % busy.length];
+    paint(w.serving, w.label);
+  }
+  function load() {
+    fetch('/display/widget.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        busy = [];
+        ['cashier', 'registrar'].forEach(function (o) {
+          (d[o] && d[o].windows || []).forEach(function (w) { if (w.serving && w.serving !== '—') busy.push(w); });
+        });
+        var c = d.cashier ? d.cashier.waiting : 0, r = d.registrar ? d.registrar.waiting : 0;
+        wait.textContent = 'Waiting now: Cashier ' + c + ' · Registrar ' + r;
+        if (busy.length) next();
+        else paint('—', 'No one at the windows right now');
+      })
+      .catch(function () {});
+  }
+  load();
+  setInterval(load, 5000);                       // fresh from the server
+  setInterval(next, 3000);                       // several busy windows take turns
+})();
 
 (function () {
   var input = document.querySelector('[data-rules-for]');

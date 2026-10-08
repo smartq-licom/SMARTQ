@@ -18,11 +18,16 @@
         later steps unlock only after the current one passes its checks. %>
     <nav aria-label="Request steps" class="mb-5">
       <ol class="wiz-bar flex items-start">
+        <% var stepIcons = {
+             '1': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+             '2': '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+             '3': '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
+             '4': '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/>' }; %>
         <% [['1','Office & Docs'],['2','When'],['3','Your details'],['4','Review']].forEach(function (st, i) { %>
         <li class="wiz-item flex-1 flex flex-col items-center relative" data-step-item="<%= st[0] %>">
           <% if (i > 0) { %><span class="wiz-line" aria-hidden="true"></span><% } %>
           <button type="button" class="wiz-dot" data-goto="<%= st[0] %>" aria-label="Step <%= st[0] %>: <%= st[1] %>">
-            <span class="wiz-num"><%= st[0] %></span>
+            <svg class="wiz-num" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><%- stepIcons[st[0]] %></svg>
             <svg class="wiz-tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <span class="wiz-label">Step <%= st[0] %><br><b><%= st[1] %></b></span>
@@ -672,8 +677,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
 <style>
   /* "hidden" must win over layout classes such as flex (the Copies box). */
   form [hidden]{ display:none !important }
+  /* the line between steps fills from left to right as you move on */
   .wiz-line{ position:absolute; top:22px; right:50%; width:100%; height:4px; border-radius:4px;
-             background:#DFE2E6; transition:background .35s }
+             background:linear-gradient(#2185D5,#2185D5) left/0% 100% no-repeat #DFE2E6;
+             transition:background-size .5s cubic-bezier(.4,0,.2,1) }
   .wiz-dot{ position:relative; z-index:1; width:46px; height:46px; border-radius:50%;
             display:grid; place-items:center; font-weight:800; font-size:17px;
             background:#fff; color:#9AA3AB; border:3px solid #DFE2E6;
@@ -688,9 +695,12 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
   .wiz-item.is-done .wiz-dot:hover{ transform:scale(1.07) }
   .wiz-item.is-done .wiz-num{ display:none }
   .wiz-item.is-done .wiz-tick{ display:block }
+  /* the tick draws itself in */
+  .wiz-item.is-done .wiz-tick path{ stroke-dasharray:24; stroke-dashoffset:24; animation:wiz-draw .45s ease-out .1s forwards }
+  @keyframes wiz-draw{ to{ stroke-dashoffset:0 } }
   .wiz-item.is-done .wiz-label{ color:#303841 }
   .wiz-item.is-done .wiz-line,
-  .wiz-item.is-current .wiz-line{ background:#2185D5 }
+  .wiz-item.is-current .wiz-line{ background-size:100% 100% }
 
   /* current: larger, glowing */
   .wiz-item.is-current .wiz-dot{ background:#2185D5; border-color:#fff; color:#fff; transform:scale(1.18);
@@ -701,10 +711,19 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     0%,100%{ box-shadow:0 0 0 4px rgba(33,133,213,.25), 0 6px 18px rgba(33,133,213,.45) }
     50%    { box-shadow:0 0 0 9px rgba(33,133,213,.12), 0 6px 22px rgba(33,133,213,.55) }
   }
+  /* steps slide in from the side you are heading to; their cards follow one by one */
   .wiz-pane{ animation:wiz-in .3s ease-out }
-  @keyframes wiz-in{ from{ opacity:0; transform:translateY(8px) } to{ opacity:1; transform:none } }
+  .wiz-pane.wiz-fwd{ animation:wiz-fwd .42s cubic-bezier(.2,.8,.2,1) }
+  .wiz-pane.wiz-back{ animation:wiz-back .42s cubic-bezier(.2,.8,.2,1) }
+  .wiz-pane.wiz-fwd > *, .wiz-pane.wiz-back > *{ animation:wiz-in .45s cubic-bezier(.2,.8,.2,1) both }
+  .wiz-pane > *:nth-child(2){ animation-delay:.06s } .wiz-pane > *:nth-child(3){ animation-delay:.12s }
+  .wiz-pane > *:nth-child(4){ animation-delay:.18s } .wiz-pane > *:nth-child(5){ animation-delay:.24s }
+  @keyframes wiz-in{ from{ opacity:0; transform:translateY(12px) } to{ opacity:1; transform:none } }
+  @keyframes wiz-fwd{ from{ opacity:0; transform:translateX(36px) } to{ opacity:1; transform:none } }
+  @keyframes wiz-back{ from{ opacity:0; transform:translateX(-36px) } to{ opacity:1; transform:none } }
   @media (min-width:640px){ .wiz-label{ font-size:12px } .wiz-dot{ width:50px; height:50px } .wiz-line{ top:24px } }
-  @media (prefers-reduced-motion:reduce){ .wiz-item.is-current .wiz-dot, .wiz-pane{ animation:none } }
+  @media (prefers-reduced-motion:reduce){ .wiz-item.is-current .wiz-dot, .wiz-pane, .wiz-pane > *{ animation:none !important }
+    .wiz-item.is-done .wiz-tick path{ animation:none; stroke-dashoffset:0 } }
 </style>
 <script>
 (function () {
@@ -789,9 +808,13 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
   }
 
   function show(n, stay) {
+    var dir = n > current ? 'wiz-fwd' : n < current ? 'wiz-back' : '';
     current = n;
     if (n > reached) reached = n;
     panes.forEach(function (p, i) { p.hidden = i + 1 !== n; });
+    var cur = pane(n);                                // replay the slide for this direction
+    cur.classList.remove('wiz-fwd', 'wiz-back'); void cur.offsetWidth;
+    if (dir) cur.classList.add(dir);
     if (n === LAST) buildReview();
     if (n === 2) loadSlots();                        // documents may have changed
     paintBar();

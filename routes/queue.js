@@ -242,7 +242,7 @@ router.post('/new', proofToMemory, async (req, res, next) => {
       req.session.error = `Heads up: the line is long today. You may not be served before closing ` +
         `(${r.decision.closeClock}). You can keep your place, or book a time tomorrow from this page.`;
     }
-    res.redirect('/queue/t/' + r.accessToken);
+    res.redirect('/queue/t/' + r.accessToken + '?new=1');   // the ticket "prints" once
   } catch (e) { next(e); }
 });
 

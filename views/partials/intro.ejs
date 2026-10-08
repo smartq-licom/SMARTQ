@@ -6,7 +6,8 @@
   The overlay starts hidden, so without JavaScript nothing ever covers the page.
 %>
 <div id="intro" class="intro" hidden aria-hidden="true">
-  <div class="intro-seal"></div>
+  <span class="intro-orb a"></span><span class="intro-orb b"></span>
+  <div class="intro-seal"><i></i><i></i></div>
   <div class="intro-word">
     <% 'SMARTQ'.split('').forEach(function (ch, i) { %><span style="--i:<%= i %>"><%= ch %></span><% }) %>
   </div>
@@ -17,14 +18,25 @@
   .intro{
     position:fixed; inset:0; z-index:1000;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
-    background:var(--blue); color:#fff; cursor:pointer;
-    transition:transform .65s cubic-bezier(.7,0,.25,1);
+    background:radial-gradient(120% 120% at 0% 0%,#3B9BE6 0%,#2185D5 40%,#0F4C81 100%); color:#fff; cursor:pointer;
+    overflow:hidden; clip-path:circle(150% at 50% 50%);
+    transition:clip-path .75s cubic-bezier(.7,0,.25,1);
   }
   .intro::after{
     content:''; position:absolute; inset:0; pointer-events:none;
     background:linear-gradient(135deg,rgba(255,255,255,.12) 0%,transparent 45%,transparent 60%,rgba(255,255,255,.08) 100%);
   }
-  .intro.is-leaving{ transform:translateY(-100%) }
+  .intro.is-leaving{ clip-path:circle(0% at 50% 42%) }
+  .intro-orb{ position:absolute; border-radius:50%; filter:blur(60px); pointer-events:none }
+  .intro-orb.a{ width:60vmax; height:60vmax; background:#7CC4FA; opacity:.45; left:-22vmax; top:-22vmax; animation:intro-orb 6s ease-in-out infinite alternate }
+  .intro-orb.b{ width:50vmax; height:50vmax; background:#8B5CF6; opacity:.25; right:-20vmax; bottom:-20vmax; animation:intro-orb 7s ease-in-out infinite alternate-reverse }
+  @keyframes intro-orb{ to{ transform:translate(8vmax,6vmax) scale(1.1) } }
+  /* two rings ripple out from the seal */
+  .intro-seal{ position:relative }
+  .intro-seal i{ position:absolute; inset:-6px; border-radius:50%; border:2px solid rgba(255,255,255,.55);
+                 animation:intro-ripple 1.6s cubic-bezier(.2,.8,.2,1) .45s both }
+  .intro-seal i + i{ animation-delay:.75s }
+  @keyframes intro-ripple{ from{ opacity:.9; transform:scale(1) } to{ opacity:0; transform:scale(2.2) } }
 
   .intro-seal{
     width:84px; height:84px; border-radius:50%;
@@ -63,9 +75,9 @@
 
   @keyframes intro-seal{ from{opacity:0; transform:scale(.4)} to{opacity:1; transform:scale(1)} }
   @keyframes intro-pop{
-    0%  { opacity:0; transform:translateY(60%) scale(.3) }
-    70% { opacity:1; transform:translateY(-10%) scale(1.12) }
-    100%{ opacity:1; transform:translateY(0) scale(1) }
+    0%  { opacity:0; transform:translateY(50%) scale(.7); filter:blur(12px) }
+    70% { opacity:1; transform:translateY(-6%) scale(1.05); filter:blur(0) }
+    100%{ opacity:1; transform:translateY(0) scale(1); filter:blur(0) }
   }
   @keyframes intro-pop-q{
     0%  { opacity:0; transform:translateY(60%) scale(.3) rotate(-40deg) }

@@ -2,7 +2,7 @@
 <%
   const about = {
     Cashier:   { what: 'Pay for documents', eg: 'TOR, certifications, other paid documents',
-                 icon: '<path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3"/>' },
+                 icon: '<path d="M8 21V3.5h5.5a4.5 4.5 0 0 1 0 9H8M5 7h14M5 10h14"/>' },
     Registrar: { what: 'Free requests and claiming', eg: 'Claim a paid document, or request free ones',
                  icon: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>' },
   };
@@ -40,17 +40,37 @@
 </section>
 <% } %>
 
-<div class="mb-5">
-  <p class="text-[13px] font-semibold text-brand"><%= hello %> &#128075;</p>
-  <h2 class="text-[26px] sm:text-[30px] font-extrabold tracking-tight leading-tight mt-0.5">What are your transactions today?</h2>
-  <div class="mt-2.5 flex flex-wrap items-center gap-2 text-[12.5px]">
-    <span class="inline-flex items-center gap-1.5 rounded-full bg-white ring-1 ring-hair px-3 py-1 font-medium text-slateSoft">
+<%# The hero: what to do, in one look, and how SmartQ works in three steps. %>
+<section class="rise relative overflow-hidden bg-hero text-white rounded-3xl shadow-lift px-5 pt-5 pb-4 mb-5">
+  <span class="hero-orb" aria-hidden="true"></span>
+  <p class="relative text-[13px] font-semibold text-white/80"><%= hello %> &#128075;</p>
+  <h2 class="relative text-[26px] sm:text-[30px] font-extrabold tracking-tight leading-tight mt-0.5">What are your transactions today?</h2>
+  <div class="relative mt-2.5 flex flex-wrap items-center gap-2 text-[12px] font-semibold">
+    <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       <%= officeHours %>
     </span>
-    <span class="inline-flex items-center gap-1.5 rounded-full bg-white ring-1 ring-hair px-3 py-1 font-medium text-slateSoft">No account needed</span>
+    <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1">No account needed</span>
   </div>
-</div>
+  <ol class="relative mt-4 grid grid-cols-3 gap-2 text-center">
+    <% [['<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/>','Pick an office'],
+        ['<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>','Wait anywhere'],
+        ['<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>','Get called']].forEach(function (st, i) { %>
+    <li class="how rounded-2xl bg-white/10 px-2 py-2.5" style="--i:<%= i %>">
+      <span class="mx-auto grid place-items-center w-9 h-9 rounded-xl bg-white/15" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><%- st[0] %></svg></span>
+      <div class="mt-1.5 text-[11.5px] font-semibold leading-tight"><span class="text-white/60"><%= i + 1 %>.</span> <%= st[1] %></div>
+    </li>
+    <% }) %>
+  </ol>
+</section>
+<style>
+  .hero-orb{position:absolute;right:-60px;top:-70px;width:220px;height:220px;border-radius:50%;
+            background:radial-gradient(circle,rgba(124,196,250,.55),transparent 70%);animation:orb 9s ease-in-out infinite alternate}
+  @keyframes orb{to{transform:translate(-30px,40px) scale(1.15)}}
+  .how{animation:how .5s cubic-bezier(.34,1.4,.64,1) both;animation-delay:calc(.25s + var(--i) * .12s)}
+  @keyframes how{from{opacity:0;transform:translateY(10px) scale(.92)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.hero-orb,.how{animation:none}}
+</style>
 
 <% if (!sameDay.open) { %>
 <p class="mb-4 flex gap-2.5 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-900">
@@ -99,9 +119,9 @@
       <% } %>
 
       <div class="mt-3 pt-3 border-t border-hair flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slateSoft">
-        <span><strong class="font-mono text-[15px] text-ink"><%= o.waiting %></strong> waiting</span>
+        <span><strong class="font-mono text-[15px] text-ink" data-count="<%= o.waiting %>"><%= o.waiting %></strong> waiting</span>
         <% if (o.serving) { %><span><strong class="font-mono text-[15px] text-ink"><%= o.serving %></strong> at a window</span><% } %>
-        <% if (o.served) { %><span><strong class="font-mono text-[15px] text-ink"><%= o.served %></strong> served</span><% } %>
+        <% if (o.served) { %><span><strong class="font-mono text-[15px] text-ink" data-count="<%= o.served %>"><%= o.served %></strong> served</span><% } %>
         <% if (o.avgWait) { %><span class="basis-full text-[11.5px] text-slateSoft/70">Today's real average wait: <strong><%= duration(o.avgWait.minutes).replace('about ', '') %></strong> (<%= o.avgWait.served %> served)</span><% } %>
       </div>
     </div>
@@ -155,5 +175,24 @@
 
 </div>
 <%- include('../../partials/live', { liveEvery: 20 }) %>
+<script>
+// Numbers count up when they first appear, and again whenever they change.
+(function () {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  function run(root) {
+    root.querySelectorAll('[data-count]').forEach(function (el) {
+      var to = parseInt(el.dataset.count, 10); if (!(to > 0)) return;
+      var t0 = performance.now(), dur = Math.min(900, 300 + to * 40);
+      (function step(t) {
+        var k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+        el.textContent = Math.round(to * e);
+        if (k < 1) requestAnimationFrame(step);
+      })(t0);
+    });
+  }
+  run(document);
+  window.addEventListener('smartq:updated', function (e) { if (e.detail && e.detail.root) run(e.detail.root); });
+})();
+</script>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>
