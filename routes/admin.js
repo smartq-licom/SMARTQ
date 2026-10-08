@@ -298,6 +298,21 @@ router.get('/reports', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Printable A4 poster with the QR code to the students' queue page. The link
+// follows the address the site is opened at (the live site gives https).
+router.get('/qr-poster', async (req, res, next) => {
+  try {
+    const url = `${req.protocol}://${req.get('host')}/queue`;
+    const qr = await require('qrcode').toString(url, { type: 'svg', margin: 0, errorCorrectionLevel: 'H', color: { dark: '#14243a', light: '#ffffff' } });
+    const s = await db.getSettings();
+    res.render('pages/admin/qr-poster', {
+      title: 'QR Poster', url, qr, settings: s,
+      hours: `${db.clock12(s.openTime)} – ${db.clock12(s.closeTime)}`,
+      lineOpens: db.clock12(db.joinOpensAt(s)),
+    });
+  } catch (e) { next(e); }
+});
+
 router.get('/settings', async (req, res, next) => {
   try {
     const [settings, load] = await Promise.all([db.getSettings(), db.getLoad()]);

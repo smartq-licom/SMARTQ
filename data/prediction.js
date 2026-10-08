@@ -93,6 +93,79 @@ function shrink(median, n, prior) {
   return (n * median + PRIOR_WEIGHT * prior) / (n + PRIOR_WEIGHT);
 }
 
+// ── historical patterns (weekday × hour) ─────────────────────────────────────
+const PATTERN_DAYS = 120;           // how far back the patterns look
+const patternCache = {};            // recomputed at most once a minute per office
+const cached = async (key, fn) => {
+  const c = patternCache[key];
+  if (c && Date.now() - c.at < 60000) return c.value;
+  const value = await fn();
+  patternCache[key] = { at: Date.now(), value };
+  return value;
+};
+const clampF = f => Math.min(1.8, Math.max(0.6, f));
+
+/**
+ * When service runs slower or faster, from history: the median service time
+ * per weekday and hour, as a factor of the office's usual time (1.3 = 30%
+ * slower, e.g. Monday 9 AM). A thin weekday-hour cell is blended toward that
+ * hour's factor, and the hour toward 1 (shrink), so a few odd days cannot
+ * swing it. factor(weekday 0-6, hour 0-23) is used by the day simulation.
+ */
+async function servicePattern(department) {
+  return cached('svc:' + department, async () => {
+    const rows = await q(
+      `SELECT DAYOFWEEK(service_date) - 1 AS dow, HOUR(COALESCE(started_at, called_at)) AS h, actual_minutes AS m
+       FROM transactions
+       WHERE department=? AND ticket_status='completed' AND actual_minutes BETWEEN 1 AND 240
+         AND COALESCE(started_at, called_at) IS NOT NULL
+         AND service_date >= CURDATE() - INTERVAL ${PATTERN_DAYS} DAY`, [department]);
+    if (rows.length < 20) return { samples: rows.length, factor: () => 1, cells: {}, hours: {} };
+    const all = median(rows.map(r => Number(r.m)));
+    const byHour = {}, byCell = {};
+    rows.forEach(r => {
+      (byHour[r.h] = byHour[r.h] || []).push(Number(r.m));
+      (byCell[r.dow + '-' + r.h] = byCell[r.dow + '-' + r.h] || []).push(Number(r.m));
+    });
+    const hours = {}, cells = {};
+    for (const h in byHour) hours[h] = shrink(median(byHour[h]), byHour[h].length, all) / all;
+    for (const k in byCell) {
+      const h = k.split('-')[1], v = byCell[k];
+      cells[k] = shrink(median(v), v.length, all * (hours[h] || 1)) / all;
+    }
+    return {
+      samples: rows.length, overall: all, hours, cells,
+      factor: (dow, h) => clampF(cells[dow + '-' + h] || hours[h] || 1),
+    };
+  });
+}
+
+/**
+ * Priority clients who usually ARRIVE, from history: the average number per
+ * weekday and hour (arrivals ÷ days that office was open on that weekday).
+ * They cut in 1:1, so a regular client's wait includes the ones still to come.
+ */
+async function priorityArrivals(department) {
+  return cached('pri:' + department, async () => {
+    const days = await q(
+      `SELECT DAYOFWEEK(service_date) - 1 AS dow, COUNT(DISTINCT service_date) AS n
+       FROM transactions WHERE department=? AND service_date >= CURDATE() - INTERVAL ${PATTERN_DAYS} DAY
+         AND service_date < CURDATE()
+       GROUP BY dow`, [department]);
+    const rows = await q(
+      `SELECT DAYOFWEEK(service_date) - 1 AS dow, HOUR(COALESCE(queue_at, requested_at)) AS h, COUNT(*) AS n
+       FROM transactions
+       WHERE department=? AND queue_category='priority' AND slot_start IS NULL
+         AND service_date >= CURDATE() - INTERVAL ${PATTERN_DAYS} DAY AND service_date < CURDATE()
+       GROUP BY dow, h`, [department]);
+    const open = {};
+    days.forEach(d => { open[d.dow] = Number(d.n); });
+    const rate = {};
+    rows.forEach(r => { if (open[r.dow] >= 2) rate[r.dow + '-' + r.h] = Number(r.n) / open[r.dow]; });
+    return { rate, perHour: (dow, h) => rate[dow + '-' + h] || 0 };
+  });
+}
+
 async function estimateService(items, department, settings, stats) {
   const s = stats || await getDocumentStats(settings.minSamples);
   let total = 0;
@@ -309,17 +382,20 @@ async function ticketEta(t) {
 
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
   // rest of the day forward window by window, with each ticket's own documents.
-  let fits = true, slowEndClock = null, closeClock = null;
+  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, patternUsed = false;
   try {
     const f = await require('./engine').ticketForecast(t);
     if (f) {
       minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
+      expectedAhead = f.expectedAhead; patternUsed = f.patternUsed;
       basis = 'simulated';
     }
   } catch (e) { /* fall back to the position estimate */ }
 
   basisLabel = basis === 'simulated'
-      ? "simulated from the line ahead, each client's documents and today's pace"
+      ? "simulated from the line ahead, each client's documents, today's pace" +
+        (patternUsed ? ' and past ' + ['Sundays','Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays'][new Date().getDay()] : '') +
+        (expectedAhead ? `, including about ${expectedAhead} priority client${expectedAhead === 1 ? '' : 's'} expected to arrive` : '')
     : basis === 'observed'
       ? `based on the last ${obs.gaps + 1} clients served`
     : basis === 'history'
@@ -488,7 +564,7 @@ async function getAccuracy(from = null, to = null) {
 }
 
 module.exports = {
-  median, ewma, erlangC, shrink,
+  median, ewma, erlangC, shrink, servicePattern, priorityArrivals,
   getDocumentStats, estimateService,
   observedPace, ticketEta,
   positionWait, arrivalWait, arrivalRate,

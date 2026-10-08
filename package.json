@@ -10,7 +10,10 @@
     "cloud:import": "node database/import-schema.js --env .env.cloud",
     "cloud:admin": "node database/create-admin.js --env .env.cloud",
     "db:migrate": "node database/migrate.js",
-    "cloud:migrate": "node database/migrate.js --env .env.cloud"
+    "cloud:migrate": "node database/migrate.js --env .env.cloud",
+    "demo:history": "node database/demo-history.js create",
+    "demo:clear": "node database/demo-history.js clear",
+    "demo:status": "node database/demo-history.js status"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -24,6 +27,7 @@
     "multer": "^2.3.0",
     "mysql2": "^3.9.7",
     "nodemailer": "^9.1.1",
+    "qrcode": "^1.5.4",
     "web-push": "^3.6.7"
   },
   "engines": {

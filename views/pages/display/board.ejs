@@ -67,6 +67,50 @@ tailwind.config = { theme: { extend: { colors: {
     </div>
   </section>
 
+  <!-- SmartQ predicts: the real call order, the wait if you join now, today's average, a QR to join -->
+  <% var nextNo = predict.nextUp.length ? predict.nextUp[0].ticketNo : null; %>
+  <section class="px-8 py-5 border-b-2 border-hair bg-mist/60">
+    <div class="flex flex-wrap items-stretch gap-6">
+      <div class="flex-1 min-w-[16rem]">
+        <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-3">Next up</div>
+        <% if (predict.nextUp.length) { %>
+        <div class="flex flex-wrap gap-3">
+          <% predict.nextUp.forEach(function (n, i) { %>
+          <div class="rounded-xl border-2 <%= i === 0 ? 'border-brand bg-white' : 'border-hair bg-white' %> px-5 py-3 min-w-[9rem]">
+            <div class="text-4xl font-black tabular-nums <%= i === 0 ? 'text-brand-deep' : '' %>"><%= n.ticketNo %></div>
+            <div class="text-[13px] font-bold text-slateSoft mt-0.5"><%= i === 0 ? 'next' : 'then' %> &middot; about <%= n.at %></div>
+          </div>
+          <% }) %>
+        </div>
+        <% } else { %>
+        <div class="text-[19px] font-bold text-slateSoft/70 py-3">No one waiting</div>
+        <% } %>
+      </div>
+      <div class="w-px bg-hair hidden lg:block"></div>
+      <div class="min-w-[15rem]">
+        <div class="text-[15px] font-black uppercase tracking-[0.2em] text-brand mb-3">If you join now</div>
+        <% if (predict.join) { %>
+        <div class="text-4xl font-black text-ink leading-tight"><%= duration(predict.join.minutes).replace('about ', '') %></div>
+        <div class="text-[15px] font-bold text-slateSoft mt-1">your turn around <%= predict.join.startClock %></div>
+        <% if (!predict.join.fits) { %><div class="text-[14px] font-bold text-amber-700 mt-1">The line is long: you may not be served today</div><% } %>
+        <% } else { %>
+        <div class="text-[19px] font-bold text-slateSoft py-2 max-w-[16rem]"><%= predict.note || 'Estimate unavailable' %></div>
+        <% } %>
+        <div class="text-[14px] font-semibold text-slateSoft/80 mt-2">
+          <%= predict.avgWait ? "Today's actual average wait: " + duration(predict.avgWait.minutes).replace('about ', '') : 'No one called yet today' %>
+        </div>
+      </div>
+      <div class="w-px bg-hair hidden lg:block"></div>
+      <div class="flex items-center gap-4">
+        <div class="bg-white p-2.5 rounded-xl border-2 border-brand w-32 h-32 [&_svg]:w-full [&_svg]:h-full" aria-label="QR code to join the queue"><%- predict.qr %></div>
+        <div class="max-w-[9rem]">
+          <div class="text-[19px] font-black text-ink leading-tight">Scan to join</div>
+          <div class="text-[13px] font-semibold text-slateSoft mt-1">No account needed. Wait anywhere and get alerts.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- waiting lanes -->
   <section class="flex-1 grid md:grid-cols-2 gap-0">
     <div class="px-8 py-6 md:border-r-2 border-hair">
@@ -76,9 +120,9 @@ tailwind.config = { theme: { extend: { colors: {
       </div>
       <div class="flex flex-wrap gap-3">
         <% priority.forEach(function(t, i){ %>
-        <div class="rounded-xl border-2 <%= i === 0 ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
+        <div class="rounded-xl border-2 <%= t.ticketNo === nextNo ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
           <div class="text-4xl font-black tabular-nums"><%= t.ticketNo %></div>
-          <% if (i === 0) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
+          <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
         </div>
         <% }) %>
         <% if (!priority.length) { %>
@@ -94,9 +138,9 @@ tailwind.config = { theme: { extend: { colors: {
       </div>
       <div class="flex flex-wrap gap-3">
         <% regular.forEach(function(t, i){ %>
-        <div class="rounded-xl border-2 <%= i === 0 ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
+        <div class="rounded-xl border-2 <%= t.ticketNo === nextNo ? 'border-brand bg-brand-wash' : 'border-hair' %> px-5 py-3">
           <div class="text-4xl font-black tabular-nums"><%= t.ticketNo %></div>
-          <% if (i === 0) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
+          <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-black uppercase tracking-widest text-brand mt-0.5">Next</div><% } %>
         </div>
         <% }) %>
         <% if (!regular.length) { %>

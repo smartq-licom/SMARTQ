@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Poster | SmartQ</title>
+<link rel="icon" type="image/png" href="/img/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<%# A4 poster for the wall: the QR code opens the students' queue page.
+    Print it from this page (Ctrl+P, A4, no margins, background graphics on). %>
+<style>
+  @page { size: A4 portrait; margin: 0 }
+  *, *::before, *::after { box-sizing: border-box }
+  html, body { margin: 0 }
+  body { font-family: 'Public Sans', system-ui, sans-serif; background: #E9EBEF; color: #303841;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact }
+  .bar { display: flex; gap: 10px; justify-content: center; padding: 16px }
+  .bar a, .bar button { font: inherit; font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 8px;
+                        border: 1px solid #DFE2E6; background: #fff; color: #303841; cursor: pointer; text-decoration: none }
+  .bar button { background: #2185D5; border-color: #2185D5; color: #fff }
+  .sheet { width: 210mm; height: 297mm; margin: 0 auto 24px; background: #fff; display: flex; flex-direction: column;
+           box-shadow: 0 10px 40px rgba(48,56,65,.18); overflow: hidden }
+  .top { background: #2185D5; color: #fff; padding: 14mm 14mm 12mm; text-align: center; position: relative }
+  .top::after { content: ''; position: absolute; inset: 0;
+                background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 45%, transparent 60%, rgba(255,255,255,.08) 100%) }
+  .brand { display: flex; align-items: center; justify-content: center; gap: 5mm; position: relative; z-index: 1 }
+  .seal { width: 22mm; height: 22mm; border-radius: 50%; background: #fff url('/img/icon-512.png') center/cover;
+          box-shadow: 0 0 0 2mm rgba(255,255,255,.22) }
+  .word { font-size: 17mm; font-weight: 800; letter-spacing: -.6mm; line-height: 1 }
+  .college { position: relative; z-index: 1; margin-top: 3mm; font-size: 4.6mm; font-weight: 600; opacity: .9 }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 11mm 16mm 0; text-align: center }
+  h1 { margin: 0; font-size: 13mm; line-height: 1.05; font-weight: 800; letter-spacing: -.4mm }
+  .sub { margin: 4mm 0 0; font-size: 5.6mm; color: #3A4750 }
+  .qr { margin-top: 9mm; padding: 7mm; border: 1.6mm solid #2185D5; border-radius: 6mm; background: #fff }
+  .qr svg { display: block; width: 92mm; height: 92mm }
+  .url { margin-top: 4mm; font-size: 4.6mm; font-weight: 600; color: #1A6CAE; letter-spacing: .1mm }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; width: 100%; margin-top: 10mm }
+  .step { border-top: 1mm solid #2185D5; padding-top: 3.5mm; text-align: left }
+  .n { font-size: 8mm; font-weight: 800; color: #2185D5; line-height: 1 }
+  .st { margin-top: 1.5mm; font-size: 4.6mm; font-weight: 700 }
+  .sd { margin-top: 1mm; font-size: 3.6mm; color: #3A4750; line-height: 1.35 }
+  .foot { margin-top: auto; background: #F3F3F3; border-top: 1px solid #DFE2E6; padding: 6mm 16mm;
+          display: flex; justify-content: space-between; gap: 6mm; font-size: 3.8mm; color: #3A4750 }
+  .foot b { color: #303841 }
+  @media print { body { background: #fff } .bar { display: none } .sheet { margin: 0; box-shadow: none } }
+  @media screen and (max-width: 840px) { .sheet { transform: scale(.45); transform-origin: top center; margin-bottom: calc(-297mm * .55) } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <a href="/admin/dashboard">Back</a>
+  <button type="button" onclick="window.print()">Print poster (A4)</button>
+</div>
+
+<div class="sheet">
+  <div class="top">
+    <div class="brand"><div class="seal" role="img" aria-label="Libon Community College seal"></div><div class="word">SmartQ</div></div>
+    <div class="college"><%= settings.institutionName %> &middot; Cashier &amp; Registrar</div>
+  </div>
+
+  <div class="main">
+    <h1>Get your queue number here</h1>
+    <p class="sub">No account. No login. Just scan with your phone camera.</p>
+
+    <div class="qr" aria-label="QR code to <%= url %>"><%- qr %></div>
+    <div class="url"><%= url.replace(/^https?:\/\//, '') %></div>
+
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="st">Scan the code</div>
+        <div class="sd">Open your camera and point it at the QR code above.</div></div>
+      <div class="step"><div class="n">2</div><div class="st">Choose your office</div>
+        <div class="sd">Cashier to pay, Registrar for free requests and claiming.</div></div>
+      <div class="step"><div class="n">3</div><div class="st">Wait anywhere</div>
+        <div class="sd">Turn on alerts: we tell you when to come and when you're called.</div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>Office hours <b><%= hours %></b><br>Today's line opens at <b><%= lineOpens %></b></div>
+    <div style="text-align:right">Busy now? Book a 30-minute time instead.<br>Lost your ticket? Use <b>Find my ticket</b>.</div>
+  </div>
+</div>
+</body>
+</html>

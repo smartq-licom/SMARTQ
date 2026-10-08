@@ -87,13 +87,33 @@ async function serviceProfile(department, settings) {
     live = Math.min(1.8, Math.max(0.6, perWindow / Math.max(1, median)));
     liveBasis = 'today';
   }
-  return { stats, median, slow, live, liveBasis };
+
+  // history: how service speed changes by weekday and hour, and how many
+  // priority clients usually arrive (data/prediction.js)
+  const pattern  = await predict.servicePattern(department);
+  const arrivals = await predict.priorityArrivals(department);
+  // self-correction: recent real waits against what was predicted (data/insights.js)
+  const bias = await require('./insights').biasFactor(department);
+  const now = new Date();
+  return { stats, median, slow, live, liveBasis, pattern, arrivals, bias: bias.factor,
+           patternNow: pattern.factor(now.getDay(), now.getHours()) };
 }
 
-/** Minutes this ticket is expected to take at the window. */
-function serviceOf(t, profile) {
+/**
+ * The weekday-hour factor for a moment, from history. When today's live pace
+ * is known it already reflects "now", so only the change from now to then is
+ * applied (e.g. the 9 AM rush easing by 11 AM).
+ */
+function patternAt(profile, at) {
+  if (!profile.pattern) return 1;
+  const f = profile.pattern.factor(at.getDay(), at.getHours());
+  return profile.liveBasis === 'today' ? f / (profile.patternNow || 1) : f;
+}
+
+/** Minutes this ticket is expected to take at the window, if it starts at `at`. */
+function serviceOf(t, profile, at) {
   const base = Number(t.predicted_service) || profile.median;
-  return Math.max(1, base * profile.live);
+  return Math.max(1, base * profile.live * (profile.bias || 1) * patternAt(profile, at || new Date()));
 }
 
 // ── 1. booking slots ─────────────────────────────────────────────────────────
@@ -137,14 +157,18 @@ async function slotPlan(department, dateStr, serviceMin, settings) {
 
   const now = new Date(), isToday = dateStr === ymd(now);
   const need = Math.max(1, Number(serviceMin) || profile.median);
+  const dow = new Date(dateStr + 'T00:00:00').getDay();
   const slots = daySlots(s).map(sl => {
+    // that weekday and hour's usual speed (history): a slow hour fits fewer
+    const f = profile.pattern ? profile.pattern.factor(dow, Number(sl.start.slice(0, 2))) : 1;
     const u = used[sl.start] || { n: 0, m: 0 };
-    const leftMin = Math.max(0, bookableMin - u.m);
+    const leftMin = Math.max(0, bookableMin - u.m * f);
     const past = isToday && at(dateStr, sl.end) <= now;
     return {
-      ...sl, booked: u.n,
-      placesLeft: Math.floor(leftMin / profile.median),
-      available: !past && leftMin >= need,
+      ...sl, booked: u.n, pace: Math.round(f * 100) / 100,
+      capacity: Math.floor(capacityMin / (profile.median * f)),
+      placesLeft: Math.floor(leftMin / (profile.median * f)),
+      available: !past && leftMin >= need * f,
       past,
     };
   });
@@ -163,7 +187,7 @@ async function slotPlan(department, dateStr, serviceMin, settings) {
  *          (what the QR page shows before someone takes a number).
  *   slow:  use the slow-case service times (for warnings).
  */
-async function simulateDay(department, { extra = null, slow = false, settings = null, profile = null } = {}) {
+async function simulateDay(department, { extra = null, slow = false, settings = null, profile = null, expected = true } = {}) {
   const db = require('./db');
   const s  = settings || await db.getSettings();
   const pr = profile || await serviceProfile(department, s);
@@ -192,7 +216,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   const result = {};
   inService.forEach((r, i) => {
     const from = new Date(r.started_at || r.called_at || now);
-    let end = addMin(from, serviceOf(r, pr) * factor);
+    let end = addMin(from, serviceOf(r, pr, from) * factor);
     if (end < now) end = addMin(now, 1);            // running long: assume about to finish
     free[i] = end;
     result[r.id] = { start: from, end, fits: end <= close, atWindow: true };
@@ -205,6 +229,23 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     lane[extra.lane === 'priority' ? 'priority' : 'regular'].push(
       { id: 'extra', queue_at: now, predicted_service: extra.service || null });
   }
+  // Priority clients who have not arrived yet but usually do (history, per
+  // weekday and hour): added at the times they are expected, every 5 minutes'
+  // worth of the usual rate. They cut in 1:1, so regular waits include them.
+  let expectedCount = 0;
+  if (expected && pr.arrivals) {
+    let acc = 0.5;                                   // rounds to the nearest person, not always down
+    for (let t = new Date(base); t < close; t = addMin(t, 5)) {
+      if (t >= brStart && t < brEnd) continue;
+      acc += pr.arrivals.perHour(t.getDay(), t.getHours()) * 5 / 60;
+      while (acc >= 1) {
+        acc -= 1;
+        lane.priority.push({ id: 'exp' + (++expectedCount), queue_at: new Date(t), expected: true });
+      }
+    }
+    lane.priority.sort((a, b) => new Date(a.queue_at) - new Date(b.queue_at));
+  }
+  let expectedServed = 0;
 
   const last = await q(
     `SELECT queue_category FROM transactions
@@ -213,7 +254,8 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   let lastCat = last.length ? last[0].queue_category : 'regular';
 
   let guard = 0;
-  while ((lane.priority.length || lane.regular.length) && guard++ < 5000) {
+  const realLeft = () => lane.regular.length || lane.priority.some(x => !x.expected);
+  while (realLeft() && guard++ < 5000) {
     // the window that frees up first
     let w = 0;
     for (let i = 1; i < c; i++) if (free[i] < free[w]) w = i;
@@ -234,12 +276,13 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
       continue;
     }
     const tk = lane[pick].splice(pick === 'priority' ? pi : ri, 1)[0];
-    const start = t0, end = addMin(start, serviceOf(tk, pr) * factor);
-    result[tk.id] = { start, end, fits: end <= close };
+    const start = t0, end = addMin(start, serviceOf(tk, pr, start) * factor);
+    if (tk.expected) expectedServed++;
+    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed };
     free[w] = end;
     lastCat = pick;
   }
-  return { result, close, windows: c, assumed: !openCount, profile: pr, factor };
+  return { result, close, windows: c, assumed: !openCount, profile: pr, factor, expectedCount };
 }
 
 // ── 3. decisions ─────────────────────────────────────────────────────────────
@@ -266,7 +309,8 @@ async function evaluateJoin(department, { lane = 'regular', service = null } = {
   const fits = sl.end <= slow.close;
   return {
     decision: fits ? 'accept' : 'accept_warned',
-    fits, minutes,
+    fits, minutes, expectedAhead: e.expectedAhead || 0,
+    patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     startClock: clock(e.start),
     slowEndClock: clock(sl.end),
     closeClock: clock(slow.close),
@@ -293,6 +337,8 @@ async function ticketForecast(t) {
     slowEndClock: b ? clock(b.end) : null,
     closeClock: clock(slow.close),
     live: profile.live, liveBasis: profile.liveBasis,
+    expectedAhead: a.expectedAhead || 0,
+    patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
   };
 }
 

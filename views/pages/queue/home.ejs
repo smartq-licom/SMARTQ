@@ -95,7 +95,7 @@
     <%# Today's real average next to the prediction, and the capacity decision. %>
     <div class="px-5 -mt-1 pb-3 space-y-1.5">
       <p class="text-[12px] text-slateSoft/80">
-        <% if (o.avgWait) { %>Today's actual average wait: <strong><%= o.avgWait.minutes %> min</strong>
+        <% if (o.avgWait) { %>Today's actual average wait: <strong><%= duration(o.avgWait.minutes).replace('about ', '') %></strong>
           (from <%= o.avgWait.served %> served)<% } else { %>No one has been served yet today.<% } %>
       </p>
       <% if (o.minutes != null && !o.fits) { %>
