@@ -17,6 +17,66 @@
   if (!/^\/queue(\/|$)/.test(location.pathname)) return;
   var t = null; try { t = localStorage.getItem('smartq.theme'); } catch (e) {}
   if (t === 'dark') document.documentElement.classList.add('dark');
+
+  // Page changes glide instead of flashing (cross-page View Transitions, student
+  // pages only). Browsers without them: a quick fade-out on the way out.
+  var html = document.documentElement;
+  html.classList.add('qpage');
+  if ('PageRevealEvent' in window) {
+    html.classList.add('vt-ok');
+    var opt = document.createElement('style');
+    opt.textContent = '@view-transition { navigation: auto; }';
+    document.head.appendChild(opt);
+  } else {
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href]');
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target || a.hasAttribute('download')) return;
+      var u = new URL(a.href, location.href);
+      if (u.origin !== location.origin || !/^\/queue/.test(u.pathname) || (u.pathname === location.pathname && u.hash)) return;
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      e.preventDefault();
+      html.classList.add('qp-leaving');
+      setTimeout(function () { location.href = a.href; }, 160);
+    });
+    // back from the cache: never stay faded
+    addEventListener('pageshow', function () { html.classList.remove('qp-leaving'); });
+  }
+
+  // Loading skeleton: grey shimmering cards where the next page will be, shown
+  // only if the server takes more than a moment (a waking free server, slow data).
+  var skelTimer = null;
+  function skeleton() {
+    if (document.getElementById('qskel')) return;
+    var d = document.createElement('div');
+    d.id = 'qskel'; d.setAttribute('aria-hidden', 'true');
+    d.innerHTML = '<div class="qs-wrap">' +
+      '<div class="qs qs-line" style="width:58%"></div><div class="qs qs-line" style="width:36%;height:12px"></div>' +
+      '<div class="qs qs-hero"></div>' +
+      '<div class="qs-card"><div class="qs-row"><div class="qs qs-dot"></div><div style="flex:1"><div class="qs qs-line" style="width:45%"></div><div class="qs qs-line" style="width:70%;height:10px"></div></div></div><div class="qs qs-box"></div><div class="qs qs-btn"></div></div>' +
+      '<div class="qs-card"><div class="qs-row"><div class="qs qs-dot"></div><div style="flex:1"><div class="qs qs-line" style="width:40%"></div><div class="qs qs-line" style="width:60%;height:10px"></div></div></div><div class="qs qs-box"></div></div>' +
+      '</div><span class="qs-sr" role="status">Loading…</span>';
+    document.body.appendChild(d);
+    // a load that was stopped or failed never leaves it on screen
+    setTimeout(function () { var k = document.getElementById('qskel'); if (k) k.remove(); }, 20000);
+  }
+  function leaving() {
+    clearTimeout(skelTimer);
+    skelTimer = setTimeout(skeleton, 150);
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || a.target || a.hasAttribute('download')) return;
+    var u = new URL(a.href, location.href);
+    if (u.origin !== location.origin || !/^\/queue/.test(u.pathname) || (u.pathname === location.pathname && u.search === location.search)) return;
+    setTimeout(function () { if (!e.defaultPrevented || html.classList.contains('qp-leaving')) leaving(); }, 0);
+  });
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    setTimeout(function () { if (!e.defaultPrevented && (f.method || '').toLowerCase() !== 'dialog') leaving(); }, 0);
+  });
+  // never left on screen: back/forward from the cache, or a download
+  addEventListener('pageshow', function () { clearTimeout(skelTimer); var k = document.getElementById('qskel'); if (k) k.remove(); });
+  addEventListener('pagehide', function () { clearTimeout(skelTimer); });
   // The new theme spreads in a circle from the button (View Transitions);
   // browsers without it get a quick colour fade instead.
   window.smartqToggleTheme = function (ev) {
@@ -37,10 +97,14 @@
       return setTimeout(function () { root.classList.remove('theme-fade'); }, 450);
     }
     var r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-    document.startViewTransition(flip).ready.then(function () {
+    root.classList.add('theme-vt');                      // the circle, not the page glide
+    var vt = document.startViewTransition(flip);
+    vt.ready.then(function () {
       root.animate({ clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + r + 'px at ' + x + 'px ' + y + 'px)'] },
                    { duration: 600, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' });
     });
+    var done = function () { root.classList.remove('theme-vt'); };
+    vt.finished.then(done, done);
   };
 })();
 </script>
@@ -126,9 +190,39 @@ tailwind.config = { darkMode: 'class', theme: { extend: {
   .theme-sun{display:none} .dark .theme-sun{display:block} .dark .theme-moon{display:none}
   .theme-spin svg{animation:theme-spin .55s cubic-bezier(.34,1.56,.64,1)}
   @keyframes theme-spin{from{transform:rotate(-120deg) scale(.4);opacity:0}to{transform:none;opacity:1}}
-  /* the circle reveal: the old page stays still under the new one */
-  ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
-  ::view-transition-old(root){z-index:1} ::view-transition-new(root){z-index:2}
+  /* theme switch: the circle reveal, the old page still under the new one */
+  html.theme-vt::view-transition-old(root),html.theme-vt::view-transition-new(root){animation:none;mix-blend-mode:normal}
+  html.theme-vt::view-transition-old(root){z-index:1} html.theme-vt::view-transition-new(root){z-index:2}
+  html.theme-vt header{view-transition-name:none}
+  /* page change (student pages): the old page lifts away, the new one glides up;
+     the header stays put */
+  html.qpage header.sticky{view-transition-name:qheader}
+  html.qpage::view-transition-old(root){animation:qp-out .2s cubic-bezier(.4,0,1,1) both}
+  html.qpage::view-transition-new(root){animation:qp-in .34s cubic-bezier(.2,.8,.2,1) .05s both}
+  @keyframes qp-out{to{opacity:0;transform:translateY(-12px) scale(.99)}}
+  @keyframes qp-in{from{opacity:0;transform:translateY(18px)}}
+  html.vt-ok.qpage main.fade-in{animation:none}
+  /* loading skeleton (student pages) */
+  #qskel{position:fixed;left:0;right:0;bottom:0;top:calc(64px + env(safe-area-inset-top));z-index:25;background:var(--page-bg);
+         animation:qs-in .18s ease-out both;overflow:hidden}
+  @keyframes qs-in{from{opacity:0}to{opacity:1}}
+  .qs-wrap{max-width:48rem;margin:0 auto;padding:20px 16px}
+  .qs{border-radius:12px;background:linear-gradient(90deg,var(--mist-bg) 25%,var(--line) 50%,var(--mist-bg) 75%);
+      background-size:200% 100%;animation:qs-shine 1.2s linear infinite}
+  @keyframes qs-shine{from{background-position:200% 0}to{background-position:-200% 0}}
+  .qs-line{height:16px;margin-bottom:10px}
+  .qs-hero{height:150px;border-radius:24px;margin:14px 0 18px}
+  .qs-card{background:var(--card-bg);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+  .qs-row{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+  .qs-dot{width:44px;height:44px;border-radius:14px;flex:none}
+  .qs-box{height:84px;border-radius:16px;margin-bottom:14px}
+  .qs-btn{height:46px;border-radius:12px}
+  .qs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media (prefers-reduced-motion:reduce){ .qs{animation:none} #qskel{animation:none} }
+  @media print{ #qskel{display:none} }
+  /* fallback: fade out before leaving */
+  html.qp-leaving main{opacity:0;transform:translateY(-8px);transition:opacity .16s ease-in, transform .16s ease-in}
+  @media (prefers-reduced-motion:reduce){ html.qpage::view-transition-old(root),html.qpage::view-transition-new(root){animation:none} }
   /* fallback: colours ease over */
   .theme-fade, .theme-fade *{transition:background-color .4s ease, color .4s ease, border-color .4s ease, box-shadow .4s ease !important}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
