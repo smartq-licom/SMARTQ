@@ -9,14 +9,51 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta name="theme-color" content="#2185D5">
+<%# Light or dark, for the students' pages (/queue) only. Light by default;
+    dark only after the student taps the moon (remembered on this phone).
+    Staff and admin pages stay light. Runs before the page draws. %>
+<script>
+(function () {
+  if (!/^\/queue(\/|$)/.test(location.pathname)) return;
+  var t = null; try { t = localStorage.getItem('smartq.theme'); } catch (e) {}
+  if (t === 'dark') document.documentElement.classList.add('dark');
+  // The new theme spreads in a circle from the button (View Transitions);
+  // browsers without it get a quick colour fade instead.
+  window.smartqToggleTheme = function (ev) {
+    var root = document.documentElement;
+    function flip() {
+      var on = root.classList.toggle('dark');
+      try { localStorage.setItem('smartq.theme', on ? 'dark' : 'light'); } catch (e) {}
+      document.querySelectorAll('[data-theme-toggle]').forEach(function (b) {
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.classList.remove('theme-spin'); void b.offsetWidth; b.classList.add('theme-spin');
+      });
+    }
+    var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var btn = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : null;
+    var x = btn ? btn.left + btn.width / 2 : innerWidth - 40, y = btn ? btn.top + btn.height / 2 : 32;
+    if (!document.startViewTransition || calm) {
+      root.classList.add('theme-fade'); flip();
+      return setTimeout(function () { root.classList.remove('theme-fade'); }, 450);
+    }
+    var r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(flip).ready.then(function () {
+      root.animate({ clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + r + 'px at ' + x + 'px ' + y + 'px)'] },
+                   { duration: 600, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' });
+    });
+  };
+})();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-tailwind.config = { theme: { extend: {
+// Colours come from CSS variables (below), so one class works in both themes.
+const v = n => `rgb(var(--c-${n}) / <alpha-value>)`;
+tailwind.config = { darkMode: 'class', theme: { extend: {
   colors: {
-    brand:{ DEFAULT:'#2185D5', deep:'#1A6CAE', night:'#0F4C81', wash:'#EAF3FB', line:'#C9E0F4' },
-    ink:'#1E2A36', slateSoft:'#4A5866',
-    mist:'#F5F7FA', page:'#F2F4F8', hair:'#E3E7ED'
+    brand:{ DEFAULT:v('brand'), deep:v('brand-deep'), night:v('brand-night'), wash:v('brand-wash'), line:v('brand-line') },
+    ink:v('ink'), slateSoft:v('soft'),
+    mist:v('mist'), page:v('page'), hair:v('hair')
   },
   fontFamily: {
     sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
@@ -33,6 +70,43 @@ tailwind.config = { theme: { extend: {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
+  /* ── theme ── light first; .dark swaps the same names */
+  :root{
+    --c-page:242 244 248; --c-card:255 255 255; --c-mist:245 247 250; --c-hair:227 231 237;
+    --c-ink:30 42 54; --c-soft:74 88 102;
+    --c-brand:33 133 213; --c-brand-deep:26 108 174; --c-brand-night:15 76 129; --c-brand-wash:234 243 251; --c-brand-line:201 224 244;
+    --page-bg:rgb(var(--c-page)); --card-bg:rgb(var(--c-card)); --mist-bg:rgb(var(--c-mist)); --line:rgb(var(--c-hair));
+    --ink-c:rgb(var(--c-ink)); --soft-c:rgb(var(--c-soft));
+  }
+  html.dark{
+    color-scheme:dark;
+    --c-page:10 17 30; --c-card:18 27 43; --c-mist:24 36 55; --c-hair:38 52 74;
+    --c-ink:231 237 245; --c-soft:166 180 197;
+    --c-brand:59 155 230; --c-brand-deep:84 170 236; --c-brand-night:191 225 251; --c-brand-wash:17 40 66; --c-brand-line:33 72 108;
+  }
+  /* white surfaces and the soft colour tints of notes and pills, for dark */
+  .dark .bg-white{background-color:var(--card-bg)}
+  .dark .bg-white\/80{background-color:rgb(var(--c-card) / .82)}
+  .dark .bg-ink{background-color:#334155}
+  .dark .shadow-card{box-shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px -6px rgba(0,0,0,.5)}
+  .dark .bg-amber-50{background-color:rgb(245 158 11 / .12)} .dark .bg-amber-100{background-color:rgb(245 158 11 / .22)}
+  .dark .bg-red-50{background-color:rgb(239 68 68 / .12)} .dark .bg-red-100{background-color:rgb(239 68 68 / .22)}
+  .dark .bg-emerald-50{background-color:rgb(16 185 129 / .12)} .dark .bg-emerald-100{background-color:rgb(16 185 129 / .22)}
+  .dark .bg-violet-50{background-color:rgb(139 92 246 / .14)} .dark .bg-violet-100{background-color:rgb(139 92 246 / .24)}
+  .dark .bg-pink-100{background-color:rgb(236 72 153 / .22)}
+  .dark [class*="text-amber-"]{color:#FCD34D} .dark [class*="text-red-"]{color:#FCA5A5}
+  .dark [class*="text-emerald-"]{color:#6EE7B7} .dark [class*="text-violet-"]{color:#C4B5FD} .dark [class*="text-pink-"]{color:#F9A8D4}
+  .dark [class*="ring-amber-"]{--tw-ring-color:rgb(245 158 11 / .35)} .dark [class*="ring-red-"]{--tw-ring-color:rgb(239 68 68 / .35)}
+  .dark [class*="ring-emerald-"]{--tw-ring-color:rgb(16 185 129 / .35)} .dark [class*="ring-violet-"]{--tw-ring-color:rgb(139 92 246 / .35)}
+  .dark [class*="border-amber-"]{border-color:rgb(245 158 11 / .35)} .dark [class*="border-red-"]{border-color:rgb(239 68 68 / .35)}
+  .dark [class*="border-emerald-"]{border-color:rgb(16 185 129 / .35)} .dark [class*="border-violet-"]{border-color:rgb(139 92 246 / .35)}
+  .dark input:read-only[class*="bg-slate-100"]{background-color:var(--mist-bg);color:var(--soft-c)}
+  /* coloured text on a solid button or gradient card stays white */
+  .dark .text-white{color:#fff}
+  /* paper is always light */
+  @media print{ html.dark{ color-scheme:light;
+    --c-page:255 255 255; --c-card:255 255 255; --c-mist:245 247 250; --c-hair:227 231 237; --c-ink:30 42 54; --c-soft:74 88 102;
+    --c-brand-night:15 76 129; --c-brand-wash:234 243 251; --c-brand-line:201 224 244; --c-brand-deep:26 108 174 } }
   [hidden]{display:none!important}
   body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
   .font-mono,[data-eta]{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
@@ -47,7 +121,16 @@ tailwind.config = { theme: { extend: {
   @media (max-width:640px){input,select,textarea{font-size:16px!important}}
   @media print{.no-print{display:none!important}body{background:#fff}}
   :focus-visible{outline:2px solid #2185D5;outline-offset:2px}
-  ::selection{background:#C9E0F4}
+  ::selection{background:rgb(var(--c-brand-line))}
+  /* the sun/moon button: the moon shows in light mode, the sun in dark */
+  .theme-sun{display:none} .dark .theme-sun{display:block} .dark .theme-moon{display:none}
+  .theme-spin svg{animation:theme-spin .55s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes theme-spin{from{transform:rotate(-120deg) scale(.4);opacity:0}to{transform:none;opacity:1}}
+  /* the circle reveal: the old page stays still under the new one */
+  ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+  ::view-transition-old(root){z-index:1} ::view-transition-new(root){z-index:2}
+  /* fallback: colours ease over */
+  .theme-fade, .theme-fade *{transition:background-color .4s ease, color .4s ease, border-color .4s ease, box-shadow .4s ease !important}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>

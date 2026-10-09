@@ -12,6 +12,7 @@
       </span>
     </a>
     <div class="ml-auto flex items-center gap-2 shrink-0">
+      <%- include('theme-toggle') %>
       <%# replays the first-time guide on pages that have one (partials/tour) %>
       <button type="button" data-tour-open hidden onclick="window.smartqTour && window.smartqTour()"
               class="inline-flex items-center gap-1 rounded-full bg-white ring-1 ring-hair hover:bg-mist w-9 h-9 sm:w-auto sm:h-auto justify-center sm:px-3 sm:py-2 text-[12.5px] font-semibold text-slateSoft transition-colors" aria-label="Show the guide">

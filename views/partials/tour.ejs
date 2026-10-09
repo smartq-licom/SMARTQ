@@ -26,22 +26,22 @@
               transition:top .35s cubic-bezier(.2,.8,.2,1), left .35s cubic-bezier(.2,.8,.2,1), width .35s cubic-bezier(.2,.8,.2,1), height .35s cubic-bezier(.2,.8,.2,1) }
   .tour-spot::after{ content:''; position:absolute; inset:-3px; border-radius:inherit; border:2px solid rgba(255,255,255,.7); animation:tour-ping 1.8s ease-out infinite }
   @keyframes tour-ping{ 0%{ opacity:.9; transform:scale(1) } 100%{ opacity:0; transform:scale(1.08) } }
-  .tour-tip{ position:fixed; left:12px; right:12px; max-width:380px; margin:0 auto; background:#fff; border-radius:20px; padding:16px 16px 14px;
+  .tour-tip{ position:fixed; left:12px; right:12px; max-width:380px; margin:0 auto; background:var(--card-bg); border-radius:20px; padding:16px 16px 14px;
              box-shadow:0 24px 60px -12px rgba(0,0,0,.45); animation:tour-in .3s cubic-bezier(.2,.8,.2,1) both }
-  .tour-tip::before{ content:''; position:absolute; left:var(--arrow,50%); width:14px; height:14px; background:#fff; transform:translateX(-50%) rotate(45deg); border-radius:3px }
+  .tour-tip::before{ content:''; position:absolute; left:var(--arrow,50%); width:14px; height:14px; background:var(--card-bg); transform:translateX(-50%) rotate(45deg); border-radius:3px }
   .tour-tip.below::before{ top:-6px } .tour-tip.above::before{ bottom:-6px }
   @keyframes tour-in{ from{ opacity:0; transform:translateY(8px) scale(.98) } to{ opacity:1; transform:none } }
   .tour-count{ font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#2185D5 }
-  .tour-title{ font-size:16px; font-weight:800; color:#1E2A36; margin-top:4px; line-height:1.3 }
-  .tour-body{ font-size:13.5px; color:#4A5866; margin:6px 0 0; line-height:1.5 }
-  .tour-body b{ color:#1E2A36 }
+  .tour-title{ font-size:16px; font-weight:800; color:var(--ink-c); margin-top:4px; line-height:1.3 }
+  .tour-body{ font-size:13.5px; color:var(--soft-c); margin:6px 0 0; line-height:1.5 }
+  .tour-body b{ color:var(--ink-c) }
   .tour-actions{ display:flex; align-items:center; gap:8px; margin-top:14px }
-  .tour-skip{ font-size:13px; font-weight:600; color:#8A96A3; padding:8px 4px }
+  .tour-skip{ font-size:13px; font-weight:600; color:var(--soft-c); padding:8px 4px }
   .tour-dots{ display:flex; gap:5px; margin-left:auto; margin-right:4px }
-  .tour-dots i{ width:6px; height:6px; border-radius:999px; background:#D5DCE4; transition:width .25s, background .25s }
+  .tour-dots i{ width:6px; height:6px; border-radius:999px; background:var(--line); transition:width .25s, background .25s }
   .tour-dots i.on{ width:16px; background:#2185D5 }
   .tour-back, .tour-next{ min-height:40px; padding:0 16px; border-radius:12px; font-size:13.5px; font-weight:700 }
-  .tour-back{ background:#F5F7FA; color:#4A5866 }
+  .tour-back{ background:var(--mist-bg); color:var(--soft-c) }
   .tour-next{ background:linear-gradient(135deg,#2E9BEA,#2185D5 50%,#1A6CAE); color:#fff; box-shadow:0 8px 18px -8px rgba(33,133,213,.8) }
   @media (prefers-reduced-motion:reduce){ .tour-spot, .tour-tip{ transition:none; animation:none } .tour-spot::after{ animation:none } }
   @media print{ .tour{ display:none !important } }

@@ -3,7 +3,7 @@
 <style>
   /* the ticket stub: two notches where it would tear */
   .stub{position:relative}
-  .stub::before,.stub::after{content:"";position:absolute;top:var(--tear,70%);width:22px;height:22px;border-radius:999px;background:#F2F4F8;transform:translateY(-50%)}
+  .stub::before,.stub::after{content:"";position:absolute;top:var(--tear,70%);width:22px;height:22px;border-radius:999px;background:var(--page-bg);transform:translateY(-50%)}
   .stub::before{left:-11px}.stub::after{right:-11px}
   .tear{border-top:2px dashed rgba(255,255,255,.28)}
   /* a brand-new ticket comes out of the printer once */
