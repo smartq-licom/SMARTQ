@@ -2947,6 +2947,16 @@ const HISTORY_STATUS = {
   pending:   "t.ticket_status IN ('waiting','called','serving')",
 };
 
+/** Columns the client list can be sorted by (click a header). D = the direction. */
+const HISTORY_SORT = {
+  name:      'u.last_name D, u.first_name D, u.id D',
+  studentNo: 'u.student_no IS NULL, u.student_no D, u.last_name',
+  completed: 'completed D, u.last_name, u.first_name',
+  cancelled: 'cancelled D, u.last_name, u.first_name',
+  pending:   'pending D, u.last_name, u.first_name',
+  last:      'last_at D, u.id D',
+};
+
 /** Clean the filter values from a query string. office is forced for staff. */
 function historyFilters(qs = {}, office = null) {
   const date = s => (/^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : '');
@@ -2958,6 +2968,8 @@ function historyFilters(qs = {}, office = null) {
     staffId: /^\d+$/.test(qs.staff || '') ? Number(qs.staff) : null,
     lane: qs.lane === 'priority' || qs.lane === 'regular' ? qs.lane : '',
     office: office || (qs.office === 'Cashier' || qs.office === 'Registrar' ? qs.office : ''),
+    sort: HISTORY_SORT[qs.sort] ? qs.sort : 'name',
+    dir: qs.dir === 'desc' ? 'desc' : 'asc',
   };
   if (f.from && f.to && f.from > f.to) [f.from, f.to] = [f.to, f.from];
   return f;
@@ -3004,7 +3016,7 @@ async function getHistoryClients(f, page = 1) {
             COUNT(*) AS total, MAX(t.requested_at) AS last_at
      ${from}
      GROUP BY u.id
-     ORDER BY u.last_name, u.first_name, u.id
+     ORDER BY ${HISTORY_SORT[f.sort || 'name'].replace(/\bD\b/g, f.dir === 'desc' ? 'DESC' : 'ASC')}
      LIMIT ${pg.perPage} OFFSET ${pg.offset}`, p);
   return {
     pg,

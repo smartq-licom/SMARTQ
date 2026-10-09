@@ -11,16 +11,37 @@
 
 <%- include('../../partials/history-filters', { f: f, choices: choices, office: office, action: base, showSearch: true }) %>
 
+<%
+  // Click a header to sort by it; click again to reverse. Filters and search stay.
+  function sortHref(key) {
+    var keep = [];
+    Object.keys(query || {}).forEach(function (k) {
+      if (['sort', 'dir', 'page'].indexOf(k) < 0 && query[k]) keep.push(k + '=' + encodeURIComponent(query[k]));
+    });
+    // numbers and dates read best biggest / newest first
+    var first = ['completed', 'cancelled', 'pending', 'last'].indexOf(key) >= 0 ? 'desc' : 'asc';
+    var dir = f.sort === key ? (f.dir === 'asc' ? 'desc' : 'asc') : first;
+    keep.push('sort=' + key, 'dir=' + dir);
+    return base + '?' + keep.join('&');
+  }
+  function sortTh(key, label, sub) {
+    var on = f.sort === key;
+    return '<th class="' + UI.th + '" aria-sort="' + (on ? (f.dir === 'asc' ? 'ascending' : 'descending') : 'none') + '">' +
+      '<a href="' + sortHref(key) + '" class="inline-flex items-center gap-1 hover:text-brand ' + (on ? 'text-brand' : '') + '">' + label +
+      '<span aria-hidden="true" class="' + (on ? '' : 'opacity-30') + '">' + (on ? (f.dir === 'asc' ? '&#9650;' : '&#9660;') : '&#8693;') + '</span></a>' +
+      (sub ? '<span class="block font-normal normal-case tracking-normal text-[10.5px]">' + sub + '</span>' : '') + '</th>';
+  }
+%>
 <div class="<%= UI.card %>">
   <div class="overflow-x-auto">
   <table class="w-full">
     <thead><tr>
-      <th class="<%= UI.th %>">Student / Client</th>
-      <th class="<%= UI.th %>">Student no.</th>
-      <th class="<%= UI.th %>">Total Transactions<span class="block font-normal normal-case tracking-normal text-[10.5px]">completed / served</span></th>
-      <th class="<%= UI.th %>">Cancelled / No-show</th>
-      <th class="<%= UI.th %>">Pending</th>
-      <th class="<%= UI.th %>">Last ticket</th>
+      <%- sortTh('name', 'Student / Client') %>
+      <%- sortTh('studentNo', 'Student no.') %>
+      <%- sortTh('completed', 'Total Transactions', 'completed / served') %>
+      <%- sortTh('cancelled', 'Cancelled / No-show') %>
+      <%- sortTh('pending', 'Pending') %>
+      <%- sortTh('last', 'Last ticket') %>
       <th class="<%= UI.th %>"></th>
     </tr></thead>
     <tbody>

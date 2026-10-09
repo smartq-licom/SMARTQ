@@ -66,6 +66,9 @@
     </div>
     <% } %>
   </div>
+  <%# a new search keeps the chosen sort %>
+  <% if (f.sort && f.sort !== 'name') { %><input type="hidden" name="sort" value="<%= f.sort %>"><% } %>
+  <% if (f.dir === 'desc') { %><input type="hidden" name="dir" value="desc"><% } %>
   <div class="flex flex-wrap gap-2 mt-3">
     <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Search</button>
     <a href="<%= action %>" class="<%= UI.btn %> <%= UI.btnGh %>">Reset Filters</a>
