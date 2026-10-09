@@ -1,6 +1,11 @@
 <%- include('../../partials/head') %>
 <%- include('../../partials/public-nav') %>
 <div class="max-w-md mx-auto">
+  <a href="/queue" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mb-4 no-print">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    Back
+  </a>
+
   <div class="mb-4">
     <h2 class="text-xl font-extrabold">Find my ticket</h2>
     <p class="text-[13px] text-slateSoft/80 mt-0.5">
@@ -15,9 +20,15 @@
   <form method="POST" action="/queue/find" class="<%= UI.card %> p-5 space-y-4" data-once>
     <div>
       <label for="code" class="<%= UI.lbl %>">Booking code</label>
-      <input id="code" name="code" required maxlength="6" autocomplete="off" autocapitalize="characters"
-             value="<%= form.code || '' %>" placeholder="e.g. K7MX2Q"
-             class="<%= UI.input %> font-mono text-lg tracking-[.25em] uppercase">
+      <%# One real input (typing, paste and autofill all work as usual) under six
+          boxes that show one character each. %>
+      <div class="code-boxes" data-code-boxes>
+        <input id="code" name="code" required maxlength="6" minlength="6" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" inputmode="text" pattern="[A-Za-z0-9]{6}" value="<%= form.code || '' %>"
+               aria-describedby="codeHint" class="code-input">
+        <% for (var i = 0; i < 6; i++) { %><span class="code-box" aria-hidden="true"></span><% } %>
+      </div>
+      <span id="codeHint" class="<%= UI.hint %>">6 letters or numbers, e.g. K7MX2Q</span>
     </div>
     <div>
       <label for="who" class="<%= UI.lbl %>">Student number <span class="font-normal text-slateSoft/70">(visitors: last name)</span></label>
@@ -25,10 +36,42 @@
     </div>
     <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3">Open my ticket</button>
   </form>
-
-  <p class="mt-4 text-center text-[12.5px] text-slateSoft/75">
-    No booking code? Ask at the office window. <a href="/queue" class="text-brand font-semibold">Back to the queue</a>
-  </p>
 </div>
+<style>
+  .code-boxes{ position:relative; display:grid; grid-template-columns:repeat(6, 1fr); gap:8px }
+  .code-input{ position:absolute; inset:0; width:100%; height:100%; opacity:0; z-index:2; cursor:text;
+               font-size:16px; color:transparent; caret-color:transparent; border:0; outline:none }
+  .code-box{ height:56px; border-radius:14px; border:2px solid var(--line); background:var(--card-bg);
+             display:grid; place-items:center; font:800 24px/1 'JetBrains Mono', monospace; color:var(--ink-c);
+             transition:border-color .15s, box-shadow .15s, transform .15s }
+  .code-box.filled{ border-color:rgb(var(--c-brand-line)); background:rgb(var(--c-brand-wash)); animation:code-pop .18s ease-out }
+  .code-box.active{ border-color:rgb(var(--c-brand)); box-shadow:0 0 0 4px rgb(var(--c-brand) / .15) }
+  .code-box.active:empty::after{ content:''; width:2px; height:26px; background:rgb(var(--c-brand)); animation:code-blink 1s steps(1) infinite }
+  @keyframes code-pop{ from{ transform:scale(.88) } to{ transform:none } }
+  @keyframes code-blink{ 50%{ opacity:0 } }
+  @media (max-width:360px){ .code-boxes{ gap:6px } .code-box{ height:50px; font-size:21px } }
+  @media (prefers-reduced-motion:reduce){ .code-box{ animation:none !important } }
+</style>
+<script>
+(function () {
+  var wrap = document.querySelector('[data-code-boxes]');
+  if (!wrap) return;
+  var input = wrap.querySelector('input'), boxes = [].slice.call(wrap.querySelectorAll('.code-box'));
+  function paint() {
+    var v = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    if (input.value !== v) input.value = v;
+    var focused = document.activeElement === input;
+    boxes.forEach(function (b, i) {
+      b.textContent = v.charAt(i) || '';
+      b.classList.toggle('filled', i < v.length);
+      b.classList.toggle('active', focused && i === Math.min(v.length, 5));
+    });
+  }
+  ['input', 'focus', 'blur', 'keyup'].forEach(function (e) { input.addEventListener(e, paint); });
+  // a fresh visit starts in the first box
+  if (!input.value) setTimeout(function () { input.focus(); }, 300);
+  paint();
+})();
+</script>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>

@@ -7,7 +7,7 @@
       <img src="/img/lcc-seal.jpg" alt="Libon Community College seal"
            class="w-10 h-10 rounded-full bg-white ring-1 ring-hair object-cover shrink-0">
       <span class="min-w-0">
-        <span class="block text-[18px] font-extrabold tracking-tight leading-none text-ink">Smart<span class="text-brand">Q</span></span>
+        <span class="block text-[18px] font-extrabold tracking-tight leading-none text-ink truncate">Smart<span class="text-brand">Q</span></span>
         <span class="block text-[11px] text-slateSoft/70 leading-tight mt-1 truncate">Libon Community College</span>
       </span>
     </a>
@@ -19,9 +19,11 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4M12 17h.01"/></svg>
         <span class="hidden sm:inline">Guide</span>
       </button>
-      <a href="/queue/find" class="inline-flex items-center gap-1.5 rounded-full bg-brand-wash hover:bg-brand-line/60 px-3.5 py-2 text-[12.5px] font-semibold text-brand-deep transition-colors">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        Find my ticket
+      <%# on a narrow phone: a round search icon like the buttons beside it %>
+      <a href="/queue/find" aria-label="Find my ticket" title="Find my ticket"
+         class="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand-wash hover:bg-brand-line/60 w-9 h-9 min-[440px]:w-auto min-[440px]:h-auto min-[440px]:px-3.5 min-[440px]:py-2 text-[12.5px] font-semibold text-brand-deep transition-colors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="hidden min-[440px]:inline">Find my ticket</span>
       </a>
     </div>
   </div>
