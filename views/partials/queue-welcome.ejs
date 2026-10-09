@@ -49,6 +49,11 @@
       <% }) %>
     </div>
 
+    <%# First-timers: a short guide on the next page (partials/tour) %>
+    <button type="button" class="qw-guide" data-welcome-guide>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4M12 17h.01"/></svg>
+      First time? Show me how
+    </button>
     <button type="button" class="qw-skip" data-welcome-close>See the queue first</button>
   </div>
 </div>
@@ -81,7 +86,7 @@
   @keyframes qw-ping{ 0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)} 80%,100%{box-shadow:0 0 0 7px rgba(16,185,129,0)} }
   /* the tapped office grows to fill the screen, then its page opens */
   .qw-office.is-chosen{ z-index:5; transform:scale(1.04); box-shadow:0 0 0 6px rgba(255,255,255,.35),0 24px 60px rgba(16,52,86,.4) }
-  .qw.is-going .qw-office:not(.is-chosen), .qw.is-going .qw-q, .qw.is-going .qw-brand, .qw.is-going .qw-skip{ opacity:0; transform:translateY(-10px); transition:opacity .3s, transform .3s }
+  .qw.is-going .qw-office:not(.is-chosen), .qw.is-going .qw-q, .qw.is-going .qw-brand, .qw.is-going .qw-skip, .qw.is-going .qw-guide{ opacity:0; transform:translateY(-10px); transition:opacity .3s, transform .3s }
   .qw-body{ position:relative; z-index:1; width:100%; max-width:560px; text-align:center }
 
   /* ticket numbers drifting up in the background, like a queue moving */
@@ -136,7 +141,12 @@
           background:#2185D5; color:#fff; font-size:17px; font-weight:700;
           animation:qw-nudge 1.6s ease-in-out 2.4s infinite }
 
-  .qw-skip{ margin-top:22px; background:none; border:0; cursor:pointer;
+  .qw-guide{ display:inline-flex; align-items:center; gap:8px; margin-top:22px; padding:11px 18px; border-radius:999px; cursor:pointer;
+             font:inherit; font-size:14px; font-weight:700; color:#fff; background:rgba(255,255,255,.16); border:1.5px solid rgba(255,255,255,.45);
+             transition:background .15s, transform .15s; animation:qw-fade .5s ease-out 2s both }
+  .qw-guide:hover{ background:rgba(255,255,255,.26) }
+  .qw-guide:active{ transform:scale(.97) }
+  .qw-skip{ display:block; margin:14px auto 0; background:none; border:0; cursor:pointer;
             font:inherit; font-size:14px; font-weight:600; color:rgba(255,255,255,.85);
             text-decoration:underline; text-underline-offset:3px;
             animation:qw-fade .5s ease-out 2.1s both }
@@ -154,7 +164,7 @@
      opening: gentle fades in the same order, no bouncing, spinning or drifting. */
   @media (prefers-reduced-motion:reduce){
     .qw-float, .qw-aurora{ display:none }
-    .qw .qw-brand, .qw .qw-word b, .qw .qw-q span, .qw .qw-office, .qw .qw-skip{
+    .qw .qw-brand, .qw .qw-word b, .qw .qw-q span, .qw .qw-office, .qw .qw-skip, .qw .qw-guide{
       animation-name:qw-fade !important; animation-duration:.6s !important;
       animation-timing-function:ease-out !important; animation-fill-mode:both !important;
       animation-iteration-count:1 !important;
@@ -188,6 +198,11 @@
     setTimeout(function () { el.remove(); document.documentElement.style.overflow = ''; }, 650);
   }
   el.querySelector('[data-welcome-close]').addEventListener('click', close);
+  // "Show me how": close, then the landing page's guide (partials/tour), even if seen before
+  el.querySelector('[data-welcome-guide]').addEventListener('click', function (e) {
+    close(e);
+    setTimeout(function () { if (window.smartqTour) window.smartqTour(); }, 800);
+  });
   // Tapping an office: the card lifts, the rest fades, then its page opens.
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   el.querySelectorAll('.qw-office').forEach(function (a) {
