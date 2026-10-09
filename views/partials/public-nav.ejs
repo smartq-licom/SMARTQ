@@ -11,10 +11,18 @@
         <span class="block text-[11px] text-slateSoft/70 leading-tight mt-1 truncate">Libon Community College</span>
       </span>
     </a>
-    <a href="/queue/find" class="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full bg-brand-wash hover:bg-brand-line/60 px-3.5 py-2 text-[12.5px] font-semibold text-brand-deep transition-colors">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      Find my ticket
-    </a>
+    <div class="ml-auto flex items-center gap-2 shrink-0">
+      <%# replays the first-time guide on pages that have one (partials/tour) %>
+      <button type="button" data-tour-open hidden onclick="window.smartqTour && window.smartqTour()"
+              class="inline-flex items-center gap-1 rounded-full bg-white ring-1 ring-hair hover:bg-mist w-9 h-9 sm:w-auto sm:h-auto justify-center sm:px-3 sm:py-2 text-[12.5px] font-semibold text-slateSoft transition-colors" aria-label="Show the guide">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4M12 17h.01"/></svg>
+        <span class="hidden sm:inline">Guide</span>
+      </button>
+      <a href="/queue/find" class="inline-flex items-center gap-1.5 rounded-full bg-brand-wash hover:bg-brand-line/60 px-3.5 py-2 text-[12.5px] font-semibold text-brand-deep transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Find my ticket
+      </a>
+    </div>
   </div>
 </header>
 <main id="main" class="flex-1 w-full max-w-3xl mx-auto px-4 pt-5 pb-10 fade-in">

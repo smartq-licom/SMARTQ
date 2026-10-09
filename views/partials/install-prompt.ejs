@@ -75,7 +75,7 @@
   // Chrome needs the service worker registered to offer installing
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
 
-  function welcomeOpen() { var w = document.getElementById('welcome'); return w && !w.hidden; }
+  function welcomeOpen() { var w = document.getElementById('welcome'); return (w && !w.hidden) || window.smartqTourOpen; }
   function show() {
     if (shown) return;
     if (welcomeOpen()) { setTimeout(show, 1500); return; }  // after the welcome screen

@@ -1,0 +1,122 @@
+<%#
+  First-time guide (coach marks, like GCash): the page dims, one part is lit,
+  and a bubble explains it with Back / Next / Skip. Shown once per phone for
+  each page (localStorage), replayed by the "Guide" button or ?tour=1.
+  Locals: tourKey (e.g. 'home'), tourSteps = [{ sel, title, body }]
+  (a step whose element is missing or hidden is skipped).
+%>
+<div id="tour" class="tour" hidden>
+  <div class="tour-spot" aria-hidden="true"></div>
+  <div class="tour-tip" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+    <div class="tour-count" data-tour-count></div>
+    <div id="tourTitle" class="tour-title" data-tour-title></div>
+    <p class="tour-body" data-tour-body></p>
+    <div class="tour-actions">
+      <button type="button" class="tour-skip" data-tour-skip>Skip</button>
+      <span class="tour-dots" data-tour-dots aria-hidden="true"></span>
+      <button type="button" class="tour-back" data-tour-back>Back</button>
+      <button type="button" class="tour-next" data-tour-next>Next</button>
+    </div>
+  </div>
+</div>
+<style>
+  .tour{ position:fixed; inset:0; z-index:950 }
+  .tour-spot{ position:fixed; border-radius:18px; pointer-events:none;
+              box-shadow:0 0 0 9999px rgba(10,22,38,.62), 0 0 0 3px rgba(255,255,255,.9), 0 0 24px 4px rgba(124,196,250,.55);
+              transition:top .35s cubic-bezier(.2,.8,.2,1), left .35s cubic-bezier(.2,.8,.2,1), width .35s cubic-bezier(.2,.8,.2,1), height .35s cubic-bezier(.2,.8,.2,1) }
+  .tour-spot::after{ content:''; position:absolute; inset:-3px; border-radius:inherit; border:2px solid rgba(255,255,255,.7); animation:tour-ping 1.8s ease-out infinite }
+  @keyframes tour-ping{ 0%{ opacity:.9; transform:scale(1) } 100%{ opacity:0; transform:scale(1.08) } }
+  .tour-tip{ position:fixed; left:12px; right:12px; max-width:380px; margin:0 auto; background:#fff; border-radius:20px; padding:16px 16px 14px;
+             box-shadow:0 24px 60px -12px rgba(0,0,0,.45); animation:tour-in .3s cubic-bezier(.2,.8,.2,1) both }
+  .tour-tip::before{ content:''; position:absolute; left:var(--arrow,50%); width:14px; height:14px; background:#fff; transform:translateX(-50%) rotate(45deg); border-radius:3px }
+  .tour-tip.below::before{ top:-6px } .tour-tip.above::before{ bottom:-6px }
+  @keyframes tour-in{ from{ opacity:0; transform:translateY(8px) scale(.98) } to{ opacity:1; transform:none } }
+  .tour-count{ font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#2185D5 }
+  .tour-title{ font-size:16px; font-weight:800; color:#1E2A36; margin-top:4px; line-height:1.3 }
+  .tour-body{ font-size:13.5px; color:#4A5866; margin:6px 0 0; line-height:1.5 }
+  .tour-body b{ color:#1E2A36 }
+  .tour-actions{ display:flex; align-items:center; gap:8px; margin-top:14px }
+  .tour-skip{ font-size:13px; font-weight:600; color:#8A96A3; padding:8px 4px }
+  .tour-dots{ display:flex; gap:5px; margin-left:auto; margin-right:4px }
+  .tour-dots i{ width:6px; height:6px; border-radius:999px; background:#D5DCE4; transition:width .25s, background .25s }
+  .tour-dots i.on{ width:16px; background:#2185D5 }
+  .tour-back, .tour-next{ min-height:40px; padding:0 16px; border-radius:12px; font-size:13.5px; font-weight:700 }
+  .tour-back{ background:#F5F7FA; color:#4A5866 }
+  .tour-next{ background:linear-gradient(135deg,#2E9BEA,#2185D5 50%,#1A6CAE); color:#fff; box-shadow:0 8px 18px -8px rgba(33,133,213,.8) }
+  @media (prefers-reduced-motion:reduce){ .tour-spot, .tour-tip{ transition:none; animation:none } .tour-spot::after{ animation:none } }
+  @media print{ .tour{ display:none !important } }
+</style>
+<script>
+(function () {
+  var STEPS = <%- JSON.stringify(tourSteps) %>, KEY = 'smartq.tour.<%= tourKey %>';
+  var el = document.getElementById('tour');
+  if (!el || !STEPS.length) return;
+  var spot = el.querySelector('.tour-spot'), tip = el.querySelector('.tour-tip');
+  var steps = [], i = 0;
+
+  function visible(n) { if (!n) return false; var r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !n.closest('[hidden]'); }
+  function done() { try { localStorage.setItem(KEY, '1'); } catch (e) {} }
+  function close() {
+    done(); el.hidden = true; window.smartqTourOpen = false; document.documentElement.style.overflow = '';
+    window.dispatchEvent(new Event('smartq:tour-closed'));
+  }
+  function place() {
+    var s = steps[i], n = document.querySelector(s.sel);
+    if (!visible(n)) return go(1);                    // that part is gone: next step
+    var r = n.getBoundingClientRect(), pad = 8;
+    spot.style.top = (r.top - pad) + 'px'; spot.style.left = (r.left - pad) + 'px';
+    spot.style.width = (r.width + pad * 2) + 'px'; spot.style.height = (r.height + pad * 2) + 'px';
+    // the bubble goes where there is more room, its arrow pointing at the lit part
+    var below = r.top + r.height / 2 < innerHeight / 2;
+    tip.classList.toggle('below', below); tip.classList.toggle('above', !below);
+    tip.style.top = below ? (r.bottom + pad + 14) + 'px' : '';
+    tip.style.bottom = below ? '' : (innerHeight - r.top + pad + 14) + 'px';
+    var tr = tip.getBoundingClientRect();
+    tip.style.setProperty('--arrow', Math.max(24, Math.min(tr.width - 24, r.left + r.width / 2 - tr.left)) + 'px');
+  }
+  function show() {
+    var s = steps[i];
+    el.querySelector('[data-tour-count]').textContent = 'Step ' + (i + 1) + ' of ' + steps.length;
+    el.querySelector('[data-tour-title]').textContent = s.title;
+    el.querySelector('[data-tour-body]').innerHTML = s.body;     // our own text (bold allowed)
+    el.querySelector('[data-tour-back]').hidden = i === 0;
+    el.querySelector('[data-tour-next]').textContent = i === steps.length - 1 ? 'Got it' : 'Next';
+    el.querySelector('[data-tour-dots]').innerHTML = steps.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('');
+    tip.style.animation = 'none'; void tip.offsetWidth; tip.style.animation = '';
+    var n = document.querySelector(s.sel);
+    if (n) n.scrollIntoView({ block: 'center', behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+    setTimeout(place, 60);
+  }
+  function go(d) {
+    var j = i + d;
+    if (j >= steps.length) return close();
+    if (j < 0) j = 0;
+    i = j; show();
+  }
+  function start(force) {
+    steps = STEPS.filter(function (s) { return visible(document.querySelector(s.sel)); });
+    if (!steps.length) return;
+    var seen = false; try { seen = localStorage.getItem(KEY) === '1'; } catch (e) {}
+    if (seen && !force) return;
+    document.body.appendChild(el);                     // never boxed in by an animated parent
+    i = 0; el.hidden = false; window.smartqTourOpen = true; show();
+  }
+  el.querySelector('[data-tour-next]').addEventListener('click', function () { go(1); });
+  el.querySelector('[data-tour-back]').addEventListener('click', function () { go(-1); });
+  el.querySelector('[data-tour-skip]').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (!el.hidden && e.key === 'Escape') close(); });
+  addEventListener('resize', function () { if (!el.hidden) place(); });
+  addEventListener('scroll', function () { if (!el.hidden) place(); }, { passive: true });
+  window.smartqTour = function () { start(true); };
+  document.querySelectorAll('[data-tour-open]').forEach(function (b) { b.hidden = false; });
+
+  // first visit: after the welcome screen is gone
+  var force = /[?&]tour=1(&|$)/.test(location.search);
+  function wait() {
+    var w = document.getElementById('welcome');
+    if (w && !w.hidden) return setTimeout(wait, 600);
+    setTimeout(function () { start(force); }, 1300);       // after any opening animation
+  }
+  if (document.readyState === 'complete') wait(); else addEventListener('load', wait);
+})();
+</script>

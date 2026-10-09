@@ -185,6 +185,14 @@
 <% } %>
 
 </div>
+<%- include('../../partials/tour', { tourKey: 'home', tourSteps: [
+      { sel: 'section[aria-labelledby="off-Cashier"]', title: 'First time? Start at the Cashier',
+        body: 'No need to go to the Registrar to get the <b>Application for Issuance of Records</b>. Tap <b>Cashier</b> and fill up what is needed. You pay at the Cashier window when called.' },
+      { sel: 'section[aria-labelledby="off-Registrar"]', title: 'Registrar: free requests and claiming',
+        body: 'Use this for free documents, and to <b>claim</b> a document you already paid for (like your OTR) on its release date.' },
+      { sel: 'header a[href="/queue/find"]', title: 'On another phone?',
+        body: 'Use <b>Find my ticket</b> with your booking code and student number to open your ticket anywhere.' },
+    ] }) %>
 <%- include('../../partials/live', { liveEvery: 10 }) %>
 <script>
 // Numbers count up when they first appear, and again whenever they change.

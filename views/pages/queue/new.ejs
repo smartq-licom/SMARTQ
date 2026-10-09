@@ -1034,5 +1034,15 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
   show(start, true);
 })();
 </script>
+<%- include('../../partials/tour', { tourKey: 'new', tourSteps: [
+      { sel: 'nav[aria-label="Request steps"]', title: 'Four short steps',
+        body: 'Documents, when, your details, then review. This replaces the paper <b>Application for Issuance of Records</b>. Tap a finished step to go back to it.' },
+      { sel: '[data-office-choice]:not([hidden])', title: 'Choose the office',
+        body: '<b>Cashier</b> for documents you pay for (like the OTR). <b>Registrar</b> for free requests and claiming.' },
+      { sel: '#docSection', title: 'Tick what you need',
+        body: 'The price is set by the office. If a document asks <b>What is it for?</b>, tap the purpose under it. The OTR shows when it will be ready after payment.' },
+      { sel: '.wiz-pane:not([hidden]) [data-next]', title: 'Then tap Next',
+        body: 'SmartQ checks each step before moving on, so nothing is missed. At the end you get your queue number right away.' },
+    ] }) %>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>

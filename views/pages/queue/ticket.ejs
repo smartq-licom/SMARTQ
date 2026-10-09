@@ -517,6 +517,16 @@
   apply();
 })();
 </script>
+<% if (['waiting','called','serving'].includes(t.ticketStatus)) { %>
+<%- include('../../partials/tour', { tourKey: 'ticket', tourSteps: [
+      { sel: 'section.stub', title: 'This is your ticket',
+        body: 'Your queue number is called on the screen and on this phone. Take a <b>screenshot</b>: the booking code opens this ticket on any phone.' },
+      { sel: '[data-live="details"] > div', title: 'Your estimated wait',
+        body: 'It counts down by itself and shows when your turn should come. You do not have to stand in line: <b>wait anywhere</b>.' },
+      { sel: '#pushBox', title: 'Turn on alerts',
+        body: 'Get a notice 15 minutes before your turn and when you are called, even with this page closed.' },
+    ] }) %>
+<% } %>
 <%- include('../../partials/live', { liveEvery: ['waiting','called','serving'].includes(t.ticketStatus) ? 15 : 0 }) %>
 <%- include('../../partials/chime', {
       chimeScope: 'ticket' + t.id,
