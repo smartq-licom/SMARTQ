@@ -2113,6 +2113,34 @@ async function expectedClaimsToday() {
   return Math.round(onDay * CLAIM_SHOW_RATE + late * CLAIM_LATE_RATE);
 }
 
+/**
+ * "What can I pick up?": the paid documents waiting for a student, shown only
+ * when the student number, first and last name, course and year all match the
+ * record. Any mismatch gives the same empty answer, so nobody can probe.
+ */
+async function findClaimables({ studentNo, firstName, lastName, course, yearLevel } = {}) {
+  const no = String(studentNo || '').trim();
+  const year = Number(yearLevel);
+  if (!STUDENT_NO_RE.test(no) || !normName(firstName) || !normName(lastName) || !isCourse(course) || !(year >= 1 && year <= 5)) return null;
+  const u = (await q(`SELECT * FROM users WHERE student_no=? AND role='student' AND status<>'disabled' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
+  if (!u) return null;
+  const f1 = normName(firstName), f2 = normName(u.first_name);
+  const firstOk = f1 === f2 || (f1.length >= 3 && f2.length >= 3 && (f1.startsWith(f2) || f2.startsWith(f1)));
+  if (!firstOk || normName(lastName) !== normName(u.last_name)) return null;
+  // course and year: the record's latest, or what a paid ticket of theirs says
+  const sameNow = u.course === course && Number(u.year_level) === year;
+  const onTicket = sameNow ? [] : await q(
+    `SELECT 1 FROM transactions WHERE user_id=? AND department='Cashier' AND payment_status='paid'
+       AND course=? AND year_level=? LIMIT 1`, [u.id, course, year]);
+  if (!sameNow && !onTicket.length) return null;
+  const lines = await getClaimableLines(u.id);
+  return lines.map(l => ({
+    id: l.id, name: l.name, copies: l.copies, receiptNo: l.receiptNo, paidTicket: l.paidTicket,
+    paidText: l.paidAt ? shortDate(l.paidAt) : '', readyOn: l.readyOn,
+    readyText: l.readyOn ? shortDate(l.readyOn) : '', ready: !l.readyOn || l.readyOn <= today(),
+  }));
+}
+
 /** A Registrar document that collects something paid for at the Cashier. */
 const isClaimDocument = d => d.office === 'Registrar' && d.requiresClaim;
 
@@ -3404,7 +3432,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, bookClaim, releasesDue, releaseOutlook, expectedClaimsToday, CLAIM_SHOW_RATE, joinOpensAt, isBeforeJoinOpens,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, findClaimables, bookClaim, releasesDue, releaseOutlook, expectedClaimsToday, CLAIM_SHOW_RATE, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

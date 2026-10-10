@@ -2,6 +2,17 @@
 <%- include('../../partials/public-nav') %>
 <%# Styles first, so step ticks and document checks never flash unstyled on a slow phone. %>
 <style>
+  /* claiming: find your paid documents, then tick what to collect */
+  .claim-box{ margin:12px 0 0 38px; padding:14px; border-radius:14px; background:var(--card-bg); border:1.5px dashed rgb(var(--c-brand-line)); animation:open .3s ease-out }
+  .claim-msg{ margin-top:10px; padding:8px 12px; border-radius:10px; font-size:12.5px; background:rgb(239 68 68 / .1); color:#b91c1c }
+  .dark .claim-msg{ color:#FCA5A5 }
+  .claim-item{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1.5px solid var(--line); cursor:pointer; transition:border-color .15s, background .15s }
+  .claim-item:has(input:checked){ border-color:#2185D5; background:rgb(var(--c-brand-wash)) }
+  .claim-item input{ width:18px; height:18px; accent-color:#2185D5; flex:none }
+  .claim-tag{ margin-left:auto; flex:none; font-size:11px; font-weight:700; padding:4px 8px; border-radius:999px }
+  .claim-tag.ok{ background:rgb(16 185 129 / .14); color:#047857 } .dark .claim-tag.ok{ color:#6EE7B7 }
+  .claim-tag.wait{ background:rgb(245 158 11 / .16); color:#b45309 } .dark .claim-tag.wait{ color:#FCD34D }
+  @media (max-width:480px){ .claim-box{ margin-left:0 } }
   /* office cards */
   .office-card{ position:relative; display:block; cursor:pointer; border:2px solid var(--line); border-radius:18px; padding:14px 16px; background:var(--card-bg);
                 transition:border-color .25s, background-color .25s, box-shadow .25s, transform .25s cubic-bezier(.34,1.56,.64,1) }
@@ -225,9 +236,38 @@
                 </div>
                 <% if (sv.needsPurpose) { %><div data-purpose-slot="<%= sv.id %>"></div><% } %>
                 <% if (isClaim) { %>
-                <p class="mt-2 ml-10 text-[12px] text-slateSoft/80" data-claim-panel="<%= sv.id %>" hidden>
-                  We will find the documents you already paid for at the Cashier using your student number.
-                </p>
+                <%# Claiming: first prove who you are (student no., name, course,
+                    year must all match), then see what is waiting and tick what
+                    to collect now. Lookup fields have no name: never submitted. %>
+                <div class="claim-box" data-claim-panel="<%= sv.id %>" hidden>
+                  <div class="claim-step" data-claim-find>
+                    <div class="text-[13px] font-bold text-ink">Find what you paid for at the Cashier</div>
+                    <p class="text-[12px] text-slateSoft/75 mt-0.5">Enter your details exactly as on your Cashier ticket.</p>
+                    <div class="grid grid-cols-2 gap-2.5 mt-3">
+                      <div class="col-span-2"><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
+                        <input id="lkNo" class="<%= UI.input %> font-mono" inputmode="numeric" maxlength="9" placeholder="9 digits" autocomplete="off"></div>
+                      <div><label for="lkFirst" class="<%= UI.lbl %>">First name</label><input id="lkFirst" class="<%= UI.input %>" autocomplete="off"></div>
+                      <div><label for="lkLast" class="<%= UI.lbl %>">Last name</label><input id="lkLast" class="<%= UI.input %>" autocomplete="off"></div>
+                      <div><label for="lkCourse" class="<%= UI.lbl %>">Course</label>
+                        <select id="lkCourse" class="<%= UI.input %>"><option value="">Select</option><% courses.forEach(function (c) { %><option value="<%= c %>"><%= c %></option><% }) %></select></div>
+                      <div><label for="lkYear" class="<%= UI.lbl %>">Year level</label>
+                        <select id="lkYear" class="<%= UI.input %>"><option value="">Select</option><% [1, 2, 3, 4, 5].forEach(function (y) { %><option value="<%= y %>">Year <%= y %></option><% }) %></select></div>
+                    </div>
+                    <p class="claim-msg" data-claim-msg hidden></p>
+                    <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> w-full mt-3" data-claim-go>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                      Find my paid documents
+                    </button>
+                  </div>
+                  <div class="claim-step" data-claim-list hidden>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-[13px] font-bold text-ink">Ready for pickup</div>
+                      <button type="button" class="text-[12px] font-semibold text-brand" data-claim-again>Change details</button>
+                    </div>
+                    <p class="text-[12px] text-slateSoft/75 mt-0.5" data-claim-who></p>
+                    <div class="mt-2.5 space-y-2" data-claim-items></div>
+                  </div>
+                </div>
                 <% } %>
                 <% if (!sv.guestAllowed) { %>
                 <p class="mt-1 ml-10 text-[11px] text-slateSoft/60">For enrolled students only</p>
@@ -661,6 +701,54 @@ function loadSlots(){
     })
     .catch(function () { if (mine === slotAsk) note.textContent = 'Could not load the times. Check your connection and try again.'; });
 }
+// Claiming: look up the paid documents, list them with their release dates,
+// and copy the matched details into "Your details".
+(function () {
+  var box = document.querySelector('.claim-box');
+  if (!box) return;
+  var $ = function (s) { return box.querySelector(s); };
+  var esc = function (t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
+  function msg(t) { var m = $('[data-claim-msg]'); m.textContent = t || ''; m.hidden = !t; }
+  function setVal(id, v) { var f = document.getElementById(id); if (f) { f.value = v; f.dispatchEvent(new Event('change', { bubbles: true })); } }
+  $('[data-claim-again]').addEventListener('click', function () {
+    $('[data-claim-list]').hidden = true; $('[data-claim-find]').hidden = false; $('[data-claim-items]').innerHTML = '';
+  });
+  $('[data-claim-go]').addEventListener('click', function () {
+    var d = { studentNo: $('#lkNo').value.trim(), firstName: $('#lkFirst').value.trim(), lastName: $('#lkLast').value.trim(),
+              course: $('#lkCourse').value, yearLevel: $('#lkYear').value };
+    if (!/^\d{9}$/.test(d.studentNo) || !d.firstName || !d.lastName || !d.course || !d.yearLevel)
+      return msg('Fill in all five: student number (9 digits), first name, last name, course and year level.');
+    var btn = $('[data-claim-go]'); btn.disabled = true; msg('');
+    fetch('/queue/claimables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(d) })
+      .then(function (r) { return r.status === 429 ? { ok: false, error: 'Too many tries. Please wait a few minutes.' } : r.json(); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res.ok) return msg(res.error);
+        var list = $('[data-claim-items]');
+        if (!res.lines.length) {
+          list.innerHTML = '<p class="text-[12.5px] text-slateSoft/80">Nothing is waiting for pickup. Pay for the document at the Cashier first, or it was already collected.</p>';
+        } else {
+          list.innerHTML = res.lines.map(function (l) {
+            return '<label class="claim-item"><input type="checkbox" name="claimLines" value="' + l.id + '"' + (l.ready ? ' checked' : '') +
+              ' data-name="' + esc(l.name + (l.copies > 1 ? ' x' + l.copies : '')) + '" data-ready="' + (l.ready ? 1 : 0) + '" data-ready-text="' + esc(l.readyText) + '">' +
+              '<span class="min-w-0"><span class="block text-[13.5px] font-semibold text-ink">' + esc(l.name) + (l.copies > 1 ? ' &times;' + l.copies : '') + '</span>' +
+              '<span class="block text-[11.5px] text-slateSoft/70">Paid ' + esc(l.paidText) + ' &middot; ' + esc(l.receiptNo || l.paidTicket) + '</span></span>' +
+              (l.ready ? '<span class="claim-tag ok">Ready now</span>' : '<span class="claim-tag wait">Ready ' + esc(l.readyText) + '</span>') + '</label>';
+          }).join('') +
+          (res.lines.some(function (l) { return !l.ready; })
+            ? '<p class="text-[11.5px] text-slateSoft/70">Not ready yet? Leave it unticked and collect it on its date, or tick it anyway; staff will check if it is done.</p>' : '');
+        }
+        $('[data-claim-who]').textContent = d.firstName + ' ' + d.lastName + ' · ' + d.studentNo + ' · ' + d.course + ', Year ' + d.yearLevel;
+        $('[data-claim-find]').hidden = true; $('[data-claim-list]').hidden = false;
+        // the same person is the one claiming: fill "Your details" for them
+        var student = document.querySelector('input[name=clientType][value=student]');
+        if (student && !student.checked) { student.checked = true; student.dispatchEvent(new Event('change', { bubbles: true })); }
+        setVal('firstName', d.firstName); setVal('lastName', d.lastName); setVal('studentNo', d.studentNo);
+        setVal('course', d.course); setVal('yearLevel', d.yearLevel);
+      })
+      .catch(function () { btn.disabled = false; msg('Could not reach SmartQ. Check your connection and try again.'); });
+  });
+})();
 // tapping a purpose chip sets the (hidden) purpose list
 document.addEventListener('click', function (e) {
   var chip = e.target.closest('[data-purpose-chip]'); if (!chip) return;
@@ -768,7 +856,8 @@ function recalc(){
     var visible = chosen && b.dataset.office === chosen.value;
     var qty    = document.getElementById('qty-' + b.dataset.row);
     var copies = document.querySelector('[data-copies="' + b.dataset.row + '"]');
-    if (qty) qty.hidden = !(b.checked && visible);
+    // copies make no sense when claiming (the value 1 is still sent, so the lists line up)
+    if (qty) qty.hidden = !(b.checked && visible) || b.dataset.claim === '1';
     var row = b.closest('.doc-row');
     if (row) row.classList.toggle('is-picked', b.checked && visible);
     var line = document.querySelector('[data-line-total="' + b.dataset.row + '"]');
@@ -874,6 +963,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       else if (!docs.length) msg = 'Select at least one document.';
       else if (!document.getElementById('purposeSection').hidden && !document.getElementById('purpose').value)
         msg = 'Choose what the document is for.';
+      else if (docs.some(function (d) { return d.dataset.claim === '1'; }) &&
+               !form.querySelectorAll('input[name=claimLines]:checked:not(:disabled)').length)
+        msg = form.querySelector('[data-claim-list]:not([hidden])')
+          ? 'Tick at least one document to collect.' : 'Find your paid documents first.';
     }
     if (n === 2) {
       var sch = form.querySelector('input[name=mode][value=schedule]');
@@ -954,6 +1047,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       return esc(name) + (n > 1 ? ' &times;' + n : '');
     });
     out.push(row('Documents', docs.join('<br>') || '&mdash;'));
+    var collecting = [].map.call(form.querySelectorAll('input[name=claimLines]:checked:not(:disabled)'), function (c) {
+      return esc(c.dataset.name) + (c.dataset.ready === '1' ? '' : ' <span style="color:#b45309">(ready ' + esc(c.dataset.readyText) + ')</span>');
+    });
+    if (collecting.length) out.push(row('Collecting', collecting.join('<br>')));
     var purpose = document.getElementById('purpose');
     if (purpose && shown(document.getElementById('purposeSection')) && purpose.value) {
       var other = document.getElementById('otherPurpose');

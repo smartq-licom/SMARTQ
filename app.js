@@ -70,6 +70,7 @@ app.use('/verify',          otpLimiter);
 const findLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
   message: 'Too many tries from this network. Please wait a few minutes, or ask at the office window.' });
 app.use('/queue/find', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
+app.use('/queue/claimables', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 const newTicketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false,
   message: 'Too many requests from this network. Please wait a few minutes and try again.' });
 app.use('/queue/new', (req, res, next) => (req.method === 'POST' ? newTicketLimiter(req, res, next) : next()));

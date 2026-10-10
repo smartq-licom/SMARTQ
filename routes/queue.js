@@ -257,6 +257,16 @@ router.post('/new', proofToMemory, async (req, res, next) => {
 router.get('/find', (req, res) =>
   res.render('pages/queue/find', { title: 'Find My Ticket', form: {}, formError: null }));
 
+// Claiming at the Registrar: the paid documents waiting for this student, only
+// when student number, name, course and year all match (rate-limited in app.js).
+router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next) => {
+  try {
+    const lines = await db.findClaimables(req.body || {});
+    if (!lines) return res.json({ ok: false, error: 'No match. Check your student number, name, course and year level, exactly as on your Cashier ticket.' });
+    res.json({ ok: true, lines });
+  } catch (e) { next(e); }
+});
+
 router.post('/find', async (req, res, next) => {
   try {
     const token = await db.findTicketByCode(req.body.code, req.body.who);
