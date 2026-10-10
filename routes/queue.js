@@ -267,7 +267,7 @@ router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next
     if (!lines) return res.json({ ok: false, error: visitor
       ? 'No match. Check the booking code on your Cashier ticket and your last name.'
       : 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
-    res.json({ ok: true, lines });
+    res.json({ ok: true, lines, fees: lines.fees || [] });
   } catch (e) { next(e); }
 });
 

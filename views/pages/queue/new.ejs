@@ -743,7 +743,12 @@ function loadSlots(){
         if (!res.ok) return msg(res.error);
         var list = $('[data-claim-items]');
         if (!res.lines.length) {
-          list.innerHTML = '<p class="text-[12.5px] text-slateSoft/80">Nothing is waiting for pickup. Pay for the document at the Cashier first, or it was already collected.</p>';
+          // a fee (Late Enrollment, Completion Fee) has nothing to collect
+          var fees = (res.fees || []).map(function (f) { return esc(f.name) + ' (' + esc(f.ticket) + ')'; });
+          list.innerHTML = fees.length
+            ? '<p class="text-[12.5px] text-slateSoft/80"><b class="text-ink">Nothing to pick up.</b> ' + fees.join(', ') +
+              (fees.length > 1 ? ' are fees' : ' is a fee') + ': once paid at the Cashier, you are done. No Registrar visit needed.</p>'
+            : '<p class="text-[12.5px] text-slateSoft/80">Nothing is waiting for pickup. Pay for the document at the Cashier first, or it was already collected.</p>';
         } else {
           list.innerHTML = res.lines.map(function (l) {
             return '<label class="claim-item"><input type="checkbox" name="claimLines" value="' + l.id + '"' + (l.ready ? ' checked' : '') +

@@ -2159,7 +2159,23 @@ async function findClaimables({ studentNo, lastName } = {}) {
   if (!STUDENT_NO_RE.test(no) || !normName(lastName)) return null;
   const u = (await q(`SELECT * FROM users WHERE student_no=? AND role='student' AND status<>'disabled' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
   if (!u || normName(lastName) !== normName(u.last_name)) return null;
-  return toPickup(await getClaimableLines(u.id));
+  const lines = toPickup(await getClaimableLines(u.id));
+  if (!lines.length) lines.fees = await recentFees('t.user_id = ?', [u.id]);
+  return lines;
+}
+
+/**
+ * Fees paid lately (Late Enrollment, Completion Fee: "To claim" is off), so
+ * an empty pickup list can say why: a fee has nothing to collect.
+ */
+async function recentFees(who, params) {
+  const rows = await q(
+    `SELECT DISTINCT td.document_name AS name, t.ticket_no AS ticket FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id JOIN documents d ON d.id = td.document_id
+     WHERE ${who} AND t.department='Cashier' AND t.payment_status='paid' AND d.requires_claim = 0
+       AND t.service_date >= CURDATE() - INTERVAL 30 DAY
+     ORDER BY t.ticket_no LIMIT 5`, params);
+  return rows.map(r => ({ name: r.name, ticket: r.ticket }));
 }
 
 /**
@@ -2173,7 +2189,9 @@ async function findClaimablesByCode({ code, lastName } = {}) {
     `SELECT id, last_name FROM transactions WHERE booking_code=? AND department='Cashier' AND payment_status='paid'
        AND service_date >= CURDATE() - INTERVAL 120 DAY ORDER BY id DESC LIMIT 1`, [code]))[0];
   if (!t || normName(t.last_name) !== normName(lastName)) return null;
-  return toPickup(await getClaimableLines(null, { txIds: [t.id] }));
+  const lines = toPickup(await getClaimableLines(null, { txIds: [t.id] }));
+  if (!lines.length) lines.fees = await recentFees('t.id = ?', [t.id]);
+  return lines;
 }
 
 /** Paid lines a visitor may claim: theirs only if the Cashier ticket carries the same last name. */
