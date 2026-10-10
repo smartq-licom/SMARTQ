@@ -77,7 +77,22 @@ async function getSettings() {
     maxCopies: s.max_copies,
     maxBatchDocuments: s.max_batch_documents, refreshRate: s.refresh_rate,
     announcement: s.announcement || '',
+    learnFrom: s.learn_from || null,
   };
+}
+
+/** "Start learning fresh": services finished before now stop counting toward learned times. */
+async function resetLearning() {
+  await run('UPDATE settings SET learn_from = NOW() WHERE id=1');
+}
+/** How many finished services the estimates are learning from. */
+async function learningStatus() {
+  const [r] = await q(
+    `SELECT (SELECT learn_from FROM settings WHERE id=1) AS since,
+            (SELECT COUNT(*) FROM transactions WHERE ticket_status='completed' AND actual_minutes IS NOT NULL
+               AND completed_at >= COALESCE((SELECT learn_from FROM settings WHERE id=1), '2000-01-01')) AS counted,
+            (SELECT COUNT(*) FROM transactions WHERE ticket_status='completed' AND actual_minutes IS NOT NULL) AS total`);
+  return { since: r.since, counted: Number(r.counted), total: Number(r.total) };
 }
 
 async function saveSettings(b) {
@@ -944,6 +959,7 @@ async function getServiceAverages() {
      FROM transactions t
      JOIN transaction_documents td ON td.transaction_id = t.id
      WHERE t.ticket_status='completed' AND t.actual_minutes IS NOT NULL
+       AND t.completed_at >= COALESCE((SELECT learn_from FROM settings WHERE id=1), '2000-01-01')
      GROUP BY td.document_name`
   );
   const map = {};
@@ -1381,7 +1397,14 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   // document only once. The student ticks which ones this ticket collects.
   let claimLineIds = [], notReady = [];
   if (items.some(isClaimDocument)) {
-    const available = await getClaimableLines(user.id);
+    let ticked = b.claimLines;
+    if (!Array.isArray(ticked)) ticked = ticked ? [ticked] : [];
+    ticked = [...new Set(ticked.map(Number).filter(Boolean))];
+    const available = user.role === 'guest'
+      ? await guestClaimableLines(ticked, b.lastName)
+      : await getClaimableLines(user.id);
+    if (!available.length && user.role === 'guest')
+      return { error: 'Find what you paid for with the booking code of your Cashier ticket, then tick what to collect.' };
     if (!available.length) {
       const cashierOpen = await getBlockingTransaction(user.id, 'Cashier');
       return { error: cashierOpen && cashierOpen.paymentStatus !== 'paid'
@@ -1895,7 +1918,12 @@ async function attachDocuments(list) {
  * the document is one you pick up, the Cashier recorded the payment, and no
  * claim ticket that is still valid (waiting, serving or completed) covers it.
  */
-async function getClaimableLines(userId) {
+async function getClaimableLines(userId, { txIds = null } = {}) {
+  // by person (students: one record per student number), or by the paid
+  // Cashier ticket(s) themselves (visitors get a new record per ticket)
+  // (prepared statements: one placeholder per id)
+  const ids = txIds ? (txIds.length ? txIds : [0]) : null;
+  const who = ids ? `t.id IN (${ids.map(() => '?').join(',')})` : 't.user_id = ?';
   const rows = await q(
     `SELECT td.id, td.document_name, td.copies, t.ticket_no, r.receipt_no, p.paid_at, d.processing_days
      FROM transaction_documents td
@@ -1903,12 +1931,12 @@ async function getClaimableLines(userId) {
      JOIN documents d    ON d.id = td.document_id
      LEFT JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
      LEFT JOIN receipts r ON r.transaction_id = t.id
-     WHERE t.user_id = ? AND t.department = 'Cashier' AND t.payment_status = 'paid'
+     WHERE ${who} AND t.department = 'Cashier' AND t.payment_status = 'paid'
        AND d.requires_claim = 1
        AND NOT EXISTS (
          SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
          WHERE ci.line_id = td.id AND c.ticket_status NOT IN ('cancelled','no-show'))
-     ORDER BY p.paid_at DESC, td.id`, [userId]);
+     ORDER BY p.paid_at DESC, td.id`, ids ? ids : [userId]);
   const out = [];
   for (const r of rows) {
     const paidAt = r.paid_at ? ymd(new Date(r.paid_at)) : null;
@@ -2131,13 +2159,38 @@ async function findClaimables({ studentNo, lastName } = {}) {
   if (!STUDENT_NO_RE.test(no) || !normName(lastName)) return null;
   const u = (await q(`SELECT * FROM users WHERE student_no=? AND role='student' AND status<>'disabled' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
   if (!u || normName(lastName) !== normName(u.last_name)) return null;
-  const lines = await getClaimableLines(u.id);
-  return lines.map(l => ({
-    id: l.id, name: l.name, copies: l.copies, receiptNo: l.receiptNo, paidTicket: l.paidTicket,
-    paidText: l.paidAt ? shortDate(l.paidAt) : '', readyOn: l.readyOn,
-    readyText: l.readyOn ? shortDate(l.readyOn) : '', ready: !l.readyOn || l.readyOn <= today(),
-  }));
+  return toPickup(await getClaimableLines(u.id));
 }
+
+/**
+ * Visitors have no student number: they find what they paid for with the
+ * booking code of their Cashier ticket and their last name.
+ */
+async function findClaimablesByCode({ code, lastName } = {}) {
+  code = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code) || !normName(lastName)) return null;
+  const t = (await q(
+    `SELECT id, last_name FROM transactions WHERE booking_code=? AND department='Cashier' AND payment_status='paid'
+       AND service_date >= CURDATE() - INTERVAL 120 DAY ORDER BY id DESC LIMIT 1`, [code]))[0];
+  if (!t || normName(t.last_name) !== normName(lastName)) return null;
+  return toPickup(await getClaimableLines(null, { txIds: [t.id] }));
+}
+
+/** Paid lines a visitor may claim: theirs only if the Cashier ticket carries the same last name. */
+async function guestClaimableLines(lineIds, lastName) {
+  if (!lineIds.length || !normName(lastName)) return [];
+  const txs = await q(
+    `SELECT DISTINCT t.id, t.last_name FROM transaction_documents td JOIN transactions t ON t.id = td.transaction_id
+     WHERE td.id IN (${lineIds.map(() => '?').join(',')}) AND t.department='Cashier' AND t.payment_status='paid'`, lineIds);
+  const mine = txs.filter(x => normName(x.last_name) === normName(lastName)).map(x => x.id);
+  return mine.length ? getClaimableLines(null, { txIds: mine }) : [];
+}
+
+const toPickup = lines => lines.map(l => ({
+  id: l.id, name: l.name, copies: l.copies, receiptNo: l.receiptNo, paidTicket: l.paidTicket,
+  paidText: l.paidAt ? shortDate(l.paidAt) : '', readyOn: l.readyOn,
+  readyText: l.readyOn ? shortDate(l.readyOn) : '', ready: !l.readyOn || l.readyOn <= today(),
+}));
 
 /** A Registrar document that collects something paid for at the Cashier. */
 const isClaimDocument = d => d.office === 'Registrar' && d.requiresClaim;
@@ -3418,7 +3471,7 @@ module.exports = {
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
-  getServiceAverages, estimateMinutes, getEstimationTable,
+  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus,
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,
@@ -3430,7 +3483,7 @@ module.exports = {
   pickNextTicket, callNext, acceptTicket,
   processPayment, completeCashier, completeRegistrar, cancelTicket,
   recallTicket, announce, latestAnnouncement, latestAnnouncementFor,
-  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, findClaimables, bookClaim, releasesDue, releaseOutlook, expectedClaimsToday, CLAIM_SHOW_RATE, joinOpensAt, isBeforeJoinOpens,
+  processAutoCancel, getTimeLeft, getLoad, todayAverageWait, getClaimableLines, clock12, cancelByStudent, isPastClosing, isBreakTime, releaseDate, getReleaseInfo, findClaimables, findClaimablesByCode, bookClaim, releasesDue, releaseOutlook, expectedClaimsToday, CLAIM_SHOW_RATE, joinOpensAt, isBeforeJoinOpens,
   announcementPulse, announcementPulseFor, payAndComplete,
   deleteDocument, deleteWindow, deleteAccount, updateStaffProfile,
   signOutUser, getStaffPage, updateStaffAccount, resetStaffPassword,

@@ -52,7 +52,8 @@ async function staffSpeeds() {
   const rows = await q(
     `SELECT staff_id, actual_minutes / predicted_service AS r FROM transactions
      WHERE ticket_status='completed' AND staff_id IS NOT NULL AND actual_minutes BETWEEN 1 AND 240
-       AND predicted_service > 0 AND service_date >= CURDATE() - INTERVAL 60 DAY`);
+       AND predicted_service > 0 AND service_date >= CURDATE() - INTERVAL 60 DAY
+       AND completed_at >= ${predict.LEARN_SINCE}`);
   const by = {};
   rows.forEach(x => { (by[x.staff_id] = by[x.staff_id] || []).push(Number(x.r)); });
   const out = {};

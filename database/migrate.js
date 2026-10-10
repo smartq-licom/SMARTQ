@@ -150,6 +150,12 @@ const STEPS = [
     after: "UPDATE documents SET processing_days = 14 WHERE name = 'Official Transcript of Records'",
   },
   {
+    name: '"start learning fresh": services before this are not learned from (learn_from)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'settings' AND column_name = 'learn_from'`,
+    add:   'ALTER TABLE settings ADD COLUMN learn_from DATETIME NULL DEFAULT NULL',
+  },
+  {
     name: 'when the "ready for release" alert was sent for a paid document',
     check: `SELECT COUNT(*) AS has FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'transaction_documents' AND column_name = 'ready_notified_at'`,

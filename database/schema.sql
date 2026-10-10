@@ -294,6 +294,7 @@ CREATE TABLE settings (
   max_batch_documents       INT NOT NULL DEFAULT 4,
   refresh_rate          INT NOT NULL DEFAULT 10,
   announcement          VARCHAR(255) DEFAULT 'Please watch the screen for your number.',
+  learn_from            DATETIME NULL DEFAULT NULL,  -- services before this are not learned from
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

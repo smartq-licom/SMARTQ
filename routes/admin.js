@@ -301,8 +301,8 @@ router.get('/qr-poster', async (req, res, next) => {
 
 router.get('/settings', async (req, res, next) => {
   try {
-    const [settings, load] = await Promise.all([db.getSettings(), db.getLoad()]);
-    res.render('pages/admin/settings', { title: 'System Settings', settings, load });
+    const [settings, load, learning] = await Promise.all([db.getSettings(), db.getLoad(), db.learningStatus()]);
+    res.render('pages/admin/settings', { title: 'System Settings', settings, load, learning });
   } catch (e) { next(e); }
 });
 
@@ -314,6 +314,15 @@ router.post('/settings', async (req, res, next) => {
     await db.saveSettings(b);
     req.session.flash = 'Settings saved.';
     res.redirect('/admin/settings');
+  } catch (e) { next(e); }
+});
+
+// test runs and practice no longer shape the estimates
+router.post('/settings/reset-learning', async (req, res, next) => {
+  try {
+    await db.resetLearning();
+    req.session.flash = 'Learning starts fresh from now. Estimates use each document\'s set minutes until real services build up.';
+    res.redirect('/admin/settings#learning');
   } catch (e) { next(e); }
 });
 

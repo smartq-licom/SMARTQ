@@ -71,6 +71,7 @@ async function serviceProfile(department, settings) {
   const rows = await q(
     `SELECT actual_minutes AS m FROM transactions
      WHERE department=? AND ticket_status='completed' AND actual_minutes BETWEEN 1 AND 240
+       AND completed_at >= ${predict.LEARN_SINCE}
      ORDER BY completed_at DESC LIMIT 120`, [department]);
   let slow = SLOW_DEFAULT;
   if (rows.length >= 8) {

@@ -138,5 +138,21 @@
 
   <div class="lg:col-span-2"><button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save settings</button></div>
 </form>
+
+<form id="learning" method="POST" action="/admin/settings/reset-learning" class="max-w-4xl mt-4"
+      onsubmit="return confirm('Start learning fresh? Services finished before now will no longer shape the estimates. Records and reports are kept.')">
+  <section class="<%= UI.card %>">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Learning from real services</h3></div>
+    <div class="<%= UI.body %> flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <p class="text-[13px] text-slateSoft">
+        Estimates start from each document's set minutes and learn from finished services.
+        Learning from <b class="text-ink"><%= learning.counted %></b> of <%= learning.total %> finished services<%
+        if (learning.since) { %>, since <b class="text-ink"><%= new Date(learning.since).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) %></b><% } %>.
+        <span class="block mt-1 text-[12px] text-slateSoft/75">After test runs or practice, start fresh so quick test clicks don't shorten the times. Records and reports are kept.</span>
+      </p>
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> shrink-0">Start learning fresh</button>
+    </div>
+  </section>
+</form>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>

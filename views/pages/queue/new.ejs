@@ -4,6 +4,9 @@
 <style>
   /* claiming: find your paid documents, then tick what to collect */
   .claim-box{ margin:12px 0 0 38px; padding:14px; border-radius:14px; background:var(--card-bg); border:1.5px dashed rgb(var(--c-brand-line)); animation:open .3s ease-out }
+  .claim-who{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; border-radius:12px; background:var(--mist-bg) }
+  .claim-who button{ padding:8px; border-radius:9px; font-size:12.5px; font-weight:700; color:var(--soft-c); transition:background .15s, color .15s }
+  .claim-who button[aria-selected="true"]{ background:var(--card-bg); color:var(--ink-c); box-shadow:0 1px 3px rgba(16,24,40,.12) }
   .claim-msg{ margin-top:10px; padding:8px 12px; border-radius:10px; font-size:12.5px; background:rgb(239 68 68 / .1); color:#b91c1c }
   .dark .claim-msg{ color:#FCA5A5 }
   .claim-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:12px; border:1.5px solid var(--line); cursor:pointer; transition:border-color .15s, background .15s }
@@ -243,9 +246,15 @@
                   <div class="claim-step" data-claim-find>
                     <div class="text-[13px] font-bold text-ink">Find what you paid for at the Cashier</div>
                     <p class="text-[12px] text-slateSoft/75 mt-0.5">Enter your details exactly as on your Cashier ticket.</p>
+                    <div class="claim-who mt-3" role="tablist" aria-label="Who is claiming">
+                      <button type="button" role="tab" data-claim-as="student" aria-selected="true">I'm a student</button>
+                      <button type="button" role="tab" data-claim-as="visitor" aria-selected="false">I'm a visitor</button>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3">
-                      <div><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
+                      <div data-as="student"><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
                         <input id="lkNo" class="<%= UI.input %> font-mono" inputmode="numeric" maxlength="9" placeholder="9 digits" autocomplete="off"></div>
+                      <div data-as="visitor" hidden><label for="lkCode" class="<%= UI.lbl %>">Booking code of your Cashier ticket</label>
+                        <input id="lkCode" class="<%= UI.input %> font-mono uppercase tracking-[.2em]" maxlength="6" placeholder="e.g. K7MX2Q" autocomplete="off" autocapitalize="characters"></div>
                       <div><label for="lkLast" class="<%= UI.lbl %>">Last name</label><input id="lkLast" class="<%= UI.input %>" autocomplete="off"></div>
                     </div>
                     <p class="claim-msg" data-claim-msg hidden></p>
@@ -705,12 +714,26 @@ function loadSlots(){
   var esc = function (t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; };
   function msg(t) { var m = $('[data-claim-msg]'); m.textContent = t || ''; m.hidden = !t; }
   function setVal(id, v) { var f = document.getElementById(id); if (f) { f.value = v; f.dispatchEvent(new Event('change', { bubbles: true })); } }
+  // student or visitor: which details find the payment
+  box.dataset.as = 'student';
+  box.querySelectorAll('[data-claim-as]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      box.dataset.as = t.dataset.claimAs;
+      box.querySelectorAll('[data-claim-as]').forEach(function (o) { o.setAttribute('aria-selected', o === t ? 'true' : 'false'); });
+      box.querySelectorAll('[data-as]').forEach(function (f) { f.hidden = f.dataset.as !== box.dataset.as; });
+      msg('');
+    });
+  });
   $('[data-claim-again]').addEventListener('click', function () {
     $('[data-claim-list]').hidden = true; $('[data-claim-find]').hidden = false; $('[data-claim-items]').innerHTML = '';
   });
   $('[data-claim-go]').addEventListener('click', function () {
-    var d = { studentNo: $('#lkNo').value.trim(), lastName: $('#lkLast').value.trim() };
-    if (!/^\d{9}$/.test(d.studentNo) || !d.lastName)
+    var visitor = box.dataset.as === 'visitor';
+    var d = visitor ? { code: $('#lkCode').value.trim().toUpperCase(), lastName: $('#lkLast').value.trim() }
+                    : { studentNo: $('#lkNo').value.trim(), lastName: $('#lkLast').value.trim() };
+    if (visitor && (!/^[A-Z0-9]{6}$/.test(d.code) || !d.lastName))
+      return msg('Enter the 6-character booking code from your Cashier ticket and your last name.');
+    if (!visitor && (!/^\d{9}$/.test(d.studentNo) || !d.lastName))
       return msg('Enter your 9-digit student number and your last name.');
     var btn = $('[data-claim-go]'); btn.disabled = true; msg('');
     fetch('/queue/claimables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(d) })
@@ -732,12 +755,13 @@ function loadSlots(){
           (res.lines.some(function (l) { return !l.ready; })
             ? '<p class="text-[11.5px] text-slateSoft/70">Not ready yet? Leave it unticked and collect it on its date, or tick it anyway; staff will check if it is done.</p>' : '');
         }
-        $('[data-claim-who]').textContent = d.lastName + ' · ' + d.studentNo;
+        $('[data-claim-who]').textContent = d.lastName + ' · ' + (visitor ? 'booking code ' + d.code : d.studentNo);
         $('[data-claim-find]').hidden = true; $('[data-claim-list]').hidden = false;
         // the same person is the one claiming: fill "Your details" for them
-        var student = document.querySelector('input[name=clientType][value=student]');
-        if (student && !student.checked) { student.checked = true; student.dispatchEvent(new Event('change', { bubbles: true })); }
-        setVal('lastName', d.lastName); setVal('studentNo', d.studentNo);
+        var type = document.querySelector('input[name=clientType][value=' + (visitor ? 'guest' : 'student') + ']');
+        if (type && !type.checked) { type.checked = true; type.dispatchEvent(new Event('change', { bubbles: true })); }
+        setVal('lastName', d.lastName);
+        if (!visitor) setVal('studentNo', d.studentNo);
       })
       .catch(function () { btn.disabled = false; msg('Could not reach SmartQ. Check your connection and try again.'); });
   });

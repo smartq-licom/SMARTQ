@@ -261,8 +261,12 @@ router.get('/find', (req, res) =>
 // when the student number and last name match (rate-limited in app.js).
 router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next) => {
   try {
-    const lines = await db.findClaimables(req.body || {});
-    if (!lines) return res.json({ ok: false, error: 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
+    const b = req.body || {};
+    const visitor = b.code != null;
+    const lines = visitor ? await db.findClaimablesByCode(b) : await db.findClaimables(b);
+    if (!lines) return res.json({ ok: false, error: visitor
+      ? 'No match. Check the booking code on your Cashier ticket and your last name.'
+      : 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
     res.json({ ok: true, lines });
   } catch (e) { next(e); }
 });

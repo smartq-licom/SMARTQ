@@ -204,7 +204,8 @@ async function biasFactor(department) {
             SUM(TIMESTAMPDIFF(MINUTE, COALESCE(queue_at, requested_at), called_at)) AS a
      FROM transactions
      WHERE department=? AND predicted_wait >= 3 AND called_at IS NOT NULL
-       AND service_date >= CURDATE() - INTERVAL 14 DAY AND service_date < CURDATE()`, [department]);
+       AND service_date >= CURDATE() - INTERVAL 14 DAY AND service_date < CURDATE()
+       AND called_at >= COALESCE((SELECT learn_from FROM settings WHERE id=1), '2000-01-01')`, [department]);
   const n = Number(r.n) || 0;
   if (n < 30 || !Number(r.p)) return { factor: 1, samples: n, active: false };
   const raw = Number(r.a) / Number(r.p);

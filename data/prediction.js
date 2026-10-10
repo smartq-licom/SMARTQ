@@ -50,7 +50,7 @@ async function getDocumentStats(minSamples = 3, lookback = 30) {
      FROM transactions t
      JOIN transaction_documents td ON td.transaction_id = t.id
      WHERE t.ticket_status='completed' AND t.actual_minutes IS NOT NULL
-       AND t.actual_minutes BETWEEN 1 AND 240
+       AND t.actual_minutes BETWEEN 1 AND 240 AND t.completed_at >= ${LEARN_SINCE}
      ORDER BY t.completed_at DESC`);
 
   const byItem = {}, byDept = {};
@@ -89,6 +89,13 @@ async function getDocumentStats(minSamples = 3, lookback = 30) {
  * give about 5.7 min, not 1; a hundred real samples are almost all data.
  */
 const PRIOR_WEIGHT = 10;
+
+/**
+ * Services finished before the admin's "Start learning fresh" (test runs,
+ * practice) are not learned from. SQL for that cut-off, used by every
+ * query that learns from completed services.
+ */
+const LEARN_SINCE = "COALESCE((SELECT learn_from FROM settings WHERE id=1), '2000-01-01')";
 function shrink(median, n, prior) {
   return (n * median + PRIOR_WEIGHT * prior) / (n + PRIOR_WEIGHT);
 }
@@ -267,7 +274,7 @@ async function observedPace(department, { sample = 8, maxGap = 45, minGaps = 3 }
   const rows = await q(
     `SELECT completed_at FROM transactions
      WHERE department=? AND service_date=CURDATE()
-       AND ticket_status='completed' AND completed_at IS NOT NULL
+       AND ticket_status='completed' AND completed_at IS NOT NULL AND completed_at >= ${LEARN_SINCE}
      ORDER BY completed_at DESC LIMIT ?`, [department, sample + 1]);
 
   if (rows.length < 2) return { pace: null, gaps: 0, basis: 'none' };
@@ -568,7 +575,7 @@ async function getAccuracy(from = null, to = null) {
   };
 }
 
-module.exports = {
+module.exports = { LEARN_SINCE,
   median, ewma, erlangC, shrink, servicePattern, priorityArrivals,
   getDocumentStats, estimateService,
   observedPace, ticketEta,
