@@ -4,6 +4,21 @@
 <style>
   /* claiming: find your paid documents, then tick what to collect */
   .claim-box{ margin:12px 0 0 38px; padding:14px; border-radius:14px; background:var(--card-bg); border:1.5px dashed rgb(var(--c-brand-line)); animation:open .3s ease-out }
+  /* priority choice: the icon pops when picked, the proof box slides open */
+  .prio-ico{ display:grid; place-items:center; width:40px; height:40px; margin:0 auto 6px; border-radius:12px;
+             background:var(--mist-bg); color:var(--soft-c); transition:background .2s, color .2s, transform .2s }
+  .prio-ico svg{ width:24px; height:24px }
+  .prio-card:hover .prio-ico{ transform:translateY(-2px) }
+  .prio-card:has(:checked) .prio-ico{ background:rgb(var(--c-brand)); color:#fff }
+  .prio-card:has(:checked) .prio-ico.is-prio{ background:rgb(109 40 217) }
+  .prio-card:has(:focus-visible){ outline:2px solid rgb(var(--c-brand)); outline-offset:2px }
+  .prio-card.is-pop .prio-ico{ animation:prio-pop .5s cubic-bezier(.3,1.6,.5,1) }
+  .prio-card.is-pop .prio-ico.is-prio svg{ animation:prio-wave .7s ease-in-out .1s }
+  @keyframes prio-pop{ 0%{ transform:scale(.7) } 60%{ transform:scale(1.15) } 100%{ transform:scale(1) } }
+  @keyframes prio-wave{ 0%,100%{ transform:rotate(0) } 25%{ transform:rotate(-10deg) } 60%{ transform:rotate(8deg) } }
+  #proofBox.is-open{ animation:open .35s cubic-bezier(.2,.8,.2,1) both }
+  @media (prefers-reduced-motion:reduce){ .prio-card.is-pop .prio-ico, .prio-card.is-pop .prio-ico svg, #proofBox.is-open{ animation:none !important } }
+  .rep-prio-note{ border-radius:10px; padding:9px 12px; font-size:12.5px; line-height:1.45; background:rgb(245 243 255); color:rgb(76 29 149); border:1px solid rgb(221 214 254) }
   .claim-who{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; border-radius:12px; background:var(--mist-bg) }
   .claim-who button{ padding:8px; border-radius:9px; font-size:12.5px; font-weight:700; color:var(--soft-c); transition:background .15s, color .15s }
   .claim-who button[aria-selected="true"]{ background:var(--card-bg); color:var(--ink-c); box-shadow:0 1px 3px rgba(16,24,40,.12) }
@@ -543,39 +558,6 @@
         </div>
       </section>
 
-      <!-- priority lane: declared here, the ID is checked at the window -->
-      <section class="<%= UI.card %> step">
-        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Priority lane</h3></div>
-        <div class="<%= UI.body %>">
-          <fieldset>
-            <legend class="text-[13px] text-slateSoft mb-2.5">PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <% [['', 'No, regular'], ['pwd', priorityLabels.pwd], ['senior', priorityLabels.senior], ['pregnant', priorityLabels.pregnant]].forEach(function (p) { %>
-              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-3 py-2.5 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
-                <input type="radio" name="priorityType" value="<%= p[0] %>" class="sr-only"
-                       <%= (form.priorityType || '') === p[0] ? 'checked' : '' %> onchange="toggleProof()">
-                <span class="text-[13px] font-bold"><%= p[1] %></span>
-              </label>
-              <% }) %>
-            </div>
-          </fieldset>
-          <div id="proofBox" class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3.5 py-3" hidden>
-            <label for="proof" class="block text-[12.5px] font-bold text-violet-900 mb-1.5">
-              Photo of your proof * <span class="font-normal" data-proof-what></span>
-            </label>
-            <input id="proof" name="proof" type="file" accept="image/jpeg,image/png,application/pdf"
-                   class="block w-full text-[12.5px] text-violet-900 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-700 file:px-3 file:py-2 file:text-white file:font-semibold">
-            <p class="text-[12px] text-violet-900/85 mt-2">
-              JPG, PNG or PDF, up to 5 MB. You start in the regular line; once staff approve
-              your proof, your ticket moves to the priority lane. Bring the same ID to the window.
-            </p>
-            <% if (formError && form.priorityType) { %>
-            <p class="text-[12px] font-semibold text-violet-900 mt-1.5">Please choose the photo again.</p>
-            <% } %>
-          </div>
-        </div>
-      </section>
-
       <!-- who will claim it -->
       <section class="<%= UI.card %> step">
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Who will claim this?</h3></div>
@@ -619,6 +601,51 @@
               Your representative must bring a signed authorisation letter, their own valid ID,
               and a copy of yours. Staff will check these before releasing anything.
             </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- priority lane: declared here, the ID is checked at the window -->
+      <section class="<%= UI.card %> step">
+        <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Priority lane</h3></div>
+        <div class="<%= UI.body %>">
+          <fieldset>
+            <legend class="text-[13px] text-slateSoft mb-2.5" data-prio-ask>PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
+            <p class="rep-prio-note mb-2.5" data-rep-prio hidden>
+              Priority goes to the person who comes to the window. Choose it only if <b data-rep-who>your representative</b> is a PWD,
+              Senior Citizen or pregnant, and upload <b>their</b> ID.
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <% var prioIcon = {"": "<circle cx=\"12\" cy=\"6\" r=\"2.6\"/><path d=\"M6.5 20v-3.5a5.5 5.5 0 0 1 11 0V20\"/>", "pwd": "<circle cx=\"10\" cy=\"4.5\" r=\"1.8\"/><path d=\"M10 7.5v6h5.5l2.5 5\"/><path d=\"M10 10.5h5\"/><path d=\"M7.2 11.3a5 5 0 1 0 7.3 6.2\"/>", "senior": "<circle cx=\"11\" cy=\"4.5\" r=\"2\"/><path d=\"M11 7.5c-1.6 0-2.6 1.4-2.6 3v3.5l-1.4 6\"/><path d=\"M11 7.5c1.2 0 2 .8 2.4 2l.9 2.5 2.2.6\"/><path d=\"M10.6 14l1.6 6\"/><path d=\"M17 12.6V20\"/><path d=\"M17 12.6c0-.9.6-1.4 1.3-1.4\"/>", "pregnant": "<circle cx=\"11\" cy=\"4.5\" r=\"2\"/><path d=\"M10 7.5c-1.4.3-2 1.6-2 3.2v3.8h1.6L9.2 20\"/><path d=\"M11 7.8c1 .6 1.5 1.6 1.6 2.6a3.4 3.4 0 0 1 .4 6.5L12.5 20\"/>"};
+                 [['', 'No, regular'], ['pwd', priorityLabels.pwd], ['senior', priorityLabels.senior], ['pregnant', priorityLabels.pregnant]].forEach(function (p) { %>
+              <label class="prio-card rounded-2xl border-2 transition has-[:checked]:shadow-card px-3 py-3 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
+                <input type="radio" name="priorityType" value="<%= p[0] %>" class="sr-only"
+                       <%= (form.priorityType || '') === p[0] ? 'checked' : '' %> onchange="toggleProof(true)">
+                <span class="prio-ico <%= p[0] ? 'is-prio' : '' %>" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><%- prioIcon[p[0]] %></svg>
+                </span>
+                <span class="block text-[13px] font-bold"><%= p[1] %></span>
+              </label>
+              <% }) %>
+            </div>
+          </fieldset>
+          <div id="proofBox" class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3.5 py-3" hidden>
+            <label for="proof" class="block text-[12.5px] font-bold text-violet-900 mb-1.5">
+              Photo of <span data-proof-whose>your</span> proof * <span class="font-normal" data-proof-what></span>
+            </label>
+            <input id="proof" name="proof" type="file" accept="image/jpeg,image/png,application/pdf"
+                   class="block w-full text-[12.5px] text-violet-900 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-700 file:px-3 file:py-2 file:text-white file:font-semibold">
+            <p class="text-[12px] font-semibold text-violet-900 mt-2" data-proof-remember hidden>
+              Approved before? Students can skip the photo: an approved PWD or Senior Citizen proof is remembered
+              for a year (pregnancy for 30 days) by your student number and last name.
+            </p>
+            <p class="text-[12px] text-violet-900/85 mt-2">
+              JPG, PNG or PDF, up to 5 MB. You start in the regular line; once staff approve
+              the proof, the ticket moves to the priority lane. Bring the same ID to the window.
+            </p>
+            <% if (formError && form.priorityType) { %>
+            <p class="text-[12px] font-semibold text-violet-900 mt-1.5">Please choose the photo again.</p>
+            <% } %>
           </div>
         </div>
       </section>
@@ -806,16 +833,28 @@ function toggleClient(){
     f.required = !guest;
     f.disabled = guest;
   });
+  toggleProof();
 }
 // Priority needs a photo of the ID or proof (checked by staff before the
 // ticket moves to the priority lane).
-function toggleProof(){
+function toggleProof(picked){
   var p = document.querySelector('input[name=priorityType]:checked');
   var on = !!(p && p.value);
   var box = document.getElementById('proofBox'), file = document.getElementById('proof');
+  if (picked === true && p) {
+    // the chosen card pops; the proof box slides open when it first appears
+    var card = p.closest('.prio-card');
+    card.classList.remove('is-pop'); void card.offsetWidth; card.classList.add('is-pop');
+    if (on && box.hidden) { box.classList.remove('is-open'); void box.offsetWidth; box.classList.add('is-open'); }
+  }
+  // a student's own approval is remembered, so the server decides if a photo is needed
+  var guest = document.querySelector('input[name=clientType][value=guest]').checked;
+  var rep = document.querySelector('input[name=claimant][value=representative]').checked;
+  var mayRemember = on && !guest && !rep;
   box.hidden = !on;
-  file.required = on;
+  file.required = on && !mayRemember;
   file.disabled = !on;
+  box.querySelector('[data-proof-remember]').hidden = !mayRemember;
   var what = { pwd: '(PWD ID)', senior: '(Senior Citizen ID)', pregnant: '(medical certificate or prenatal record)' };
   box.querySelector('[data-proof-what]').textContent = on ? what[p.value] : '';
 }
@@ -825,7 +864,14 @@ function toggleRep(){
   ['repName','repRelationship'].forEach(function(id){
     document.getElementById(id).required = rep;
   });
+  // priority belongs to whoever stands in line: the representative, if one comes
+  var name = (document.getElementById('repName').value || '').trim();
+  document.querySelector('[data-rep-prio]').hidden = !rep;
+  document.querySelector('[data-rep-who]').textContent = name || 'your representative';
+  document.querySelector('[data-proof-whose]').textContent = rep ? (name ? name + "'s" : "your representative's") : 'your';
+  toggleProof();
 }
+document.getElementById('repName').addEventListener('input', toggleRep);
 
 // The office came from the queue page; "Change" brings back both choices.
 function changeOffice(){
@@ -1098,10 +1144,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     if (!course.disabled && course.value)
       out.push(row('Course', esc(course.value + (year.value ? ', Year ' + year.value : ''))));
     var lane = form.querySelector('input[name=priorityType]:checked');
-    out.push(row('Lane', lane && lane.value
-      ? 'Regular until your ' + esc(text(lane.closest('label'))) + ' proof is approved'
-      : 'Regular'));
     var rep = form.querySelector('input[name=claimant][value=representative]');
+    out.push(row('Lane', lane && lane.value
+      ? 'Regular until ' + (rep && rep.checked ? "the representative's " : 'your ') + esc(text(lane.closest('label'))) + ' proof is approved'
+      : 'Regular'));
     out.push(row('Claimed by', rep && rep.checked
       ? esc((document.getElementById('repName').value || 'Representative') + ' (' + (document.getElementById('repRelationship').value || '') + ')')
       : 'Myself'));

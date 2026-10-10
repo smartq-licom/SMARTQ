@@ -106,7 +106,7 @@
         <%# Priority was approved from a photo; the real ID is checked here. %>
         <% if (current.queueCategory === 'priority' && current.priorityType !== 'none') { %>
         <div class="mb-4 rounded-xl bg-violet-50 ring-1 ring-inset ring-violet-200 px-3.5 py-2.5 no-print">
-          <div class="text-[12.5px] font-bold text-violet-900">Check the <%= current.priorityType === 'pregnant' ? 'proof of pregnancy' : (current.priorityType === 'senior' ? 'Senior Citizen ID' : 'PWD ID') %></div>
+          <div class="text-[12.5px] font-bold text-violet-900">Check the <%= current.claimant === 'representative' ? "representative's " : '' %><%= current.priorityType === 'pregnant' ? 'proof of pregnancy' : (current.priorityType === 'senior' ? 'Senior Citizen ID' : 'PWD ID') %><%= current.claimant === 'representative' && current.repName ? ' (' + current.repName + ')' : '' %></div>
           <form method="POST" action="/staff/move-regular/<%= current.id %>" class="mt-1"
                 data-confirm data-confirm-title="Move <%= current.ticketNo %> to the regular lane?"
                 data-confirm-body="The ID does not match the approved proof. The ticket gets a new regular number at the end of the line and your window is freed."

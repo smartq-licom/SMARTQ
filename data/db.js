@@ -31,6 +31,9 @@ const fullName = r => [r.first_name, /^n\/a$/i.test(String(r.middle_name || '').
 const PURPOSES = ['Transfer','Personal Reference','Job Purposes',
                   'Board Examination',"Graduation / Dean's List",'Others'];
 const PRIORITY_TYPES = ['pwd','senior','pregnant'];
+// An approved proof is remembered per student number: PWD and Senior Citizen
+// do not change within a year; a pregnancy is temporary.
+const PRIORITY_REMEMBER_DAYS = { pwd: 365, senior: 365, pregnant: 30 };
 // Programs offered by Libon Community College. BSED (six majors) and BTVTEd
 // (three majors) are listed one entry per major, so the student picks the exact
 // program once instead of picking the degree and then a separate major.
@@ -654,6 +657,9 @@ function mapPriorityRequest(r) {
     transactionId: r.transaction_id || null, ticketNo: r.ticket_no || '',
     department: r.department || '', ticketStatus: r.ticket_status || '',
     serviceDate: r.service_date ? ymd(new Date(r.service_date)) : null,
+    // the proof is the representative's when someone else comes to the window
+    forRep: r.claimant === 'representative',
+    repName: r.rep_name || '', repRelationship: r.rep_relationship || '',
   };
 }
 
@@ -663,7 +669,8 @@ const PR_SELECT = `
          p.status, p.reason, p.reviewer_name, p.reviewed_at, p.created_at,
          u.first_name, u.middle_name, u.last_name, u.email, u.role,
          u.student_no, u.course, u.year_level,
-         t.ticket_no, t.department, t.ticket_status, t.service_date
+         t.ticket_no, t.department, t.ticket_status, t.service_date,
+         t.claimant, t.rep_name, t.rep_relationship
   FROM priority_requests p
   JOIN users u ON u.id = p.user_id
   LEFT JOIN transactions t ON t.id = p.transaction_id`;
@@ -758,8 +765,10 @@ async function decidePriorityRequest(reviewer, id, approve, reason) {
 
   let moved = null;
   if (approve) {
-    await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW() WHERE id=?`,
-              [pr.category, pr.userId]);
+    // a representative's ID says nothing about the student: only the ticket moves
+    if (!pr.forRep && pr.role === 'student')
+      await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW() WHERE id=?`,
+                [pr.category, pr.userId]);
     if (pr.transactionId) moved = await moveToPriority(reviewer, pr.transactionId, pr.category);
   }
   if (pr.transactionId) {
@@ -1341,6 +1350,9 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     // approve the proof (decidePriorityRequest).
     if (b.queueCategory === 'priority' && !PRIORITY_TYPES.includes(b.priorityType))
       return { error: 'Choose which priority group you belong to (PWD, Senior Citizen or Pregnant).' };
+    // approved before and still remembered: straight to the priority lane
+    const known = b.queueCategory === 'priority' && user.role === 'student' ? await rememberedPriority(b) : null;
+    if (known) { category = 'priority'; pType = known.type; }
   } else if (b.queueCategory === 'priority') {
     if (granted === 'none') {
       return { error: 'Your account is not approved for the priority lane. ' +
@@ -1622,6 +1634,30 @@ async function getBlockingTransaction(userId, department = null, serviceDate = n
 const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[^a-z]/g, '');
 const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * A student approved earlier skips the photo: the same student number and last
+ * name, the same priority type, approved within PRIORITY_REMEMBER_DAYS, and
+ * coming to the window themselves. Staff still check the real ID there.
+ */
+async function rememberedPriority(b) {
+  if (b.clientType === 'guest' || b.claimant === 'representative') return null;
+  if (!PRIORITY_TYPES.includes(b.priorityType)) return null;
+  const no = String(b.studentNo || '').trim();
+  if (!STUDENT_NO_RE.test(no)) return null;
+  const u = (await q(
+    `SELECT last_name, priority_status, priority_approved_at FROM users
+     WHERE student_no=? AND role='student' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
+  if (!u || u.priority_status !== b.priorityType || !u.priority_approved_at) return null;
+  if (normName(u.last_name) !== normName(b.lastName)) return null;
+  const until = new Date(new Date(u.priority_approved_at).getTime() + PRIORITY_REMEMBER_DAYS[b.priorityType] * 86400000);
+  return until > new Date() ? { type: b.priorityType, approvedAt: u.priority_approved_at, until } : null;
+}
+async function noteRememberedPriority(t, type) {
+  await run(
+    `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note) VALUES (?,?,'moved_to_priority',?,?)`,
+    [t.id, t.ticketNo, t.department, `${PRIORITY_LABELS[type]} approved earlier for this student number; no new proof needed`]);
+}
 
 async function findOrCreateWalkIn(b) {
   const first = cleanName(b.firstName), middle = cleanName(b.middleName), last = cleanName(b.lastName);
@@ -3489,7 +3525,7 @@ module.exports = {
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
-  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus,
+  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS,
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,

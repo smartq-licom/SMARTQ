@@ -188,9 +188,10 @@ router.post('/new', proofToMemory, async (req, res, next) => {
 
     // Priority needs proof. The ticket starts in the regular lane and moves up
     // once staff or the admin approve it (Priority Requests, red dot).
+    // A student approved earlier (same type, still remembered) can skip the photo.
     if (b.priorityType) {
       if (req.uploadError) return renderForm(req, res, b, req.uploadError);
-      if (!req.file) return renderForm(req, res, b,
+      if (!req.file && !(await db.rememberedPriority(b))) return renderForm(req, res, b,
         'Upload a photo of your PWD ID, Senior Citizen ID or proof of pregnancy to ask for the priority lane.');
     }
 
@@ -236,7 +237,11 @@ router.post('/new', proofToMemory, async (req, res, next) => {
       return renderForm(req, res, b, msg);
     }
     // a repeated submit returns the same ticket: do not file the proof twice
-    if (b.priorityType && !(await db.getTicketPriorityRequest(r.id)))
+    // remembered approval: already in the priority lane, nothing to review
+    if (r.queueCategory === 'priority' && b.priorityType) {
+      if (!(await db.getTicketPriorityRequest(r.id)))
+        await db.noteRememberedPriority(r, b.priorityType);
+    } else if (b.priorityType && req.file && !(await db.getTicketPriorityRequest(r.id)))
       await db.createTicketPriorityRequest(r, b.priorityType, req.file);
     remember(req, res, r.accessToken);
     // the capacity decision: still a number, but an honest heads-up

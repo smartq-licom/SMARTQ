@@ -31,6 +31,12 @@
       <span class="<%= pill %> <%= tone(r.category) %>"><%= r.categoryLabel %></span>
     </div>
     <div class="<%= UI.body %>">
+      <% if (r.forRep) { %>
+      <p class="mb-3 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 text-[12.5px] text-violet-900">
+        <b>Proof for the representative:</b> <%= r.repName %><%= r.repRelationship ? ' (' + r.repRelationship + ')' : '' %>.
+        The name on the ID should be theirs, not the student's.
+      </p>
+      <% } %>
       <dl class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px] mb-3">
         <% if (r.ticketNo) { %>
         <div><dt class="text-slateSoft/80 text-[11px]">Ticket</dt>
@@ -110,7 +116,7 @@
     <tbody>
       <% reviewed.forEach(function(r){ %>
       <tr class="<%= UI.tr %>">
-        <td class="<%= UI.td %> font-semibold"><%= r.name %></td>
+        <td class="<%= UI.td %> font-semibold"><%= r.name %><% if (r.forRep) { %><div class="text-[11.5px] font-normal text-violet-800">for representative <%= r.repName %></div><% } %></td>
         <td class="<%= UI.td %> text-[12px]"><%= r.ticketNo ? r.ticketNo + ' · ' + r.department : '-' %></td>
         <td class="<%= UI.td %> text-[12px]"><%= r.categoryLabel %></td>
         <td class="<%= UI.td %>">
