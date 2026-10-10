@@ -6,10 +6,10 @@
   .claim-box{ margin:12px 0 0 38px; padding:14px; border-radius:14px; background:var(--card-bg); border:1.5px dashed rgb(var(--c-brand-line)); animation:open .3s ease-out }
   .claim-msg{ margin-top:10px; padding:8px 12px; border-radius:10px; font-size:12.5px; background:rgb(239 68 68 / .1); color:#b91c1c }
   .dark .claim-msg{ color:#FCA5A5 }
-  .claim-item{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1.5px solid var(--line); cursor:pointer; transition:border-color .15s, background .15s }
+  .claim-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:12px; border:1.5px solid var(--line); cursor:pointer; transition:border-color .15s, background .15s }
   .claim-item:has(input:checked){ border-color:#2185D5; background:rgb(var(--c-brand-wash)) }
-  .claim-item input{ width:18px; height:18px; accent-color:#2185D5; flex:none }
-  .claim-tag{ margin-left:auto; flex:none; font-size:11px; font-weight:700; padding:4px 8px; border-radius:999px }
+  .claim-item input{ width:18px; height:18px; margin-top:2px; accent-color:#2185D5; flex:none }
+  .claim-tag{ display:inline-block; margin-top:6px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px }
   .claim-tag.ok{ background:rgb(16 185 129 / .14); color:#047857 } .dark .claim-tag.ok{ color:#6EE7B7 }
   .claim-tag.wait{ background:rgb(245 158 11 / .16); color:#b45309 } .dark .claim-tag.wait{ color:#FCD34D }
   @media (max-width:480px){ .claim-box{ margin-left:0 } }
@@ -725,9 +725,9 @@ function loadSlots(){
           list.innerHTML = res.lines.map(function (l) {
             return '<label class="claim-item"><input type="checkbox" name="claimLines" value="' + l.id + '"' + (l.ready ? ' checked' : '') +
               ' data-name="' + esc(l.name + (l.copies > 1 ? ' x' + l.copies : '')) + '" data-ready="' + (l.ready ? 1 : 0) + '" data-ready-text="' + esc(l.readyText) + '">' +
-              '<span class="min-w-0"><span class="block text-[13.5px] font-semibold text-ink">' + esc(l.name) + (l.copies > 1 ? ' &times;' + l.copies : '') + '</span>' +
-              '<span class="block text-[11.5px] text-slateSoft/70">Paid ' + esc(l.paidText) + ' &middot; ' + esc(l.receiptNo || l.paidTicket) + '</span></span>' +
-              (l.ready ? '<span class="claim-tag ok">Ready now</span>' : '<span class="claim-tag wait">Ready ' + esc(l.readyText) + '</span>') + '</label>';
+              '<span class="min-w-0 flex-1"><span class="block text-[13.5px] font-semibold text-ink leading-snug">' + esc(l.name) + (l.copies > 1 ? ' &times;' + l.copies : '') + '</span>' +
+              '<span class="block text-[11.5px] text-slateSoft/70 mt-0.5">Paid ' + esc(l.paidText) + ' &middot; <span class="font-mono whitespace-nowrap">' + esc(l.receiptNo || l.paidTicket) + '</span></span>' +
+              (l.ready ? '<span class="claim-tag ok">Ready now</span>' : '<span class="claim-tag wait">Ready ' + esc(l.readyText) + '</span>') + '</span></label>';
           }).join('') +
           (res.lines.some(function (l) { return !l.ready; })
             ? '<p class="text-[11.5px] text-slateSoft/70">Not ready yet? Leave it unticked and collect it on its date, or tick it anyway; staff will check if it is done.</p>' : '');
