@@ -1425,6 +1425,10 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   try {
     const svc = await predict.estimateService(items, department, s);
     forecast = { wait: null, service: svc.minutes, source: svc.source };
+    // a claim takes longer the more documents it releases: the first one at
+    // full time (ID check, records), each extra one at CLAIM_EXTRA_SHARE of it
+    if (claimLineIds.length > 1 && forecast.service)
+      forecast.service = Math.round(forecast.service * (1 + CLAIM_EXTRA_SHARE * (claimLineIds.length - 1)) * 10) / 10;
   } catch (e) { /* a forecast must never block a ticket */ }
 
   // ---- place in line: first come, first served (data/engine.js) -------------
@@ -2032,6 +2036,9 @@ async function bookClaim(cashierTx) {
   return { error: 'No free time was found in the next weeks. Please ask at the Registrar.' };
 }
 
+/** Each extra document on one claim adds this share of the claim's base time. */
+const CLAIM_EXTRA_SHARE = 0.6;
+
 /** A student may hold this many unfinished tickets per office (one per day). */
 const MAX_OPEN_PER_OFFICE = 2;
 
@@ -2115,24 +2122,15 @@ async function expectedClaimsToday() {
 
 /**
  * "What can I pick up?": the paid documents waiting for a student, shown only
- * when the student number, first and last name, course and year all match the
- * record. Any mismatch gives the same empty answer, so nobody can probe.
+ * when the student number AND last name match the record (a student number
+ * alone is not secret). Any mismatch gives the same empty answer, so nobody
+ * can probe; the claim itself is checked again, and staff check the ID.
  */
-async function findClaimables({ studentNo, firstName, lastName, course, yearLevel } = {}) {
+async function findClaimables({ studentNo, lastName } = {}) {
   const no = String(studentNo || '').trim();
-  const year = Number(yearLevel);
-  if (!STUDENT_NO_RE.test(no) || !normName(firstName) || !normName(lastName) || !isCourse(course) || !(year >= 1 && year <= 5)) return null;
+  if (!STUDENT_NO_RE.test(no) || !normName(lastName)) return null;
   const u = (await q(`SELECT * FROM users WHERE student_no=? AND role='student' AND status<>'disabled' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
-  if (!u) return null;
-  const f1 = normName(firstName), f2 = normName(u.first_name);
-  const firstOk = f1 === f2 || (f1.length >= 3 && f2.length >= 3 && (f1.startsWith(f2) || f2.startsWith(f1)));
-  if (!firstOk || normName(lastName) !== normName(u.last_name)) return null;
-  // course and year: the record's latest, or what a paid ticket of theirs says
-  const sameNow = u.course === course && Number(u.year_level) === year;
-  const onTicket = sameNow ? [] : await q(
-    `SELECT 1 FROM transactions WHERE user_id=? AND department='Cashier' AND payment_status='paid'
-       AND course=? AND year_level=? LIMIT 1`, [u.id, course, year]);
-  if (!sameNow && !onTicket.length) return null;
+  if (!u || normName(lastName) !== normName(u.last_name)) return null;
   const lines = await getClaimableLines(u.id);
   return lines.map(l => ({
     id: l.id, name: l.name, copies: l.copies, receiptNo: l.receiptNo, paidTicket: l.paidTicket,

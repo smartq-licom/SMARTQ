@@ -236,22 +236,17 @@
                 </div>
                 <% if (sv.needsPurpose) { %><div data-purpose-slot="<%= sv.id %>"></div><% } %>
                 <% if (isClaim) { %>
-                <%# Claiming: first prove who you are (student no., name, course,
-                    year must all match), then see what is waiting and tick what
-                    to collect now. Lookup fields have no name: never submitted. %>
+                <%# Claiming: first student number + last name (both must match),
+                    then see what is waiting and tick what to collect now. The
+                    lookup fields have no name: never submitted. %>
                 <div class="claim-box" data-claim-panel="<%= sv.id %>" hidden>
                   <div class="claim-step" data-claim-find>
                     <div class="text-[13px] font-bold text-ink">Find what you paid for at the Cashier</div>
                     <p class="text-[12px] text-slateSoft/75 mt-0.5">Enter your details exactly as on your Cashier ticket.</p>
                     <div class="grid grid-cols-2 gap-2.5 mt-3">
-                      <div class="col-span-2"><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
+                      <div><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
                         <input id="lkNo" class="<%= UI.input %> font-mono" inputmode="numeric" maxlength="9" placeholder="9 digits" autocomplete="off"></div>
-                      <div><label for="lkFirst" class="<%= UI.lbl %>">First name</label><input id="lkFirst" class="<%= UI.input %>" autocomplete="off"></div>
                       <div><label for="lkLast" class="<%= UI.lbl %>">Last name</label><input id="lkLast" class="<%= UI.input %>" autocomplete="off"></div>
-                      <div><label for="lkCourse" class="<%= UI.lbl %>">Course</label>
-                        <select id="lkCourse" class="<%= UI.input %>"><option value="">Select</option><% courses.forEach(function (c) { %><option value="<%= c %>"><%= c %></option><% }) %></select></div>
-                      <div><label for="lkYear" class="<%= UI.lbl %>">Year level</label>
-                        <select id="lkYear" class="<%= UI.input %>"><option value="">Select</option><% [1, 2, 3, 4, 5].forEach(function (y) { %><option value="<%= y %>">Year <%= y %></option><% }) %></select></div>
                     </div>
                     <p class="claim-msg" data-claim-msg hidden></p>
                     <button type="button" class="<%= UI.btn %> <%= UI.btnMain %> w-full mt-3" data-claim-go>
@@ -714,10 +709,9 @@ function loadSlots(){
     $('[data-claim-list]').hidden = true; $('[data-claim-find]').hidden = false; $('[data-claim-items]').innerHTML = '';
   });
   $('[data-claim-go]').addEventListener('click', function () {
-    var d = { studentNo: $('#lkNo').value.trim(), firstName: $('#lkFirst').value.trim(), lastName: $('#lkLast').value.trim(),
-              course: $('#lkCourse').value, yearLevel: $('#lkYear').value };
-    if (!/^\d{9}$/.test(d.studentNo) || !d.firstName || !d.lastName || !d.course || !d.yearLevel)
-      return msg('Fill in all five: student number (9 digits), first name, last name, course and year level.');
+    var d = { studentNo: $('#lkNo').value.trim(), lastName: $('#lkLast').value.trim() };
+    if (!/^\d{9}$/.test(d.studentNo) || !d.lastName)
+      return msg('Enter your 9-digit student number and your last name.');
     var btn = $('[data-claim-go]'); btn.disabled = true; msg('');
     fetch('/queue/claimables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(d) })
       .then(function (r) { return r.status === 429 ? { ok: false, error: 'Too many tries. Please wait a few minutes.' } : r.json(); })
@@ -738,13 +732,12 @@ function loadSlots(){
           (res.lines.some(function (l) { return !l.ready; })
             ? '<p class="text-[11.5px] text-slateSoft/70">Not ready yet? Leave it unticked and collect it on its date, or tick it anyway; staff will check if it is done.</p>' : '');
         }
-        $('[data-claim-who]').textContent = d.firstName + ' ' + d.lastName + ' · ' + d.studentNo + ' · ' + d.course + ', Year ' + d.yearLevel;
+        $('[data-claim-who]').textContent = d.lastName + ' · ' + d.studentNo;
         $('[data-claim-find]').hidden = true; $('[data-claim-list]').hidden = false;
         // the same person is the one claiming: fill "Your details" for them
         var student = document.querySelector('input[name=clientType][value=student]');
         if (student && !student.checked) { student.checked = true; student.dispatchEvent(new Event('change', { bubbles: true })); }
-        setVal('firstName', d.firstName); setVal('lastName', d.lastName); setVal('studentNo', d.studentNo);
-        setVal('course', d.course); setVal('yearLevel', d.yearLevel);
+        setVal('lastName', d.lastName); setVal('studentNo', d.studentNo);
       })
       .catch(function () { btn.disabled = false; msg('Could not reach SmartQ. Check your connection and try again.'); });
   });

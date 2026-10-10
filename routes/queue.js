@@ -258,11 +258,11 @@ router.get('/find', (req, res) =>
   res.render('pages/queue/find', { title: 'Find My Ticket', form: {}, formError: null }));
 
 // Claiming at the Registrar: the paid documents waiting for this student, only
-// when student number, name, course and year all match (rate-limited in app.js).
+// when the student number and last name match (rate-limited in app.js).
 router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next) => {
   try {
     const lines = await db.findClaimables(req.body || {});
-    if (!lines) return res.json({ ok: false, error: 'No match. Check your student number, name, course and year level, exactly as on your Cashier ticket.' });
+    if (!lines) return res.json({ ok: false, error: 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
     res.json({ ok: true, lines });
   } catch (e) { next(e); }
 });
