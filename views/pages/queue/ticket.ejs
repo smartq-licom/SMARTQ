@@ -1,6 +1,21 @@
 <%- include('../../partials/head') %>
 <%- include('../../partials/public-nav') %>
 <style>
+  /* "send a clearer photo" card */
+  .resend-status{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:800; background:rgb(220 38 38); color:#fff }
+  .resend-drop{ display:block; cursor:pointer; border:2px dashed rgb(245 158 11 / .55); border-radius:14px; background:var(--card-bg); padding:14px; text-align:center; transition:border-color .15s, background .15s, transform .15s }
+  .resend-drop:hover{ border-color:rgb(245 158 11) }
+  .resend-drop:active{ transform:scale(.99) }
+  .resend-drop:has(:focus-visible){ outline:2px solid rgb(245 158 11); outline-offset:2px }
+  .resend-empty{ display:flex; align-items:center; justify-content:center; gap:8px; color:var(--ink-c) }
+  .resend-empty svg{ width:24px; height:24px; color:rgb(217 119 6) }
+  .resend-empty b{ font-size:13.5px } .resend-picked small{ font-size:11.5px; color:var(--soft-c) }
+  .resend-picked{ display:flex; align-items:center; gap:12px; text-align:left; color:var(--ink-c); font-size:13px }
+  .resend-picked img{ flex:none; width:64px; height:44px; object-fit:cover; border-radius:8px; background:var(--mist-bg); box-shadow:0 0 0 1px rgb(0 0 0 / .08) }
+  .resend-drop.is-picked{ border-style:solid; border-color:rgb(16 185 129 / .6); padding:10px 12px; animation:resend-in .3s ease-out }
+  @keyframes resend-in{ from{ transform:scale(.97); opacity:.6 } to{ transform:none; opacity:1 } }
+  [data-resend-send]:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none }
+  @media (prefers-reduced-motion:reduce){ .resend-drop.is-picked{ animation:none } }
   /* the ticket stub: two notches where it would tear */
   .stub{position:relative}
   .stub::before,.stub::after{content:"";position:absolute;top:var(--tear,70%);width:22px;height:22px;border-radius:999px;background:var(--page-bg);transform:translateY(-50%)}
@@ -80,7 +95,34 @@
 
   <%# Priority proof sent with this ticket: where its review stands. %>
   <div data-live="priority">
-  <% if (priorityRequest) { var pr = priorityRequest; %>
+  <% if (priorityRequest && priorityRequest.mayResend) { var pr = priorityRequest;
+       var proofName = pr.category === 'pregnant' ? 'proof of pregnancy' : (pr.category === 'senior' ? 'Senior Citizen ID' : 'PWD ID'); %>
+  <%# A bad photo is not a refusal: a short, calm card to send a better one. %>
+  <section class="resend mt-4 rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 p-4 text-amber-950">
+    <span class="resend-status">&#10005; Priority not approved</span>
+    <h3 class="text-[15px] font-extrabold leading-tight mt-2">Send a clearer photo</h3>
+    <p class="text-[13px] mt-1">
+      <%= pr.reasonCode === 'expired' ? 'Your ' + proofName + ' has expired. Send a valid one.' : 'Your ' + proofName + ' photo was hard to read.' %>
+      <b>You keep your place in line.</b>
+    </p>
+
+    <form method="POST" action="<%= base %>/priority" enctype="multipart/form-data" class="mt-3" data-once data-resend>
+      <label class="resend-drop" for="resendProof">
+        <input id="resendProof" name="proof" type="file" accept="image/jpeg,image/png,application/pdf" required class="sr-only">
+        <span class="resend-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>
+          <b>Tap to choose a photo</b>
+        </span>
+        <span class="resend-picked" hidden>
+          <img alt="" data-resend-thumb>
+          <span class="min-w-0"><b class="block truncate" data-resend-name></b><small>Tap to change</small></span>
+        </span>
+      </label>
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full mt-3" data-resend-send disabled>Send photo</button>
+      <p class="text-center text-[11.5px] mt-1.5 opacity-75"><%= pr.retriesLeft %> <%= pr.retriesLeft === 1 ? 'try' : 'tries' %> left</p>
+    </form>
+  </section>
+  <% } else if (priorityRequest) { var pr = priorityRequest; %>
   <div class="mt-4 rounded-2xl ring-1 ring-inset px-4 py-3 text-[12.5px]
               <%= pr.status === 'rejected' ? 'bg-red-50 ring-red-200 text-red-900' : 'bg-violet-50 ring-violet-200 text-violet-900' %>">
     <% if (pr.status === 'pending') { %>
@@ -534,3 +576,18 @@
       pulseUrl: ['waiting','called','serving'].includes(t.ticketStatus) ? base + '/pulse' : ''
     }) %>
 <%- include('../../partials/scripts') %>
+<script>
+document.addEventListener('change', function (e) {
+  if (e.target.id !== 'resendProof') return;
+  var form = e.target.closest('[data-resend]'), f = e.target.files && e.target.files[0];
+  var drop = form.querySelector('.resend-drop'), img = form.querySelector('[data-resend-thumb]');
+  form.querySelector('.resend-empty').hidden = !!f;
+  form.querySelector('.resend-picked').hidden = !f;
+  drop.classList.toggle('is-picked', !!f);
+  form.querySelector('[data-resend-send]').disabled = !f;
+  if (!f) return;
+  form.querySelector('[data-resend-name]').textContent = f.name;
+  if (/^image\//.test(f.type)) { img.src = URL.createObjectURL(f); img.hidden = false; }
+  else { img.removeAttribute('src'); img.hidden = true; }   // a PDF: name only
+});
+</script>

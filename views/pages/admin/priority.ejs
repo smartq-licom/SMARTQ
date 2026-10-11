@@ -91,9 +91,21 @@
           <summary class="cursor-pointer text-[12.5px] font-semibold text-slateSoft py-1.5">Reject with a reason</summary>
           <form method="POST" action="<%= base %>/<%= r.id %>/decide" class="mt-2 space-y-2">
             <input type="hidden" name="decision" value="reject">
-            <label for="reason<%= r.id %>" class="<%= UI.lbl %>">Reason (shown on the student's ticket)</label>
-            <input id="reason<%= r.id %>" name="reason" class="<%= UI.input %>" required
-                   placeholder="e.g. The ID photo is blurred and the number is unreadable">
+            <fieldset>
+              <legend class="<%= UI.lbl %>">Reason (shown on the student's ticket)</legend>
+              <div class="grid grid-cols-2 gap-1.5">
+                <% Object.keys(rejectReasons).concat('other').forEach(function (code) { var rr = rejectReasons[code]; %>
+                <label class="rounded-lg border border-hair px-2.5 py-2 text-[12px] font-semibold cursor-pointer has-[:checked]:border-red-400 has-[:checked]:bg-red-50 has-[:checked]:text-red-900">
+                  <input type="radio" name="reasonCode" value="<%= code %>" class="sr-only" required>
+                  <%= rr ? rr.label : 'Other' %>
+                  <span class="block text-[10.5px] font-medium <%= rr && rr.retry ? 'text-emerald-700' : 'text-slateSoft/80' %>"><%= rr && rr.retry ? 'Can send a new photo' : 'Final' %></span>
+                </label>
+                <% }) %>
+              </div>
+            </fieldset>
+            <label for="reason<%= r.id %>" class="sr-only">Note</label>
+            <input id="reason<%= r.id %>" name="reason" class="<%= UI.input %>" maxlength="120"
+                   placeholder="Note (required for Other), e.g. the ID number is cut off">
             <button type="submit" class="<%= UI.btn %> <%= UI.btnBad %> w-full">Reject</button>
           </form>
         </details>

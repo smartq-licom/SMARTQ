@@ -156,6 +156,12 @@ const STEPS = [
     add:   'ALTER TABLE settings ADD COLUMN learn_from DATETIME NULL DEFAULT NULL',
   },
   {
+    name: 'why a priority proof was rejected, so a blurred photo can be sent again (reason_code)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'reason_code'`,
+    add:   'ALTER TABLE priority_requests ADD COLUMN reason_code VARCHAR(16) DEFAULT NULL',
+  },
+  {
     name: 'when the "ready for release" alert was sent for a paid document',
     check: `SELECT COUNT(*) AS has FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'transaction_documents' AND column_name = 'ready_notified_at'`,

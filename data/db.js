@@ -34,6 +34,15 @@ const PRIORITY_TYPES = ['pwd','senior','pregnant'];
 // An approved proof is remembered per student number: PWD and Senior Citizen
 // do not change within a year; a pregnancy is temporary.
 const PRIORITY_REMEMBER_DAYS = { pwd: 365, senior: 365, pregnant: 30 };
+// Quick reasons for a rejected proof. A bad photo or an expired ID can be sent
+// again from the ticket (keeping the place in line); the others are final.
+const PRIORITY_REJECT = {
+  blurred:  { label: 'Blurred / unreadable',   text: 'The photo is blurred or unreadable.',                   retry: true },
+  expired:  { label: 'Expired ID',             text: 'The ID has expired.',                                   retry: true },
+  mismatch: { label: "Name doesn't match",     text: "The name on the proof doesn't match the ticket.",       retry: false },
+  invalid:  { label: 'Not a valid proof',      text: 'This is not a valid proof for the priority lane.',      retry: false },
+};
+const PRIORITY_RETRIES = 2;     // new photos after a rejection, per ticket
 // Programs offered by Libon Community College. BSED (six majors) and BTVTEd
 // (three majors) are listed one entry per major, so the student picks the exact
 // program once instead of picking the degree and then a separate major.
@@ -647,7 +656,8 @@ function mapPriorityRequest(r) {
     categoryLabel: PRIORITY_LABELS[r.category] || r.category,
     proofFile: r.proof_file, proofMime: r.proof_mime, proofName: r.proof_name,
     isImage: /^image\//.test(r.proof_mime || ''),
-    status: r.status, reason: r.reason || '',
+    status: r.status, reason: r.reason || '', reasonCode: r.reason_code || null,
+    canRetry: !!(PRIORITY_REJECT[r.reason_code] && PRIORITY_REJECT[r.reason_code].retry),
     reviewerName: r.reviewer_name || '', reviewedAt: r.reviewed_at,
     createdAt: r.created_at,
     name: r.first_name ? fullName(r) : '',
@@ -666,7 +676,7 @@ function mapPriorityRequest(r) {
 // Never the proof itself (proof_data): lists stay light.
 const PR_SELECT = `
   SELECT p.id, p.user_id, p.transaction_id, p.category, p.proof_file, p.proof_mime, p.proof_name,
-         p.status, p.reason, p.reviewer_name, p.reviewed_at, p.created_at,
+         p.status, p.reason, p.reason_code, p.reviewer_name, p.reviewed_at, p.created_at,
          u.first_name, u.middle_name, u.last_name, u.email, u.role,
          u.student_no, u.course, u.year_level,
          t.ticket_no, t.department, t.ticket_status, t.service_date,
@@ -707,10 +717,28 @@ async function createTicketPriorityRequest(t, category, file) {
     [t.id, t.ticketNo, t.department, `Asked for the ${PRIORITY_LABELS[category]} priority lane; proof waiting for review`]);
 }
 
-/** The newest priority request for one ticket (shown on the student's ticket). */
+/**
+ * The newest priority request for one ticket (shown on the student's ticket),
+ * with whether a new photo may still be sent: rejected for a bad photo or an
+ * expired ID, at most PRIORITY_RETRIES times, while the ticket still waits.
+ */
 async function getTicketPriorityRequest(txId) {
   const r = await q(`${PR_SELECT} WHERE p.transaction_id=? ORDER BY p.id DESC LIMIT 1`, [txId]);
-  return r.length ? mapPriorityRequest(r[0]) : null;
+  if (!r.length) return null;
+  const pr = mapPriorityRequest(r[0]);
+  const [n] = await q('SELECT COUNT(*) AS n FROM priority_requests WHERE transaction_id=?', [txId]);
+  pr.retriesLeft = Math.max(0, PRIORITY_RETRIES + 1 - Number(n.n));
+  pr.mayResend = pr.status === 'rejected' && pr.canRetry && pr.retriesLeft > 0 && r[0].ticket_status === 'waiting';
+  return pr;
+}
+
+/** A clearer photo after a rejection: a new review, same ticket, same place in line. */
+async function resendPriorityProof(t, file) {
+  const pr = await getTicketPriorityRequest(t.id);
+  if (!pr || !pr.mayResend) return { error: 'A new photo cannot be sent for this ticket.' };
+  if (!file) return { error: 'Choose a photo of your proof first.' };
+  await createTicketPriorityRequest(t, pr.category, file);
+  return { ok: true };
 }
 
 /** For the red dot on the Priority Requests menu. */
@@ -750,18 +778,22 @@ async function getUserPriorityRequests(userId) {
  * record and, for a walk-in ticket still waiting in the regular lane, moves it
  * to the priority lane with a priority number, keeping its original time.
  */
-async function decidePriorityRequest(reviewer, id, approve, reason) {
+async function decidePriorityRequest(reviewer, id, approve, reason, reasonCode = null) {
   const pr = await getPriorityRequest(id);
   if (!pr)                       return { error: 'Request not found.' };
   if (pr.status !== 'pending')   return { error: 'This request has already been reviewed.' };
+  // a quick reason fills the text; "other" needs the reviewer's own words
+  const quick = PRIORITY_REJECT[reasonCode];
+  if (!approve && quick) reason = quick.text + (String(reason || '').trim() ? ' ' + String(reason).trim() : '');
+  else if (!approve) reasonCode = 'other';
   if (!approve && !String(reason || '').trim())
-    return { error: 'Give a reason so the student knows what was wrong.' };
+    return { error: 'Choose a reason, or write one, so the student knows what was wrong.' };
 
   await run(
-    `UPDATE priority_requests SET status=?, reason=?, reviewed_by=?, reviewer_name=?, reviewed_at=NOW()
+    `UPDATE priority_requests SET status=?, reason=?, reason_code=?, reviewed_by=?, reviewer_name=?, reviewed_at=NOW()
      WHERE id=?`,
-    [approve ? 'approved' : 'rejected', approve ? null : String(reason).trim(),
-     reviewer.id, reviewer.fullName, id]);
+    [approve ? 'approved' : 'rejected', approve ? null : String(reason).trim().slice(0, 255),
+     approve ? null : reasonCode, reviewer.id, reviewer.fullName, id]);
 
   let moved = null;
   if (approve) {
@@ -778,7 +810,9 @@ async function decidePriorityRequest(reviewer, id, approve, reason) {
           body: moved ? `You moved to the priority lane. Bring the same ID to the window.` : 'Bring the same ID to the window.',
           url: '/queue/t/' + t.accessToken }
       : { title: 'Priority not approved',
-          body: `${String(reason).trim()} You stay in the regular line.`, url: '/queue/t/' + t.accessToken });
+          body: `${String(reason).trim()} ` + (quick && quick.retry
+            ? 'You keep your place: send a clearer photo from your ticket.' : 'You stay in the regular line.'),
+          url: '/queue/t/' + t.accessToken });
   }
   return { ok: true, moved, request: await getPriorityRequest(id) };
 }
@@ -3519,7 +3553,7 @@ module.exports = {
   usernameTaken, emailTaken, setPassword, updateEmail, checkCurrentPassword, getUser, updateProfile, changePassword, getPermissions,
   findOrCreateGoogleUser, needsProfile, completeProfile, setInitialPassword,
   createPriorityRequest, getPriorityRequests, getPriorityRequest,
-  getUserPriorityRequests, decidePriorityRequest, revokePriority, PRIORITY_LABELS,
+  getUserPriorityRequests, decidePriorityRequest, revokePriority, PRIORITY_LABELS, PRIORITY_REJECT, resendPriorityProof,
   createTicketPriorityRequest, getTicketPriorityRequest, countPendingPriority, getPriorityProof,
   getDocuments, getDocument, saveDocument, saveDocumentAsStaff,
   getDocumentRequirements, getRequirementsByDocument,

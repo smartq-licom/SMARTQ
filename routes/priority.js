@@ -20,7 +20,7 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
         title: 'Priority Requests', all, base, canRevoke,
         pending:  all.filter(r => r.status === 'pending'),
         reviewed: all.filter(r => r.status !== 'pending'),
-        labels: db.PRIORITY_LABELS,
+        labels: db.PRIORITY_LABELS, rejectReasons: db.PRIORITY_REJECT,
       });
     } catch (e) { next(e); }
   });
@@ -47,7 +47,7 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
   router.post('/:id/decide', async (req, res, next) => {
     try {
       const approve = req.body.decision === 'approve';
-      const r = await db.decidePriorityRequest(req.session.user, req.params.id, approve, req.body.reason);
+      const r = await db.decidePriorityRequest(req.session.user, req.params.id, approve, req.body.reason, req.body.reasonCode);
       if (r.error) { req.session.error = r.error; return res.redirect(base); }
       const pr = r.request;
       if (pr.email) {
@@ -55,7 +55,8 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
         catch (e) { console.error('[MAIL]', e.message); }
       }
       req.session.flash = !approve
-        ? `Request from ${pr.name} was rejected. Their ticket stays in the regular line.`
+        ? `Request from ${pr.name} was rejected. Their ticket stays in the regular line` +
+          (pr.canRetry ? '; they can send a clearer photo.' : '.')
         : r.moved
           ? `${pr.name} approved: ${r.moved.from} is now ${r.moved.to} in the priority lane.`
           : `${pr.name} is now approved for the ${pr.categoryLabel} priority lane.`;

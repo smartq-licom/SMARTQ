@@ -394,6 +394,7 @@ CREATE TABLE priority_requests (
   proof_name   VARCHAR(160) NOT NULL,          -- original filename, for display
   status       ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   reason       VARCHAR(255) DEFAULT NULL,      -- why it was rejected
+  reason_code  VARCHAR(16)  DEFAULT NULL,      -- blurred / expired (may retry), mismatch / invalid / other
   reviewed_by  INT DEFAULT NULL,
   reviewer_name VARCHAR(120) DEFAULT NULL,
   reviewed_at  TIMESTAMP NULL DEFAULT NULL,

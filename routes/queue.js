@@ -370,6 +370,18 @@ router.post('/t/:token/push', express.json({ limit: '8kb' }), async (req, res, n
 });
 
 // "Available from": busy until a time (max 2 hours); the place is kept.
+// a rejected priority proof (blurred, expired ID): send a clearer photo, keep the place
+router.post('/t/:token/priority', proofToMemory, async (req, res, next) => {
+  try {
+    const t = await db.getTransactionByToken(req.params.token);
+    if (!t) return res.redirect('/queue');
+    const r = req.uploadError ? { error: req.uploadError } : await db.resendPriorityProof(t, req.file);
+    if (r.error) req.session.error = r.error;
+    else req.session.flash = 'New photo sent. You keep your place while staff check it.';
+    res.redirect('/queue/t/' + t.accessToken);
+  } catch (e) { next(e); }
+});
+
 router.post('/t/:token/hold', async (req, res, next) => {
   try {
     const t = await ticketOr404(req, res);
