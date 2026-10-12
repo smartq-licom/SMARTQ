@@ -2,8 +2,17 @@
   First-time guide (coach marks, like GCash): the page dims, one part is lit,
   and a bubble explains it with Back / Next / Skip. Shown once per phone for
   each page (localStorage), replayed by the "Guide" button or ?tour=1.
-  Locals: tourKey (e.g. 'home'), tourSteps = [{ sel, title, body }]
+  Locals: tourKey (e.g. 'home'), tourSteps = [{ sel, title, body, pane?, act?, next?, end? }]
+    pane  the form step (wizard pane) the hint belongs to; shown when the student reaches it
+    act   a selector clicked when this last hint is finished (e.g. open the form)
+    next  the label of that last button ("Open the form")
+    end   finishing this hint ends the guided walkthrough
   (a step whose element is missing or hidden is skipped).
+
+  Guided walkthrough: "First time? Show me how" and the Guide button start a
+  session (sessionStorage smartq.guide) that follows the student through the
+  whole transaction: each page, and each form step as it is reached, shows its
+  hints even if seen before; "Exit guide" stops it.
 %>
 <div id="tour" class="tour" hidden>
   <div class="tour-spot" aria-hidden="true"></div>
@@ -48,17 +57,31 @@
 </style>
 <script>
 (function () {
-  var STEPS = <%- JSON.stringify(tourSteps) %>, KEY = 'smartq.tour.<%= tourKey %>';
+  var STEPS = <%- JSON.stringify(tourSteps) %>, BASE = 'smartq.tour.<%= tourKey %>';
   var el = document.getElementById('tour');
   if (!el || !STEPS.length) return;
   var spot = el.querySelector('.tour-spot'), tip = el.querySelector('.tour-tip');
-  var steps = [], i = 0;
+  var steps = [], i = 0, pane = null;
+
+  // the guided walkthrough lives for this browser tab
+  var GUIDE = 'smartq.guide';
+  function guiding() { try { return sessionStorage.getItem(GUIDE) === '1'; } catch (e) { return false; } }
+  function setGuide(on) { try { on ? sessionStorage.setItem(GUIDE, '1') : sessionStorage.removeItem(GUIDE); } catch (e) {} }
+  // the form's current step (wizard pane), when this page has one
+  function curPane() { var p = document.querySelector('.wiz-pane:not([hidden])'); return p ? Number(p.dataset.pane) : null; }
+  function key() { return BASE + (pane ? '#' + pane : ''); }
 
   function visible(n) { if (!n) return false; var r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !n.closest('[hidden]'); }
-  function done() { try { localStorage.setItem(KEY, '1'); } catch (e) {} }
-  function close() {
+  function done() { try { localStorage.setItem(key(), '1'); } catch (e) {} }
+  function close(finished) {
     done(); el.hidden = true; window.smartqTourOpen = false; document.documentElement.style.overflow = '';
+    var last = steps[steps.length - 1];
+    if (finished && last && last.end) setGuide(false);          // the walkthrough is over
     window.dispatchEvent(new Event('smartq:tour-closed'));
+    if (finished && last && last.act) {                          // carry on: open the next page
+      var target = document.querySelector(last.act);
+      if (target) setTimeout(function () { target.click(); }, 150);
+    }
   }
   function place() {
     var s = steps[i], n = document.querySelector(s.sel);
@@ -80,42 +103,52 @@
     el.querySelector('[data-tour-title]').textContent = s.title;
     el.querySelector('[data-tour-body]').innerHTML = s.body;     // our own text (bold allowed)
     el.querySelector('[data-tour-back]').hidden = i === 0;
-    el.querySelector('[data-tour-next]').textContent = i === steps.length - 1 ? 'Got it' : 'Next';
+    var lastOne = i === steps.length - 1;
+    el.querySelector('[data-tour-next]').textContent = lastOne ? (s.next || (s.end ? 'Finish' : 'Got it')) : 'Next';
+    el.querySelector('[data-tour-skip]').textContent = guiding() ? 'Exit guide' : 'Skip';
     el.querySelector('[data-tour-dots]').innerHTML = steps.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('');
     tip.style.animation = 'none'; void tip.offsetWidth; tip.style.animation = '';
     var n = document.querySelector(s.sel);
     if (n) n.scrollIntoView({ block: 'center', behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
     setTimeout(place, 60);
+    setTimeout(place, 750);                            // again once any entrance animation has settled
   }
   function go(d) {
     var j = i + d;
-    if (j >= steps.length) return close();
+    if (j >= steps.length) return close(true);
     if (j < 0) j = 0;
     i = j; show();
   }
   function start(force) {
-    steps = STEPS.filter(function (s) { return visible(document.querySelector(s.sel)); });
+    pane = curPane();
+    steps = STEPS.filter(function (s) { return (s.pane == null || s.pane === pane) && visible(document.querySelector(s.sel)); });
     if (!steps.length) return;
-    var seen = false; try { seen = localStorage.getItem(KEY) === '1'; } catch (e) {}
-    if (seen && !force) return;
+    var seen = false; try { seen = localStorage.getItem(key()) === '1'; } catch (e) {}
+    if (seen && !force && !guiding()) return;
     document.body.appendChild(el);                     // never boxed in by an animated parent
     i = 0; el.hidden = false; window.smartqTourOpen = true; show();
   }
   el.querySelector('[data-tour-next]').addEventListener('click', function () { go(1); });
   el.querySelector('[data-tour-back]').addEventListener('click', function () { go(-1); });
-  el.querySelector('[data-tour-skip]').addEventListener('click', close);
-  document.addEventListener('keydown', function (e) { if (!el.hidden && e.key === 'Escape') close(); });
+  el.querySelector('[data-tour-skip]').addEventListener('click', function () { setGuide(false); close(false); });
+  document.addEventListener('keydown', function (e) { if (!el.hidden && e.key === 'Escape') { setGuide(false); close(false); } });
   addEventListener('resize', function () { if (!el.hidden) place(); });
   addEventListener('scroll', function () { if (!el.hidden) place(); }, { passive: true });
-  window.smartqTour = function () { start(true); };
+  // the Guide button and "Show me how": the whole walkthrough, from this page on
+  window.smartqTour = function () { setGuide(true); start(true); };
   document.querySelectorAll('[data-tour-open]').forEach(function (b) { b.hidden = false; });
+  // the form's next step reached: its hints (during the walkthrough, or the first time)
+  window.addEventListener('smartq:wizard', function () {
+    if (!el.hidden) return;
+    setTimeout(function () { start(false); }, 650);           // after the step's slide-in
+  });
 
   // first visit: after the welcome screen is gone
   var force = /[?&]tour=1(&|$)/.test(location.search);
   function wait() {
     var w = document.getElementById('welcome');
     if (w && !w.hidden) return setTimeout(wait, 600);
-    setTimeout(function () { start(force); }, 1300);       // after any opening animation
+    setTimeout(function () { start(force || guiding()); }, guiding() ? 700 : 1300);   // after any opening animation
   }
   if (document.readyState === 'complete') wait(); else addEventListener('load', wait);
 })();

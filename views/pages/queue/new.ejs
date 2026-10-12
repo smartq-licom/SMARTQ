@@ -1148,7 +1148,9 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
 
   function show(n, stay) {
     var dir = n > current ? 'wiz-fwd' : n < current ? 'wiz-back' : '';
+    var moved = n !== current;
     current = n;
+    if (moved) setTimeout(function () { window.dispatchEvent(new CustomEvent('smartq:wizard', { detail: { pane: n } })); }, 0);
     if (n > reached) reached = n;
     panes.forEach(function (p, i) { p.hidden = i + 1 !== n; });
     var cur = pane(n);                                // replay the slide for this direction
@@ -1264,14 +1266,40 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
 })();
 </script>
 <%- include('../../partials/tour', { tourKey: 'new', tourSteps: [
-      { sel: 'nav[aria-label="Request steps"]', title: 'Four short steps',
-        body: 'Documents, when, your details, then review. This replaces the paper <b>Application for Issuance of Records</b>. Tap a finished step to go back to it.' },
-      { sel: '[data-office-choice]:not([hidden])', title: 'Choose the office',
-        body: '<b>Cashier</b> for documents you pay for (like the OTR). <b>Registrar</b> for free requests and claiming.' },
-      { sel: '#docSection', title: 'Tick what you need',
-        body: 'The price is set by the office. If a document asks <b>What is it for?</b>, tap the purpose under it. The OTR shows when it will be ready after payment.' },
-      { sel: '.wiz-pane:not([hidden]) [data-next]', title: 'Then tap Next',
-        body: 'SmartQ checks each step before moving on, so nothing is missed. At the end you get your queue number right away.' },
+      // step 1: what you need
+      { pane: 1, sel: 'nav[aria-label="Request steps"]', title: 'Four short steps',
+        body: '<b>1</b> what you need, <b>2</b> when, <b>3</b> your details, <b>4</b> review. This replaces the paper Application for Issuance of Records. Tap a finished step to go back to it.' },
+      { pane: 1, sel: '[data-office-choice]:not([hidden])', title: 'Choose the office',
+        body: '<b>Cashier</b> for what you pay for. <b>Registrar</b> for free requests and claiming.' },
+      { pane: 1, sel: '#docSection', title: 'Tick what you need',
+        body: 'Up to 4 at once. Each shows its price; the OTR also shows that it is ready <b>14 days</b> after payment. If a document asks <b>what it is for</b>, pick the purpose under it. Use <b>\u2212 / +</b> for more copies (fees like Late Enrollment are always one).' },
+      { pane: 1, sel: '#amountDue', title: 'Your total',
+        body: 'What you will pay at the Cashier window. Nothing is paid now: you pay when you are called, and get an official receipt.' },
+      { pane: 1, sel: '.wiz-pane:not([hidden]) [data-next]', title: 'Your turn: tick, then Next',
+        body: 'Tick your documents now, then tap <b>Next</b>. SmartQ checks each step, and the guide continues on the next one.' },
+      // step 2: when
+      { pane: 2, sel: '.wiz-pane[data-pane="2"] label:has(input[name=mode][value=now])', title: 'Join the line now',
+        body: 'Your place starts now, even if you are still in class. The box shows <b>your turn</b> and when you would be <b>done</b>, for exactly the documents you picked.' },
+      { pane: 2, sel: '.wiz-pane[data-pane="2"] label:has(input[name=mode][value=schedule])', title: 'Or book a time',
+        body: 'Pick a day and a 30-minute slot, up to 30 days ahead. Full slots are greyed out. Good when today\u2019s line is long.' },
+      { pane: 2, sel: '#peakAdvice', title: 'When it is quieter',
+        body: 'SmartQ tells you the busiest and quietest hours from past days, so you can pick a better time.' },
+      { pane: 2, sel: '.wiz-pane:not([hidden]) [data-next]', title: 'Choose, then Next',
+        body: 'Pick <b>Join now</b> or <b>Book a time</b>, then tap <b>Next</b>.' },
+      // step 3: your details
+      { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(1)', title: 'Your information',
+        body: 'Student or visitor, then your name. Students add the <b>9-digit student number</b>, course and year: it keeps one ticket per office per day, and lets you track and claim your documents later.' },
+      { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(2)', title: 'Who will claim it',
+        body: 'You, or someone for you. A representative brings a signed authorisation letter, their own ID and a copy of yours.' },
+      { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(3)', title: 'Priority lane',
+        body: 'PWD, Senior Citizen or pregnant? Choose it and upload a photo of your proof. You start in the regular line and move to priority once staff approve it. Bring the same ID to the window.' },
+      { pane: 3, sel: '.wiz-pane:not([hidden]) [data-next]', title: 'Fill in, then Review',
+        body: 'Fill in your details, then tap <b>Review</b>.' },
+      // step 4: review
+      { pane: 4, sel: '#reviewList', title: 'Check everything',
+        body: 'Office, documents, amount, when, your name and number. Something wrong? Tap a step at the top to fix it.' },
+      { pane: 4, sel: '.wiz-pane[data-pane="4"] button[type=submit]', title: 'Get your number',
+        body: 'Tap <b>Get my number</b>. Your ticket opens right away, and the guide shows you what happens next.' },
     ] }) %>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>

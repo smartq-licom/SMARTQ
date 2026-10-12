@@ -74,7 +74,7 @@
     <div class="tear mx-6"></div>
     <%# the code keeps its full width; on a narrow phone the note goes under it %>
     <div class="px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      <div class="shrink-0">
+      <div class="shrink-0" data-tour-code>
         <div class="text-[10.5px] uppercase tracking-[.2em] text-white/65 whitespace-nowrap">Booking code</div>
         <div class="font-mono text-[26px] font-extrabold tracking-[.22em] leading-tight whitespace-nowrap"><%= t.bookingCode %></div>
       </div>
@@ -215,7 +215,7 @@
     </div>
     <% } else if (!t.holdUsed && holdChoices.length) { %>
     <details class="group mt-4 <%= UI.card %> no-print">
-      <summary class="cursor-pointer list-none flex items-center gap-3 px-4 py-3.5 text-[13.5px] font-semibold text-ink">
+      <summary data-tour-hold class="cursor-pointer list-none flex items-center gap-3 px-4 py-3.5 text-[13.5px] font-semibold text-ink">
         <span class="grid place-items-center w-9 h-9 rounded-xl bg-brand-wash text-brand shrink-0" aria-hidden="true">&#128338;</span>
         <span class="flex-1">Busy right now? <span class="block text-[12px] font-normal text-slateSoft/75">Keep your place until you're free</span></span>
         <svg class="text-slateSoft/50 transition-transform group-open:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -569,11 +569,21 @@
 <% if (['waiting','called','serving'].includes(t.ticketStatus)) { %>
 <%- include('../../partials/tour', { tourKey: 'ticket', tourSteps: [
       { sel: 'section.stub', title: 'This is your ticket',
-        body: 'Your queue number is called on the screen and on this phone. Take a <b>screenshot</b>: the booking code opens this ticket on any phone.' },
-      { sel: '[data-live="details"] > div', title: 'Your estimated wait',
-        body: 'It counts down by itself and shows when your turn should come. You do not have to stand in line: <b>wait anywhere</b>.' },
+        body: 'Your queue number is called on the TV screen in the office and on this phone. You do not need to stand in line: <b>wait anywhere</b>.' },
+      { sel: 'section.stub [data-tour-code]', title: 'Screenshot your booking code',
+        body: 'With this code and your student number (visitors: last name), <b>Find my ticket</b> opens this ticket on any phone.' },
+      { sel: '[data-live="details"] > div', title: 'Your turn and when you\u2019ll be done',
+        body: 'Counts down by itself. It shows <b>your turn</b>, when you will be <b>done</b>, and the window you will most likely go to. Near the end it says <b>any moment now</b>.' },
       { sel: '#pushBox', title: 'Turn on alerts',
-        body: 'Get a notice 15 minutes before your turn and when you are called, even with this page closed.' },
+        body: 'Allow notifications: SmartQ tells you to <b>leave now</b> 15 minutes before your turn, and again when you are <b>called</b>, even with this page closed.' },
+      { sel: '[data-tour-hold]', title: 'Busy right now?',
+        body: 'In class or an exam? Choose when you will be free: you keep your place, and others are called meanwhile.' },
+      { sel: 'section.stub', title: 'At the window',
+        body: 'When called, go to the window shown. Pay the amount (Cashier) and you get an <b>official receipt</b> on this page. Not there in time? You move back 5 places; a second miss cancels the ticket.' },
+      { sel: '.trk', title: 'Follow each document',
+        body: '<b>Queued \u2192 Processing \u2192 Ready to claim \u2192 Claimed.</b> After paying, you get an alert when each document is ready. The OTR is ready 14 days after payment; most others on the same day.' },
+      { sel: '.trk', title: 'Claiming at the Registrar', end: true,
+        body: 'When it is ready, scan the QR again, tap <b>Registrar</b>, choose <b>Claim Released Document</b>, enter your student number and last name, and tick what to collect. Bring your receipt and a valid ID. That is the whole process!' },
     ] }) %>
 <% } %>
 <%- include('../../partials/live', { liveEvery: ['waiting','called','serving'].includes(t.ticketStatus) ? 15 : 0 }) %>
