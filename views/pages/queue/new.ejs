@@ -234,6 +234,8 @@
                   The paid documents are found from the student number when the
                   ticket is made (the Registrar checks the ID before releasing). %>
               <% const isClaim = sv.office === 'Registrar' && sv.requiresClaim;
+                 // copies only for documents that are released; a fee or the claim is one
+                 const oneOnly = isClaim || !sv.requiresClaim;
                  const picked = [].concat(form.documentIds || []).map(String).includes(String(sv.id)); %>
               <%# Highlighted from its own checkbox only (recalc sets .is-picked): a
                   plain :has(:checked) also matched the purpose list's selected
@@ -243,12 +245,12 @@
                   <input type="checkbox" name="documentIds" value="<%= sv.id %>" <%= picked ? 'checked' : '' %>
                          data-price="<%= sv.price %>" data-office="<%= sv.office %>" data-row="<%= sv.id %>"
                          data-purpose="<%= sv.needsPurpose ? 1 : 0 %>" data-guest="<%= sv.guestAllowed ? 1 : 0 %>"
-                         <%= isClaim ? 'data-claim=1' : '' %>
+                         <%= isClaim ? 'data-claim=1' : '' %> <%= oneOnly ? 'data-one=1' : '' %>
                          class="sr-only" onchange="recalc()">
                   <span class="doc-check" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
                   <span class="min-w-0 flex-1">
                     <span class="block text-[14px] font-semibold leading-tight"><%= sv.name %></span>
-                    <span class="block text-[11.5px] text-slateSoft/70 mt-0.5"><%= sv.paymentRequired ? peso(sv.price) + ' each' : 'No payment' %><%= sv.needsPurpose ? ' · asks for a purpose' : '' %><%= sv.processingDays ? ' · ready ' + sv.processingDays + ' days after payment' : '' %></span>
+                    <span class="block text-[11.5px] text-slateSoft/70 mt-0.5"><%= sv.paymentRequired ? peso(sv.price) + (oneOnly ? (sv.requiresClaim ? '' : ' · fee') : ' each') : 'No payment' %><%= sv.needsPurpose ? ' · asks for a purpose' : '' %><%= sv.processingDays ? ' · ready ' + sv.processingDays + ' days after payment' : '' %></span>
                   </span>
                   <span class="doc-price"><%= sv.paymentRequired ? peso(sv.price).replace('.00', '') : 'Free' %></span>
                 </label>
@@ -984,8 +986,10 @@ function recalc(){
     var visible = chosen && b.dataset.office === chosen.value;
     var qty    = document.getElementById('qty-' + b.dataset.row);
     var copies = document.querySelector('[data-copies="' + b.dataset.row + '"]');
-    // copies make no sense when claiming (the value 1 is still sent, so the lists line up)
-    if (qty) qty.hidden = !(b.checked && visible) || b.dataset.claim === '1';
+    // copies only for released documents: a fee or a claim is always one
+    // (the value 1 is still sent, so the lists line up)
+    if (qty) qty.hidden = !(b.checked && visible) || b.dataset.one === '1';
+    if (copies && b.dataset.one === '1') copies.value = '1';
     var row = b.closest('.doc-row');
     if (row) row.classList.toggle('is-picked', b.checked && visible);
     var line = document.querySelector('[data-line-total="' + b.dataset.row + '"]');

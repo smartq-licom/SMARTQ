@@ -1339,6 +1339,9 @@ async function createRequest(user, b, { walkIn = false } = {}) {
 
     let copies = parseInt(copiesIn[i], 10);
     if (isNaN(copies) || copies < 1) copies = 1;
+    // copies only for a document that is printed and released; a fee (Late
+    // Enrollment) or the Registrar claim itself is always one
+    if (!sv.requiresClaim || isClaimDocument(sv)) copies = 1;
     if (copies > s.maxCopies)
       return { error: `You may request up to ${s.maxCopies} copies of each document.` };
 
