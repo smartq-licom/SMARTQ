@@ -40,6 +40,11 @@ async function board(dept, req, res, next) {
       serving:  queue.filter(t => ['called','serving'].includes(t.ticketStatus)),
       priority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority').slice(0, 8),
       regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular').slice(0, 8),
+      // the lanes show only the first few; the badges count everyone waiting
+      waitingCount: {
+        priority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority').length,
+        regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular').length,
+      },
       recent:   queue.filter(t => t.ticketStatus === 'completed')
                      .sort((a,b) => new Date(b.completedAt) - new Date(a.completedAt)).slice(0, 6),
     });

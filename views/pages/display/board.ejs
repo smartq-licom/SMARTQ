@@ -80,24 +80,26 @@ tailwind.config = { theme: { extend: {
 
     <!-- left: now serving, then the two lanes -->
     <div class="lg:col-span-8 flex flex-col gap-6 min-h-0 min-w-0">
-      <section data-live="serving">
+      <%# on a TV (lg): Now serving takes the free height, so its number can be big %>
+      <section data-live="serving" class="lg:flex-1 lg:min-h-0 flex flex-col">
         <div class="label mb-3">Now serving</div>
-        <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> <%= windows.length > 2 ? 'xl:grid-cols-3' : '' %> gap-5">
+        <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> <%= windows.length > 2 ? 'xl:grid-cols-3' : '' %> gap-5 lg:flex-1 lg:min-h-0">
+          <% var big = windows.length > 1 ? 'lg:text-[min(17vh,7vw)]' : 'lg:text-[min(22vh,13vw)]'; %>
           <% windows.forEach(function(w){ %>
           <% const s = serving.find(function(t){ return t.windowId === w.id }); %>
           <% if (s) { %>
-          <div class="serving-now text-white rounded-[28px] bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night px-5 sm:px-8 py-7 text-center">
+          <div class="serving-now text-white rounded-[28px] bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-white/80"><%= w.label %></div>
-            <div class="font-mono glow text-[72px] sm:text-[110px] xl:text-[140px] leading-[1] font-extrabold mt-2"><%= s.ticketNo %></div>
+            <div class="font-mono glow text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2"><%= s.ticketNo %></div>
             <div class="mt-3 flex items-center justify-center gap-3">
+              <%# no name on a public screen: the number is enough %>
               <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/20' %>"><%= s.queueCategory %></span>
-              <span class="text-[19px] font-bold text-white/90"><%= s.name %></span>
             </div>
           </div>
           <% } else { %>
-          <div class="card px-5 sm:px-8 py-7 text-center">
+          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
-            <div class="font-mono text-[72px] sm:text-[110px] xl:text-[140px] leading-[1] font-extrabold mt-2 text-edge">----</div>
+            <div class="font-mono text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2 text-edge">----</div>
             <div class="mt-3 flex items-center justify-center gap-3">
               <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide bg-[#F5F7FA] text-slateSoft"><%= w.status %></span>
               <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Available' : '' %></span>
@@ -108,22 +110,33 @@ tailwind.config = { theme: { extend: {
         </div>
       </section>
 
-      <section class="flex-1 min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes">
-        <% [['Priority', priority, 'bg-violet-500'], ['Regular', regular, 'bg-brand']].forEach(function (g) { %>
+      <section class="min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes">
+        <%# A calm lane: the first few numbers, light and small, so the eye goes to
+            "Now serving" and "Next"; the rest is a count ("+16 more"). %>
+        <% var SHOW = 6, counts = typeof waitingCount !== 'undefined' ? waitingCount : {}; %>
+        <% [['Priority', priority, 'bg-violet-500', counts.priority], ['Regular', regular, 'bg-brand', counts.regular]].forEach(function (g) {
+             var total = g[3] != null ? g[3] : g[1].length, shown = g[1].slice(0, SHOW), more = total - shown.length; %>
         <div class="card px-6 py-5 min-h-0 overflow-hidden">
           <div class="flex items-center gap-3 mb-4">
             <span class="w-2.5 h-2.5 rounded-full <%= g[2] %>"></span>
             <span class="label !text-slateSoft"><%= g[0] %></span>
-            <span class="ml-auto rounded-full bg-brand-wash text-brand-night px-3 py-0.5 font-mono text-[15px] font-extrabold"><%= g[1].length %></span>
+            <span class="ml-auto text-[14px] font-bold text-slateSoft"><span class="font-mono text-[18px] font-extrabold text-ink"><%= total %></span> waiting</span>
           </div>
-          <div class="flex flex-wrap gap-3">
-            <% g[1].forEach(function(t){ %>
-            <div class="rounded-2xl px-4 py-2.5 <%= t.ticketNo === nextNo ? 'bg-brand text-white shadow-lg shadow-brand/30' : 'bg-[#F5F7FA] ring-1 ring-edge' %>">
-              <div class="font-mono text-[34px] font-extrabold leading-none"><%= t.ticketNo %></div>
-              <% if (t.ticketNo === nextNo) { %><div class="text-[11px] font-extrabold uppercase tracking-widest text-white/85 mt-1">Next</div><% } %>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <% shown.forEach(function(t){ %>
+            <% if (t.ticketNo === nextNo) { %>
+            <div class="rounded-2xl px-4 py-2 bg-brand text-white shadow-lg shadow-brand/30">
+              <div class="font-mono text-[30px] font-extrabold leading-none"><%= t.ticketNo %></div>
+              <div class="text-[11px] font-extrabold uppercase tracking-widest text-white/85 mt-1">Next</div>
             </div>
+            <% } else { %>
+            <div class="font-mono text-[24px] font-semibold leading-none text-slateSoft/70"><%= t.ticketNo %></div>
+            <% } %>
             <% }) %>
-            <% if (!g[1].length) { %>
+            <% if (more > 0) { %>
+            <div class="text-[15px] font-bold text-slateSoft/60">+<%= more %> more</div>
+            <% } %>
+            <% if (!total) { %>
             <div class="text-[18px] text-slateSoft/45 font-semibold py-2">No one waiting</div>
             <% } %>
           </div>
@@ -132,18 +145,18 @@ tailwind.config = { theme: { extend: {
       </section>
     </div>
 
-    <!-- right: SmartQ predicts. The real call order, the wait if you join now, a QR to join -->
+    <!-- right: SmartQ predicts. The real call order and the wait if you join now -->
     <aside class="lg:col-span-4 flex flex-col gap-5 min-h-0 min-w-0" data-live="predict">
-      <section class="card px-6 py-5">
+      <section class="card px-6 py-5 lg:flex-1 lg:min-h-0 flex flex-col">
         <div class="label mb-3">Next up</div>
         <% if (predict.nextUp.length) { %>
-        <ol class="space-y-2.5">
+        <ol class="space-y-2.5 lg:space-y-0 lg:flex-1 lg:flex lg:flex-col lg:justify-evenly lg:gap-3">
           <% predict.nextUp.forEach(function (n, i) { %>
-          <li class="flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 <%= i === 0 ? 'bg-brand-wash ring-2 ring-brand' : 'bg-[#F5F7FA]' %>">
-            <span class="font-mono text-[34px] font-extrabold leading-none"><%= n.ticketNo %></span>
+          <li class="flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 lg:py-4 <%= i === 0 ? 'bg-brand-wash ring-2 ring-brand' : 'bg-[#F5F7FA]' %>">
+            <span class="font-mono text-[34px] lg:text-[min(6.5vh,3.2vw,56px)] font-extrabold leading-none whitespace-nowrap"><%= n.ticketNo %></span>
             <span class="text-right">
               <span class="block text-[12px] font-extrabold uppercase tracking-widest <%= i === 0 ? 'text-brand' : 'text-slateSoft/55' %>"><%= i === 0 ? 'Next' : 'Then' %></span>
-              <span class="block text-[16px] font-bold text-ink">~<%= n.at %></span>
+              <span class="block text-[16px] font-bold text-ink whitespace-nowrap">~<%= n.at %></span>
             </span>
           </li>
           <% }) %>
@@ -164,14 +177,6 @@ tailwind.config = { theme: { extend: {
         <% } %>
         <div class="text-[14px] font-medium text-slateSoft/60 mt-2">
           <%= predict.avgWait ? "Today's real average wait: " + duration(predict.avgWait.minutes).replace('about ', '') : 'No one called yet today' %>
-        </div>
-      </section>
-
-      <section class="card px-6 py-5 flex items-center gap-5 mt-auto">
-        <div class="bg-white p-2.5 rounded-2xl ring-2 ring-brand w-36 h-36 shrink-0 [&_svg]:w-full [&_svg]:h-full" aria-label="QR code to join the queue"><%- predict.qr %></div>
-        <div>
-          <div class="text-[24px] font-extrabold leading-tight">Scan to join</div>
-          <div class="text-[15px] font-medium text-slateSoft/75 mt-1.5 leading-snug">No account needed. Wait anywhere, get alerts on your phone.</div>
         </div>
       </section>
     </aside>
