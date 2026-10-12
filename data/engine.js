@@ -283,7 +283,6 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     x.ticketNo = x.ticket_no;
     x.queuedAt = new Date(x.queue_at).getTime();
     x.slotStart = x.slot_start ? at(today, String(x.slot_start).slice(0, 5)).getTime() : null;
-    x.atRisk = !!x.risk_at;
   });
   const peakSet = await dispatch.peakHours(department);
 
@@ -362,6 +361,25 @@ async function evaluateJoin(department, { lane = 'regular', service = null } = {
       ? `Predicted start ${clock(e.start)}; even at a slow pace done by ${clock(sl.end)}, before closing ${clock(slow.close)}.`
       : `Predicted start ${clock(e.start)}; at a slow pace done by ${clock(sl.end)}, after closing ${clock(slow.close)}.`,
   };
+}
+
+/**
+ * evaluateJoin for the screens that only SHOW "if you join now" (the QR page,
+ * the form, the board): one calculation shared for JOIN_CACHE_MS by everyone
+ * asking the same thing, and by requests that arrive while it is running.
+ * Taking a ticket always calls evaluateJoin itself, so that decision is fresh.
+ */
+const JOIN_CACHE_MS = 20000;
+const joinCache = new Map();
+function evaluateJoinCached(department, opts = {}) {
+  const key = `${department}|${opts.lane || 'regular'}|${opts.service == null ? '' : Math.round(opts.service * 2) / 2}`;
+  const hit = joinCache.get(key);
+  if (hit && Date.now() - hit.at < JOIN_CACHE_MS) return hit.promise;
+  const promise = evaluateJoin(department, opts);
+  joinCache.set(key, { at: Date.now(), promise });
+  promise.catch(() => joinCache.delete(key));       // a failure is not kept
+  if (joinCache.size > 200) for (const [k, v] of joinCache) if (Date.now() - v.at >= JOIN_CACHE_MS) joinCache.delete(k);
+  return promise;
 }
 
 /** Today's estimate for one waiting ticket (typical and slow case). */
@@ -502,5 +520,5 @@ async function watch() {
 module.exports = {
   SLOT_MINUTES, BOOK_SHARE, LEAVE_NOW_MIN,
   daySlots, slotPlan, serviceProfile, simulateDay,
-  evaluateJoin, ticketForecast, logDecision, watch, clock,
+  evaluateJoin, evaluateJoinCached, ticketForecast, logDecision, watch, clock,
 };

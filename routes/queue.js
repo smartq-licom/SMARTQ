@@ -94,7 +94,7 @@ async function officeSnapshot(sameDayOpen) {
     const openWindows = windows.filter(w => w.status === 'open').length;
     let join = null;
     if (sameDayOpen) {
-      try { join = await engine.evaluateJoin(dept); } catch (e) { /* show counts only */ }
+      try { join = await engine.evaluateJoinCached(dept); } catch (e) { /* show counts only */ }
     }
     const s = await db.getSettings();
     const beforeOpen = new Date() < new Date(`${db.today()}T${s.openTime}:00`);
@@ -179,7 +179,7 @@ router.get('/estimate', async (req, res, next) => {
     let svc = (await predict.estimateService(items, office, settings)).minutes;
     const claims = Math.min(20, Math.max(0, parseInt(req.query.claims, 10) || 0));
     if (claims > 1) svc = Math.round(svc * (1 + db.CLAIM_EXTRA_SHARE * (claims - 1)) * 10) / 10;
-    const j = await engine.evaluateJoin(office, { service: svc });
+    const j = await engine.evaluateJoinCached(office, { service: svc });
     res.json({ open: true, minutes: j.minutes, startClock: j.startClock, endClock: j.endClock,
                service: Math.max(1, Math.round(svc)), fits: j.fits, closeClock: j.closeClock });
   } catch (e) { next(e); }

@@ -2564,7 +2564,7 @@ async function getQueue(department, { date = null } = {}) {
 /** Clients ready to be called, per lane, first come first served (for data/dispatch.js). */
 async function readyLanes(department, settings) {
   const rows = await q(
-    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until, slot_start, risk_at FROM transactions
+    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until, slot_start FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
        AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
      ORDER BY queue_at ASC, id ASC`, [department]);
@@ -2573,11 +2573,10 @@ async function readyLanes(department, settings) {
     id: r.id, ticketNo: r.ticket_no, skip: Number(r.skip_count) || 0,
     svc: Number(r.predicted_service) || settings.avgServiceMinutes,
     readyAt: Math.max(new Date(r.queue_at).getTime(), r.hold_until ? new Date(r.hold_until).getTime() : 0),
-    // for the Smart Priority Score: place in line (kept through "available from"),
-    // a booked time, and the closing-time risk the day simulation flagged
+    // for the Smart Priority Score: place in line (kept through "available from")
+    // and a booked time
     queuedAt: new Date(r.queue_at).getTime(),
     slotStart: r.slot_start ? new Date(`${today()}T${String(r.slot_start).slice(0, 8)}`).getTime() : null,
-    atRisk: !!r.risk_at,
   }));
   return lanes;
 }

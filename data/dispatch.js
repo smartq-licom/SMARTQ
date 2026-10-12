@@ -8,12 +8,14 @@
  *   score = minutes already waited              (aging: first come stays the base)
  *         + 8 per time passed over              (aging speeds up for anyone skipped)
  *         + 15 if their booked time has come    (an appointment is honoured)
- *         + 20 if they may not be served before closing (the day simulation said so)
  *         + 1.5 x minutes shorter than the lane's average (2+ min), ONLY at a peak hour
  *           (when the line is long, a short task first cuts everyone's average wait)
  *
  * and the highest score is called. Urgency is measured, never typed by the
- * client: a due appointment, a closing-time risk, being passed over. Priority
+ * client: a due appointment, being passed over. A client who may not be served
+ * before closing is WARNED (book tomorrow / keep / cancel) but does not jump the
+ * line: near closing the fair order is whoever waited longest, and a boost would
+ * only push the risk onto them, round after round. Priority
  * clients (PWD, Senior Citizen, pregnant) keep their own lane, called 1:1.
  *
  * Peak hour: the history marks this weekday and hour as busy (data/peak.js),
@@ -59,7 +61,7 @@ const LOOK_AHEAD  = 3;      // how deep into the lane a window may look
 const MAX_SKIPS   = 2;      // nobody is passed over more than this
 const SLOWER_BY   = 1.15;   // "clearly slower": 15% or more than the fastest open window
 const MIN_SAVING  = 2;      // minutes a shorter task must save to be worth a skip
-const SCORE = { WAIT: 1, PASSED: 8, BOOKED_DUE: 15, AT_RISK: 20, SHORT_AT_PEAK: 1.5 };
+const SCORE = { WAIT: 1, PASSED: 8, BOOKED_DUE: 15, SHORT_AT_PEAK: 1.5 };
 const PEAK_PER_WINDOW = 3;  // this many ready clients per open window = a rush right now
 const PRIOR_N     = 10;     // blend weight while a staff member has few services
 const RESERVE_SECONDS = 120; // how long a client is saved for the best free window
@@ -149,7 +151,6 @@ function scoreOf(x, { now, peak, avgSvc }) {
   parts.push(`waited ${Math.round(waited)} min`);
   if (x.skip) { s += x.skip * SCORE.PASSED; parts.push(`passed over ${x.skip}x +${x.skip * SCORE.PASSED}`); }
   if (x.slotStart && now >= x.slotStart) { s += SCORE.BOOKED_DUE; parts.push(`booked time has come +${SCORE.BOOKED_DUE}`); }
-  if (x.atRisk) { s += SCORE.AT_RISK; parts.push(`may not be served before closing +${SCORE.AT_RISK}`); }
   if (peak && avgSvc && avgSvc - x.svc >= MIN_SAVING) {           // clearly shorter, not a rounding
     const b = Math.round((avgSvc - x.svc) * SCORE.SHORT_AT_PEAK);
     if (b > 0) { s += b; parts.push(`short task at a peak hour +${b}`); }
