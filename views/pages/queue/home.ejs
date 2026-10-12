@@ -128,7 +128,7 @@
         <span><strong class="font-mono text-[15px] text-ink" data-count="<%= o.waiting %>"><%= o.waiting %></strong> waiting</span>
         <% if (o.serving) { %><span><strong class="font-mono text-[15px] text-ink"><%= o.serving %></strong> at a window</span><% } %>
         <% if (o.served) { %><span><strong class="font-mono text-[15px] text-ink" data-count="<%= o.served %>"><%= o.served %></strong> served</span><% } %>
-        <% if (o.avgWait) { %><span class="basis-full text-[11.5px] text-slateSoft/70">Today's real average wait: <strong><%= duration(o.avgWait.minutes).replace('about ', '') %></strong> (<%= o.avgWait.served %> served)</span><% } %>
+        <% if (o.avgWait) { %><span class="basis-full text-[11.5px] text-slateSoft/70">Today's real average wait: <strong><%= duration(o.avgWait.minutes).replace('about ', '') %></strong></span><% } %>
       </div>
     </div>
 

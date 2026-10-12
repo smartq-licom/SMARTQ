@@ -3334,7 +3334,8 @@ async function todayAverageWait(department) {
     `SELECT ROUND(AVG(TIMESTAMPDIFF(SECOND, queue_at, called_at)) / 60) AS m, COUNT(*) AS n
      FROM transactions
      WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL AND queue_at IS NOT NULL
-       AND called_at >= queue_at`, [department]);
+       AND called_at >= queue_at AND ticket_status = 'completed'   -- the same clients as "served"
+     `, [department]);
   const n = Number(r[0].n) || 0;
   return n ? { minutes: Number(r[0].m) || 0, served: n } : null;
 }
