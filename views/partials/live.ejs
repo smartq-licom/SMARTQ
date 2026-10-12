@@ -19,6 +19,7 @@
   // what the server sent, before scripts changed it (countdowns...)
   parts.forEach(function (el) { el._src = el.innerHTML; });
   var busy = false;
+  var SOFT_OFF = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function inUse(el) {
     var a = document.activeElement;
@@ -38,12 +39,32 @@
           location.reload();                       // a different situation: start fresh once
           return;
         }
+        var soft = [];
         document.querySelectorAll('[data-live]').forEach(function (el) {
           var nu = doc.querySelector('[data-live="' + el.getAttribute('data-live') + '"]');
           if (!nu || nu.innerHTML === el._src || inUse(el)) return;
-          el.innerHTML = el._src = nu.innerHTML;
-          window.dispatchEvent(new CustomEvent('smartq:updated', { detail: { root: el } }));
+          var fresh = el._src = nu.innerHTML;
+          function swap() {
+            el.innerHTML = fresh;
+            el.classList.remove('live-out');
+            window.dispatchEvent(new CustomEvent('smartq:updated', { detail: { root: el } }));
+          }
+          if (el.hasAttribute('data-live-soft') && !SOFT_OFF) soft.push({ el: el, swap: swap }); else swap();
         });
+        // data-live-soft (the TV board): the changed parts morph into their new
+        // look together (View Transitions: cards change shape, a ticket number
+        // with a view-transition-name flies to its new place); browsers without
+        // it fade the old content out first instead of changing in an instant
+        if (soft.length) {
+          if (document.startViewTransition) {
+            var vt = document.startViewTransition(function () { soft.forEach(function (p) { p.swap(); }); });
+            vt.ready.catch(function () {});           // skipped (another one started): the content still changed
+          }
+          else {
+            soft.forEach(function (p) { p.el.classList.add('live-out'); });
+            setTimeout(function () { soft.forEach(function (p) { p.swap(); }); }, 650);
+          }
+        }
       })
       .catch(function () {})
       .then(function () { busy = false; });

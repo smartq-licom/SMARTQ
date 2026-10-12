@@ -28,11 +28,63 @@ tailwind.config = { theme: { extend: {
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(33,133,213,.0),0 20px 60px -20px rgba(33,133,213,.6)}50%{box-shadow:0 0 0 6px rgba(33,133,213,.18),0 20px 60px -20px rgba(33,133,213,.8)}}
   .marquee{white-space:nowrap;display:inline-block;animation:mq 28s linear infinite;padding-left:100%}
   @keyframes mq{to{transform:translateX(-100%)}}
-  @media (prefers-reduced-motion:reduce){.live-changed,.serving-now,.marquee{animation:none}.marquee{padding-left:0}}
+  /* browsers without View Transitions: the changed part fades out, then swaps (partials/live) */
+  [data-live-soft]{transition:opacity .6s ease}
+  [data-live-soft].live-out{opacity:0}
+  /* morphing (View Transitions): each named card or number glides and reshapes
+     into its new place and look; the rest of the screen stays still */
+  ::view-transition-group(*){animation-duration:.9s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+  ::view-transition-old(*),::view-transition-new(*){animation-duration:.6s}
+  ::view-transition-old(root),::view-transition-new(root){animation:none}
+  /* lane numbers: a readable grey from across the room, still quieter than Now serving */
+  .lane-no{color:#4f5d6c}
+  html.night .lane-no{color:#b7c6d7}
+  /* just called: the proceed chip draws the eye with a slow, soft breath and a
+     nudging arrow, never a flash */
+  .go-chip{animation:go-breathe 2.6s ease-in-out infinite}
+  @keyframes go-breathe{0%,100%{box-shadow:0 8px 24px -10px rgba(8,40,80,.55),0 0 0 0 rgba(255,255,255,.0)}50%{box-shadow:0 8px 24px -10px rgba(8,40,80,.55),0 0 0 8px rgba(255,255,255,.18)}}
+  html.night span.go-chip{color:#0F4C81}             /* a white chip keeps its dark text at night */
+  .go-arrow{animation:go-nudge 1.6s ease-in-out infinite}
+  @keyframes go-nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(4px)}}
+  @media (prefers-reduced-motion:reduce){.go-chip,.go-arrow{animation:none}}
+  @media (prefers-reduced-motion:reduce){.live-changed,.serving-now,.marquee{animation:none} ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none !important}.marquee{padding-left:0}}
+
+  /* Night: after office hours (and before opening) the board slowly turns dark.
+     The night sky is a layer that fades in over the day background; cards and
+     text change colour more slowly than a page flip, so the change is gentle. */
+  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:0;
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%,rgba(255,255,255,.55),transparent 60%),
+      radial-gradient(1.5px 1.5px at 78% 12%,rgba(255,255,255,.45),transparent 60%),
+      radial-gradient(1px 1px at 46% 30%,rgba(255,255,255,.4),transparent 60%),
+      radial-gradient(1.5px 1.5px at 88% 46%,rgba(255,255,255,.35),transparent 60%),
+      radial-gradient(1px 1px at 24% 64%,rgba(255,255,255,.3),transparent 60%),
+      radial-gradient(1px 1px at 62% 78%,rgba(255,255,255,.3),transparent 60%),
+      radial-gradient(90% 70% at 10% 0%,#163257 0%,#0b1626 60%)}
+  html.night body::before{opacity:1}
+  html.night-anim body::before{transition:opacity 8s ease}
+  html.night-anim .card, html.night-anim [class*="text-"], html.night-anim [class*="bg-"], html.night-anim [class*="ring-"], html.night-anim .label{
+    transition:background-color 6s ease, color 6s ease, border-color 6s ease, box-shadow 6s ease}
+  html.night .card{background:#13243b;border-color:#1f3652;box-shadow:0 8px 24px -10px rgba(0,0,0,.5)}
+  html.night .text-ink{color:#e6eef7}
+  html.night [class*="text-slateSoft"]{color:#9db1c7}
+  html.night .text-edge{color:#2a4262}
+  html.night .label{color:#7cc4fa}
+  html.night .text-brand-night{color:#9fd3ff}
+  html.night [class*="bg-[#F5F7FA]"]{background-color:#1a2f4a}
+  html.night .bg-brand-wash{background-color:#17365a}
+  html.night [class*="ring-edge"], html.night .ring-brand{--tw-ring-color:#2a4668}
+  html.night .border-edge{border-color:#1f3652}
+  html.night .bg-amber-50{background-color:#3a2d12}
+  html.night .text-amber-800{color:#fcd38a}
+  @media (prefers-reduced-motion:reduce){ body::before, html.night-anim .card, html.night-anim [class*="text-"], html.night-anim [class*="bg-"]{transition:none} }
 </style>
 </head>
 <body class="text-ink antialiased">
 <%- include('../../partials/board-loader') %>
+<%# day or night: is the office taking people right now? (no estimate after closing).
+    Kept up to date with the rest of the board; the script below reads it. %>
+<span data-live="mode" hidden><i data-open="<%= predict && predict.join ? 1 : 0 %>"></i></span>
 
 <div class="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
 
@@ -70,46 +122,60 @@ tailwind.config = { theme: { extend: {
       </div>
     </div>
     <div class="text-right">
-      <div id="clock" class="font-mono text-[30px] sm:text-[44px] xl:text-[52px] font-extrabold leading-none text-brand-night">--:--:--</div>
+      <div id="clock" class="font-mono text-[30px] sm:text-[44px] xl:text-[52px] font-extrabold leading-none text-brand-night">--:--</div>
       <div id="dateline" class="text-[14px] text-slateSoft/70 font-semibold mt-1.5"></div>
     </div>
   </header>
 
-  <% var nextNo = predict.nextUp.length ? predict.nextUp[0].ticketNo : null; %>
   <main class="flex-1 min-h-0 grid lg:grid-cols-12 gap-6 px-4 sm:px-8 pb-6">
 
     <!-- left: now serving, then the two lanes -->
-    <div class="lg:col-span-8 flex flex-col gap-6 min-h-0 min-w-0">
+    <%# phones: this column dissolves (contents) so the order can be Now serving, Next up, lanes %>
+    <div class="contents lg:flex lg:col-span-8 lg:flex-col lg:gap-6 lg:min-h-0 lg:min-w-0">
       <%# on a TV (lg): Now serving takes the free height, so its number can be big %>
-      <section data-live="serving" class="lg:flex-1 lg:min-h-0 flex flex-col">
+      <section data-live="serving" data-live-soft class="order-1 lg:order-none min-w-0 lg:flex-1 lg:min-h-0 flex flex-col">
         <div class="label mb-3">Now serving</div>
+        <% var big = windows.length > 1 ? 'lg:text-[min(17vh,7vw)]' : 'lg:text-[min(22vh,13vw)]';
+           var wc = typeof waitingCount !== 'undefined' ? waitingCount : null;
+           var noLine = wc ? !(wc.priority + wc.regular) : !(priority.length + regular.length);
+           var openNow = !!(predict && predict.join);   // taking people now (no estimate after closing) %>
+        <%# Several windows, all idle after closing: one shared "Closed for today" card %>
+        <% var allIdle = windows.length > 1 && !serving.length && !openNow; %>
+        <% if (allIdle) { %>
+        <div style="view-transition-name:win-all" class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center lg:flex-1 lg:min-h-0">
+          <% var ot = String(settings.openTime || '08:00').split(':'), oh = +ot[0], opens = ((oh % 12) || 12) + ':' + (ot[1] || '00') + (oh < 12 ? ' AM' : ' PM'); %>
+          <div class="grid place-items-center w-20 h-20 lg:w-24 lg:h-24 rounded-full bg-[#F5F7FA] text-slateSoft/60" aria-hidden="true">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+          </div>
+          <div class="mt-4 text-[34px] sm:text-[44px] lg:text-[min(7vh,60px)] font-extrabold leading-tight text-ink">Closed for today</div>
+          <div class="mt-1 text-[17px] sm:text-[19px] font-semibold text-slateSoft/70">Opens at <%= opens %> on the next open day</div>
+        </div>
+        <% } else { %>
         <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> <%= windows.length > 2 ? 'xl:grid-cols-3' : '' %> gap-5 lg:flex-1 lg:min-h-0">
-          <% var big = windows.length > 1 ? 'lg:text-[min(17vh,7vw)]' : 'lg:text-[min(22vh,13vw)]';
-             var wc = typeof waitingCount !== 'undefined' ? waitingCount : null;
-             var noLine = wc ? !(wc.priority + wc.regular) : !(priority.length + regular.length);
-             var openNow = !!(predict && predict.join);   // taking people now (no estimate after closing) %>
           <% windows.forEach(function(w){ %>
           <% const s = serving.find(function(t){ return t.windowId === w.id }); %>
           <% if (s) { %>
-          <div class="serving-now text-white rounded-[28px] bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
+          <div style="view-transition-name:win-<%= w.id %>" class="serving-now text-white rounded-[28px] bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-white/80"><%= w.label %></div>
-            <div class="font-mono glow text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2"><%= s.ticketNo %></div>
-            <div class="mt-3 flex items-center justify-center gap-3">
-              <%# no name on a public screen: the number is enough %>
-              <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/20' %>"><%= s.queueCategory %></span>
+            <div style="view-transition-name:tk-<%= s.ticketNo %>" class="font-mono glow text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2"><%= s.ticketNo %></div>
+            <%# no name on a public screen. Just called: where to go (the one thing the
+                back of the room needs, and it works without the chime); then "Being served". %>
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <% if (s.ticketStatus === 'called') { %>
+              <span class="go-chip whitespace-nowrap inline-flex items-center gap-2.5 rounded-full bg-white text-brand-night pl-5 pr-4 py-2 text-[16px] sm:text-[20px] font-extrabold shadow-[0_8px_24px_-10px_rgba(8,40,80,.55)]">
+                <% if (windows.length > 1) { %>Please proceed now<% } else { %><span class="sm:hidden">Please proceed now</span><span class="hidden sm:inline">Please proceed to <%= w.label %></span><% } %>
+                <svg class="go-arrow" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </span>
+              <% } else { %>
+              <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 text-[16px] font-bold text-white/90"><span class="w-2 h-2 rounded-full bg-emerald-300"></span>Being served</span>
+              <% } %>
+              <span class="rounded-full px-3.5 py-1 text-[13px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/15 text-white/80' %>"><%= s.queueCategory %></span>
             </div>
-          </div>
-          <% } else if (w.status === 'open' && noLine && openNow) { %>
-          <%# open and no one in line: a plain, quiet card %>
-          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center">
-            <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
-            <div class="mt-5 text-[38px] sm:text-[52px] lg:text-[min(8vh,72px)] font-extrabold leading-tight text-slateSoft/45">No one in line</div>
-            <span class="mt-5 inline-flex items-center gap-2 rounded-full bg-emerald-50 ring-1 ring-emerald-200 px-4 py-1.5 text-[15px] font-bold text-emerald-700"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Open</span>
           </div>
           <% } else if (w.status === 'open' && !openNow) { %>
           <%# after hours: a calm "closed" card, and when it opens again %>
           <% var ot = String(settings.openTime || '08:00').split(':'), oh = +ot[0], opens = ((oh % 12) || 12) + ':' + (ot[1] || '00') + (oh < 12 ? ' AM' : ' PM'); %>
-          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center">
+          <div style="view-transition-name:win-<%= w.id %>" class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
             <div class="mt-4 grid place-items-center w-20 h-20 lg:w-24 lg:h-24 rounded-full bg-[#F5F7FA] text-slateSoft/60" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
@@ -118,26 +184,32 @@ tailwind.config = { theme: { extend: {
             <div class="mt-1 text-[17px] sm:text-[19px] font-semibold text-slateSoft/70">Opens at <%= opens %> on the next open day</div>
           </div>
           <% } else { %>
-          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
+          <div style="view-transition-name:win-<%= w.id %>" class="card px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
             <div class="font-mono text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2 text-edge">----</div>
             <div class="mt-3 flex items-center justify-center gap-3">
               <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide bg-[#F5F7FA] text-slateSoft"><%= w.status %></span>
-              <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Calling the next number' : w.status === 'break' ? 'On break' : 'Not serving' %></span>
+              <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Available' : w.status === 'break' ? 'On break' : '' %></span>
             </div>
           </div>
           <% } %>
           <% }) %>
         </div>
+        <% } %>
       </section>
 
-      <section class="min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes">
+      <section class="order-3 lg:order-none min-w-0 min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes" data-live-soft>
         <%# A calm lane: the first few numbers, light and small, so the eye goes to
-            "Now serving" and "Next"; the rest is a count ("+16 more"). %>
-        <% var SHOW = 6, counts = typeof waitingCount !== 'undefined' ? waitingCount : {}; %>
+            "Now serving" and "Next up"; the rest is a count ("+16 more"). %>
+        <% var SHOW = 6, counts = typeof waitingCount !== 'undefined' ? waitingCount : {};
+           // each number appears once on screen: the ones in Next up are not listed again here
+           var inNext = {}; (predict.nextUp || []).forEach(function (n) { inNext[n.ticketNo] = 1; }); %>
         <% [['Priority', priority, 'bg-violet-500', counts.priority], ['Regular', regular, 'bg-brand', counts.regular]].forEach(function (g) {
-             var total = g[3] != null ? g[3] : g[1].length, shown = g[1].slice(0, SHOW), more = total - shown.length; %>
-        <div class="card px-6 py-5 min-h-0 overflow-hidden">
+             var total = g[3] != null ? g[3] : g[1].length,
+                 upNext = g[1].filter(function (t) { return inNext[t.ticketNo]; }).length,
+                 shown = g[1].filter(function (t) { return !inNext[t.ticketNo]; }).slice(0, SHOW),
+                 more = total - upNext - shown.length; %>
+        <div style="view-transition-name:lane-<%= g[0].toLowerCase() %>" class="card px-6 py-5 min-h-0 overflow-hidden">
           <div class="flex items-center gap-3 mb-4">
             <span class="w-2.5 h-2.5 rounded-full <%= g[2] %>"></span>
             <span class="label !text-slateSoft"><%= g[0] %></span>
@@ -145,20 +217,16 @@ tailwind.config = { theme: { extend: {
           </div>
           <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
             <% shown.forEach(function(t){ %>
-            <% if (t.ticketNo === nextNo) { %>
-            <div class="rounded-2xl px-4 py-2 bg-brand text-white shadow-lg shadow-brand/30">
-              <div class="font-mono text-[30px] font-extrabold leading-none"><%= t.ticketNo %></div>
-              <div class="text-[11px] font-extrabold uppercase tracking-widest text-white/85 mt-1">Next</div>
-            </div>
-            <% } else { %>
-            <div class="font-mono text-[24px] font-semibold leading-none text-slateSoft/70"><%= t.ticketNo %></div>
-            <% } %>
+            <%# all alike: who is next is shown once, in Next up %>
+            <div class="lane-no font-mono text-[26px] font-bold leading-none"><%= t.ticketNo %></div>
             <% }) %>
             <% if (more > 0) { %>
             <div class="text-[15px] font-bold text-slateSoft/60">+<%= more %> more</div>
             <% } %>
             <% if (!total) { %>
             <div class="text-[18px] text-slateSoft/45 font-semibold py-2">No one waiting</div>
+            <% } else if (!shown.length && more <= 0) { %>
+            <div class="text-[18px] text-slateSoft/45 font-semibold py-2">All in Next up</div>
             <% } %>
           </div>
         </div>
@@ -167,14 +235,14 @@ tailwind.config = { theme: { extend: {
     </div>
 
     <!-- right: SmartQ predicts. The real call order and the wait if you join now -->
-    <aside class="lg:col-span-4 flex flex-col gap-5 min-h-0 min-w-0" data-live="predict">
-      <section class="card px-6 py-5 lg:flex-1 lg:min-h-0 flex flex-col">
+    <aside class="order-2 lg:order-none lg:col-span-4 flex flex-col gap-5 min-h-0 min-w-0" data-live="predict" data-live-soft>
+      <section style="view-transition-name:nextup" class="card px-6 py-5 lg:flex-1 lg:min-h-0 flex flex-col">
         <div class="label mb-3">Next up</div>
         <% if (predict.nextUp.length) { %>
         <ol class="space-y-2.5 lg:space-y-0 lg:flex-1 lg:flex lg:flex-col lg:justify-evenly lg:gap-3">
           <% predict.nextUp.forEach(function (n, i) { %>
           <li class="flex items-center justify-between gap-4 rounded-2xl px-4 py-2.5 lg:py-4 <%= i === 0 ? 'bg-brand-wash ring-2 ring-brand' : 'bg-[#F5F7FA]' %>">
-            <span class="font-mono text-[34px] lg:text-[min(6.5vh,3.2vw,56px)] font-extrabold leading-none whitespace-nowrap"><%= n.ticketNo %></span>
+            <span style="view-transition-name:tk-<%= n.ticketNo %>" class="font-mono text-[34px] lg:text-[min(6.5vh,3.2vw,56px)] font-extrabold leading-none whitespace-nowrap"><%= n.ticketNo %></span>
             <span class="text-right">
               <span class="block text-[12px] font-extrabold uppercase tracking-widest <%= i === 0 ? 'text-brand' : 'text-slateSoft/55' %>"><%= i === 0 ? 'Next' : 'Then' %></span>
               <span class="block text-[16px] font-bold text-ink whitespace-nowrap">~<%= n.at %></span>
@@ -194,10 +262,10 @@ tailwind.config = { theme: { extend: {
         <% } %>
       </section>
 
-      <section class="card px-6 py-5">
+      <section style="view-transition-name:joinnow" class="card px-6 py-5">
         <div class="label mb-2">If you join now</div>
         <% if (predict.join) { %>
-        <div class="text-[40px] font-extrabold leading-tight text-brand-night"><%= duration(predict.join.minutes).replace('about ', '') %></div>
+        <div class="text-[40px] lg:text-[min(6vh,3.4vw,52px)] font-extrabold leading-tight text-brand-night whitespace-nowrap"><% var jm = Math.round(predict.join.minutes || 0); %><%= jm < 1 ? 'Under a minute' : jm < 60 ? jm + ' min' : Math.floor(jm / 60) + ' h' + (jm % 60 ? ' ' + (jm % 60) + ' min' : '') %></div>
         <div class="text-[16px] font-semibold text-slateSoft mt-0.5">your turn around <strong class="text-ink"><%= predict.join.startClock %></strong></div>
         <% if (!predict.join.fits) { %><div class="mt-2 rounded-xl bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-[14px] font-bold text-amber-800">The line is long: you may not be served today</div><% } %>
         <% } else { %>
@@ -211,12 +279,12 @@ tailwind.config = { theme: { extend: {
   </main>
 
   <!-- recently completed, then the announcement -->
-  <div data-live="recent">
+  <div data-live="recent" data-live-soft>
   <% if (recent.length) { %>
   <section class="px-4 sm:px-8 py-3 border-t border-edge flex items-center gap-5 flex-wrap">
-    <span class="text-[12px] font-extrabold uppercase tracking-[.22em] text-slateSoft/50">Recently completed</span>
+    <span class="text-[12px] font-extrabold uppercase tracking-[.22em] text-slateSoft/60">Just served</span>
     <% recent.forEach(function(t){ %>
-    <span class="font-mono text-[22px] font-extrabold text-slateSoft/40"><%= t.ticketNo %></span>
+    <span class="font-mono text-[22px] font-bold text-slateSoft/55"><%= t.ticketNo %></span>
     <% }) %>
   </section>
   <% } %>
@@ -233,14 +301,34 @@ tailwind.config = { theme: { extend: {
 <script>
 function tick(){
   var n = new Date(), p = function(v){ return String(v).padStart(2,'0') };
-  document.getElementById('clock').textContent = p(n.getHours())+':'+p(n.getMinutes())+':'+p(n.getSeconds());
+  // hours and minutes (12-hour, no seconds): ticking seconds only pull the eye
+  document.getElementById('clock').textContent = ((n.getHours() % 12) || 12) + ':' + p(n.getMinutes());
   document.getElementById('dateline').textContent =
     n.toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 }
 tick(); setInterval(tick, 1000);
 </script>
 <script>
-// the part that changed glows once, so a new number is noticed without a flash
+// Night after office hours: dark at once if the board opens at night, then
+// any change (closing, opening) fades slowly instead of flipping.
+(function () {
+  var html = document.documentElement;
+  function night() { var f = document.querySelector('[data-live="mode"] [data-open]'); return !!f && f.getAttribute('data-open') !== '1'; }
+  function apply() { html.classList.toggle('night', night()); }
+  apply();
+  requestAnimationFrame(function () { requestAnimationFrame(function () { html.classList.add('night-anim'); }); });
+  // after a refresh (each part fades out, swaps, fades in), wait for the last
+  // part, then change colours: otherwise new cards are born in the night colours
+  var later = null;
+  window.addEventListener('smartq:updated', function () {
+    clearTimeout(later);
+    later = setTimeout(function () { later = null; requestAnimationFrame(apply); }, 1200);   // after the last part has faded back in
+  });
+  setInterval(function () { if (!later) apply(); }, 15000);
+})();
+</script>
+<script>
+// the part that changed glows once, so new content is noticed
 window.addEventListener('smartq:updated', function (e) {
   var el = e.detail && e.detail.root; if (!el) return;
   el.classList.remove('live-changed'); void el.offsetWidth; el.classList.add('live-changed');
