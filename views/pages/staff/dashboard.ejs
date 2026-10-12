@@ -281,15 +281,12 @@
       <% } else { %>
       <ol class="divide-y divide-hair/60">
         <% g[1].forEach(function(t, i){ %>
-        <li class="flex items-center gap-3 px-5 py-3 hover:bg-brand-wash/30 transition-colors <%= typeof assigned !== 'undefined' && assigned[t.ticketNo] && assigned[t.ticketNo].windowId === myWindowId ? 'bg-brand-wash/50' : '' %>">
+        <li class="flex items-center gap-3 px-5 py-3 hover:bg-brand-wash/30 transition-colors <%= nextUp && nextUp.ticket_no === t.ticketNo ? 'bg-brand-wash/50' : '' %>">
           <span class="w-5 text-[11px] font-bold text-slateSoft/40 text-right shrink-0"><%= i + 1 %></span>
           <span class="<%= chip %> shrink-0"><%= t.ticketNo %></span>
           <div class="min-w-0 flex-1">
             <div class="text-[13.5px] font-semibold truncate"><%= t.name %>
               <% if (t.clientType === 'guest') { %><span class="<%= pill %> <%= tone('guest') %> ml-1">guest</span><% } %>
-              <% var asg = typeof assigned !== 'undefined' && assigned[t.ticketNo]; %>
-              <% if (asg && asg.windowId === myWindowId) { %><span class="<%= pill %> bg-brand text-white ml-1">yours</span>
-              <% } else if (asg) { %><span class="<%= pill %> bg-slate-100 text-slate-600 ml-1">&rarr; <%= asg.label.replace(/^(Cashier|Registrar) /, '') %></span><% } %>
             </div>
             <div class="text-[12px] text-slateSoft/70 truncate"><%= t.items.map(function(i){return i.name}).join(', ') %><%= t.purposeText ? ' · ' + t.purposeText : '' %></div>
           </div>
@@ -304,7 +301,12 @@
       <% } %>
     </section>
     <% }) %>
-
+    <%# the lanes above are this window's own line (db.windowLines) %>
+    <% if (typeof othersWaiting !== 'undefined' && othersWaiting > 0) { %>
+    <p class="px-1 text-[12.5px] text-slateSoft">
+      <%= othersWaiting %> more client<%= othersWaiting === 1 ? ' is' : 's are' %> lined up for the other windows.
+    </p>
+    <% } %>
   </div>
 </div>
 

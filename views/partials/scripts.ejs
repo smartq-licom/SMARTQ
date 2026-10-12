@@ -55,9 +55,25 @@ if (mb && sb) mb.addEventListener('click', function(){ sb.classList.toggle('-tra
 </body></html>
 <script>
 // Estimated time counts down live so the number never looks frozen.
+// It never jumps back up for a small change: the page refreshes every few
+// seconds, and while the client ahead is still at the window the server keeps
+// saying "about 1 minute". So the countdown keeps its own finish time (per
+// page), finishes, and shows "any moment now" until the turn comes; only a
+// real change (3+ minutes later, e.g. a window closed) or an earlier time moves it.
+var ETA_BUMP_OK = 180;   // seconds later that counts as a real change
 function smartqEta(el) {
   var secs = parseInt(el.dataset.seconds || '0', 10);
   var unit = el.parentElement.querySelector('[data-eta-unit]');
+  var key = 'smartq.eta.' + location.pathname, now = Date.now();
+  try {
+    var kept = parseInt(sessionStorage.getItem(key) || '0', 10);
+    var fresh = now + secs * 1000;
+    if (kept && fresh > kept && fresh - kept < ETA_BUMP_OK * 1000) {
+      secs = Math.max(0, Math.round((kept - now) / 1000));          // keep counting to the same finish
+    } else {
+      sessionStorage.setItem(key, String(fresh));
+    }
+  } catch (e) { /* no storage: count from the server's figure */ }
   (function tick() {
     if (secs <= 0) {
       el.textContent = 'any moment';

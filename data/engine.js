@@ -46,6 +46,7 @@ const ymd   = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const mins  = hhmm => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + (m || 0); };
 const hhmm  = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const at    = (dateStr, hm) => new Date(`${dateStr}T${hm.length === 5 ? hm + ':00' : hm}`);
+const EXPECTED_LEAD = 20;   // minutes: expected (not yet real) arrivals start this far ahead
 const addMin = (d, m) => new Date(d.getTime() + m * 60000);
 function clock(d) {
   let h = d.getHours(); const ap = h >= 12 ? 'PM' : 'AM';
@@ -237,10 +238,14 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   // Priority clients who have not arrived yet but usually do (history, per
   // weekday and hour): added at the times they are expected, every 5 minutes'
   // worth of the usual rate. They cut in 1:1, so regular waits include them.
+  // Only from EXPECTED_LEAD minutes ahead: an imagined arrival must never push
+  // back someone whose turn is near ("any moment now" -> 11 min); near turns
+  // move only for real events.
   let expectedCount = 0;
+  const firstExpected = addMin(base, EXPECTED_LEAD);
   if (expected && pr.arrivals) {
     let acc = 0.5;                                   // rounds to the nearest person, not always down
-    for (let t = new Date(base); t < close; t = addMin(t, 5)) {
+    for (let t = new Date(firstExpected); t < close; t = addMin(t, 5)) {
       if (t >= brStart && t < brEnd) continue;
       acc += pr.arrivals.perHour(t.getDay(), t.getHours()) * 5 / 60;
       while (acc >= 1) {
@@ -256,9 +261,9 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   if (expected && department === 'Registrar') {
     try {
       const n = await db.expectedClaimsToday();
-      const span = Math.max(1, (close - base) / 60000 - Math.max(0, (Math.min(close, brEnd) - Math.max(base, brStart)) / 60000));
+      const span = Math.max(1, (close - firstExpected) / 60000 - Math.max(0, (Math.min(close, brEnd) - Math.max(firstExpected, brStart)) / 60000));
       for (let i = 0; i < n; i++) {
-        let t = addMin(base, (i + 0.5) * span / n);
+        let t = addMin(firstExpected, (i + 0.5) * span / n);
         if (t >= brStart) t = addMin(t, Math.max(0, (brEnd - brStart) / 60000));
         if (t >= close) break;
         lane.regular.push({ id: 'claim' + i, queue_at: t, expected: true, claimExpected: true });
@@ -379,6 +384,17 @@ function evaluateJoinCached(department, opts = {}) {
   joinCache.set(key, { at: Date.now(), promise });
   promise.catch(() => joinCache.delete(key));       // a failure is not kept
   if (joinCache.size > 200) for (const [k, v] of joinCache) if (Date.now() - v.at >= JOIN_CACHE_MS) joinCache.delete(k);
+  return promise;
+}
+
+/** simulateDay for the staff screens, shared for a few seconds (dashboards refresh often). */
+const simCache = new Map();
+function simulateDayCached(department, ms = 8000) {
+  const hit = simCache.get(department);
+  if (hit && Date.now() - hit.at < ms) return hit.promise;
+  const promise = simulateDay(department);
+  simCache.set(department, { at: Date.now(), promise });
+  promise.catch(() => simCache.delete(department));
   return promise;
 }
 
@@ -520,5 +536,5 @@ async function watch() {
 module.exports = {
   SLOT_MINUTES, BOOK_SHARE, LEAVE_NOW_MIN,
   daySlots, slotPlan, serviceProfile, simulateDay,
-  evaluateJoin, evaluateJoinCached, ticketForecast, logDecision, watch, clock,
+  evaluateJoin, evaluateJoinCached, simulateDayCached, ticketForecast, logDecision, watch, clock,
 };

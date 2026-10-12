@@ -2609,6 +2609,30 @@ async function officePlan(department, { acting = null } = {}) {
   return { plan, wins, open, lanes, peak };
 }
 
+/**
+ * Every waiting client's window, so each staff member sees only their own
+ * line: the next client of each free window from the office plan (what Call
+ * Next will call), and everyone after that from the day simulation, which
+ * plays the rest of the day with the same rules. Ticket id -> { windowId,
+ * label, start, assigned }.
+ */
+async function windowLines(department) {
+  const [sim, { plan, wins }] = await Promise.all([engine.simulateDayCached(department), officePlan(department)]);
+  const byLabel = {};
+  wins.forEach(w => { byLabel[w.label] = w; });
+  const out = {};
+  for (const id in sim.result) {
+    const r = sim.result[id];
+    if (r.atWindow || !r.window || !byLabel[r.window]) continue;
+    out[id] = { windowId: byLabel[r.window].id, label: r.window, start: r.start, assigned: false };
+  }
+  plan.forEach((d, winId) => {
+    const w = wins.find(x => x.id === winId);
+    out[d.pick.id] = { windowId: winId, label: w ? w.label : '', start: new Date(0), assigned: true };
+  });
+  return out;
+}
+
 /** Ticket number -> the window it is assigned to, for the staff screens. */
 async function officeAssignments(department) {
   const { plan, wins } = await officePlan(department);
@@ -3916,7 +3940,7 @@ module.exports = {
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
-  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, officeAssignments,
+  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, officeAssignments, windowLines,
   documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
   predict, peak,
   getWindows, createWindow, updateWindow,

@@ -40,15 +40,29 @@ router.get('/dashboard', async (req, res, next) => {
       weekday: new Date().getDay(),
     });
 
+    // Each window sees only its own line (db.windowLines): its next client from
+    // the office plan, then the rest the day simulation sends to it, in the
+    // order they will be called. One open window, or none assigned: everyone.
+    const waiting = queue.filter(t => t.ticketStatus === 'waiting');
+    const openWins = windows.filter(w => w.status === 'open').length;
+    let lineOf = t => true, order = (a, b) => 0, othersWaiting = 0;
+    if (me.windowId && openWins > 1) {
+      const lines = await db.windowLines(dept);
+      lineOf = t => !lines[t.id] || lines[t.id].windowId === me.windowId;   // not placed yet: shown to all
+      order = (a, b) => (lines[a.id] ? new Date(lines[a.id].start) : 0) - (lines[b.id] ? new Date(lines[b.id].start) : 0);
+      othersWaiting = waiting.filter(t => !lineOf(t)).length;
+    }
+
     res.render('pages/staff/dashboard', {
       title: dept + ' Counter', dept, queue, windows, load: load[dept],
       current: mine, timeLeft, requirements, peakHours, why,
       nowHour: new Date().getHours(),
-      waitingPriority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority'),
-      waitingRegular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular'),
+      waitingPriority: waiting.filter(t => t.queueCategory === 'priority' && lineOf(t)).sort(order),
+      waitingRegular:  waiting.filter(t => t.queueCategory === 'regular' && lineOf(t)).sort(order),
+      othersWaiting,
       completed:       queue.filter(t => t.ticketStatus === 'completed'),
       nextUp: await db.pickNextTicket(dept, me),   // who Call Next would give THIS window
-      assigned: await db.officeAssignments(dept), myWindowId: me.windowId,   // "-> Window 1" tags
+      myWindowId: me.windowId,
       onBreak: db.isBreakTime(settings), breakEnds: db.clock12(settings.breakEnd),
       // the Registrar plans OTR releases: due list (payment order) and the coming days
       release: dept === 'Registrar' ? { outlook: await db.releaseOutlook(), due: await db.releasesDue() } : null,
