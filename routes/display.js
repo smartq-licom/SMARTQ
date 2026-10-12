@@ -15,10 +15,20 @@ async function predictions(dept, req, queue, settings) {
   const out = { avgWait: await db.todayAverageWait(dept), nextUp: [], join: null, note: null };
   out.qr = await require('qrcode').toString(`${req.protocol}://${req.get('host')}/queue`,
     { type: 'svg', margin: 0, errorCorrectionLevel: 'M', color: { dark: '#14243a', light: '#ffffff' } });
-  if (db.isPastClosing(settings)) { out.note = `Closed for today. Book a time for another day.`; return out; }
-  if (db.isBeforeJoinOpens(settings)) { out.note = `Today's line opens at ${db.clock12(db.joinOpensAt(settings))}.`; }
+  // After closing with people still in line, the staff finish it: no new
+  // numbers, but the board keeps the remaining order (the day simulated to
+  // midnight, with no new arrivals). Once the line is empty: closed.
+  let simOpts = { settings };
+  if (db.isPastClosing(settings)) {
+    const left = queue.some(t => ['waiting', 'called', 'serving'].includes(t.ticketStatus));
+    if (!left) { out.note = `Closed for today. Book a time for another day.`; return out; }
+    out.finishing = true;
+    out.note = `Closed for new numbers today. Book a time for another day.`;
+    simOpts = { settings: { ...settings, closeTime: '23:59' }, expected: false };
+  }
+  if (!out.note && db.isBeforeJoinOpens(settings)) { out.note = `Today's line opens at ${db.clock12(db.joinOpensAt(settings))}.`; }
   try {
-    const sim = await engine.simulateDay(dept, { settings });
+    const sim = await engine.simulateDay(dept, simOpts);
     out.nextUp = queue.filter(t => t.ticketStatus === 'waiting' && sim.result[t.id])
       .map(t => ({ ticketNo: t.ticketNo, lane: t.queueCategory, start: sim.result[t.id].start }))
       .sort((a, b) => a.start - b.start).slice(0, 3)
