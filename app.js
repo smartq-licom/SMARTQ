@@ -117,9 +117,25 @@ app.use((req, res, next) => {
 });
 
 // ── Auth guards ──────────────────────────────────────────────────────────────
-function requireLogin(req, res, next) {
-  if (!req.session.user) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
-  next();
+// A signed-in account is looked up again every so often: one an admin disabled
+// or deleted (or whose role changed) is signed out on its next page, instead of
+// staying in until it logs out. A temporary lock from wrong passwords does not
+// sign out someone already in (that would let anyone kick a staff member out).
+const RECHECK_MS = 15 * 1000;
+async function requireLogin(req, res, next) {
+  const u = req.session.user;
+  if (!u) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
+  if (Date.now() - (req.session.checkedAt || 0) < RECHECK_MS) return next();
+  try {
+    const now = await db.getUser(u.id);
+    if (!now || now.status === 'disabled' || now.role !== u.role) {
+      delete req.session.user; delete req.session.perms; delete req.session.checkedAt;
+      req.session.error = 'You were signed out: this account was disabled or changed. Ask the admin if you need access.';
+      return res.redirect('/login');
+    }
+    req.session.checkedAt = Date.now();
+    next();
+  } catch (e) { next(e); }
 }
 function requireRole(...roles) {
   return (req, res, next) => {
