@@ -84,7 +84,10 @@ tailwind.config = { theme: { extend: {
       <section data-live="serving" class="lg:flex-1 lg:min-h-0 flex flex-col">
         <div class="label mb-3">Now serving</div>
         <div class="grid <%= windows.length > 1 ? 'md:grid-cols-2' : '' %> <%= windows.length > 2 ? 'xl:grid-cols-3' : '' %> gap-5 lg:flex-1 lg:min-h-0">
-          <% var big = windows.length > 1 ? 'lg:text-[min(17vh,7vw)]' : 'lg:text-[min(22vh,13vw)]'; %>
+          <% var big = windows.length > 1 ? 'lg:text-[min(17vh,7vw)]' : 'lg:text-[min(22vh,13vw)]';
+             var wc = typeof waitingCount !== 'undefined' ? waitingCount : null;
+             var noLine = wc ? !(wc.priority + wc.regular) : !(priority.length + regular.length);
+             var openNow = !!(predict && predict.join);   // taking people now (no estimate after closing) %>
           <% windows.forEach(function(w){ %>
           <% const s = serving.find(function(t){ return t.windowId === w.id }); %>
           <% if (s) { %>
@@ -96,13 +99,31 @@ tailwind.config = { theme: { extend: {
               <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/20' %>"><%= s.queueCategory %></span>
             </div>
           </div>
+          <% } else if (w.status === 'open' && noLine && openNow) { %>
+          <%# open and no one in line: a plain, quiet card %>
+          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center">
+            <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
+            <div class="mt-5 text-[38px] sm:text-[52px] lg:text-[min(8vh,72px)] font-extrabold leading-tight text-slateSoft/45">No one in line</div>
+            <span class="mt-5 inline-flex items-center gap-2 rounded-full bg-emerald-50 ring-1 ring-emerald-200 px-4 py-1.5 text-[15px] font-bold text-emerald-700"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>Open</span>
+          </div>
+          <% } else if (w.status === 'open' && !openNow) { %>
+          <%# after hours: a calm "closed" card, and when it opens again %>
+          <% var ot = String(settings.openTime || '08:00').split(':'), oh = +ot[0], opens = ((oh % 12) || 12) + ':' + (ot[1] || '00') + (oh < 12 ? ' AM' : ' PM'); %>
+          <div class="card px-5 sm:px-8 py-7 text-center flex flex-col items-center justify-center">
+            <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
+            <div class="mt-4 grid place-items-center w-20 h-20 lg:w-24 lg:h-24 rounded-full bg-[#F5F7FA] text-slateSoft/60" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+            </div>
+            <div class="mt-4 text-[34px] sm:text-[44px] lg:text-[min(7vh,60px)] font-extrabold leading-tight text-ink">Closed for today</div>
+            <div class="mt-1 text-[17px] sm:text-[19px] font-semibold text-slateSoft/70">Opens at <%= opens %> on the next open day</div>
+          </div>
           <% } else { %>
           <div class="card px-5 sm:px-8 py-7 text-center flex flex-col justify-center">
             <div class="text-[16px] font-extrabold uppercase tracking-[.2em] text-slateSoft/60"><%= w.label %></div>
             <div class="font-mono text-[72px] sm:text-[110px] <%= big %> leading-[1] font-extrabold mt-2 text-edge">----</div>
             <div class="mt-3 flex items-center justify-center gap-3">
               <span class="rounded-full px-4 py-1.5 text-[14px] font-extrabold uppercase tracking-wide bg-[#F5F7FA] text-slateSoft"><%= w.status %></span>
-              <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Available' : '' %></span>
+              <span class="text-[19px] font-bold text-slateSoft/50"><%= w.status === 'open' ? 'Calling the next number' : w.status === 'break' ? 'On break' : 'Not serving' %></span>
             </div>
           </div>
           <% } %>
@@ -162,7 +183,14 @@ tailwind.config = { theme: { extend: {
           <% }) %>
         </ol>
         <% } else { %>
-        <div class="text-[19px] font-bold text-slateSoft/45 py-2">No one waiting</div>
+        <%# no one waiting: a calm note in the middle of the card, not a lonely line at the top %>
+        <div class="flex-1 flex flex-col items-center justify-center text-center py-6">
+          <div class="grid place-items-center w-14 h-14 rounded-full bg-[#F5F7FA] text-slateSoft/50" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><path d="M16 4.8a3.2 3.2 0 0 1 0 6.4M17.5 14.2c1.7.6 2.7 2.3 3 4.8"/></svg>
+          </div>
+          <div class="mt-3 text-[22px] font-extrabold text-ink">No one waiting</div>
+          <div class="mt-1 text-[15px] font-semibold text-slateSoft/70 max-w-[16rem]"><%= predict && predict.join ? "Get a number and you'll be called right away." : 'The line opens again on the next open day.' %></div>
+        </div>
         <% } %>
       </section>
 
