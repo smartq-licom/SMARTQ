@@ -35,6 +35,29 @@ tailwind.config = { theme: { extend: {
 
 <div class="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
 
+  <%# Opened from a student's ticket (the Board button adds ?from=<ticket token>):
+      a way back to it. The office TV opens the plain address and never shows it. %>
+  <a id="backToTicket" hidden aria-label="Back to my ticket" title="Back to my ticket"
+     class="back-fab fixed z-50 right-4 grid place-items-center w-14 h-14 rounded-full text-white bg-gradient-to-br from-[#2E9BEA] via-brand to-brand-night shadow-[0_12px_28px_-8px_rgba(26,108,174,.7)] hover:brightness-110 active:scale-95 transition">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+  </a>
+  <style>
+    .back-fab[hidden]{ display:none !important }           /* the office TV: never shown */
+    .back-fab{ bottom:calc(16px + env(safe-area-inset-bottom)); animation:fab-in .4s cubic-bezier(.2,.8,.2,1) both }
+    @keyframes fab-in{ from{ opacity:0; transform:translateY(16px) scale(.85) } to{ opacity:1; transform:none } }
+    @media (prefers-reduced-motion:reduce){ .back-fab{ animation:none } }
+    @media print{ .back-fab{ display:none !important } }
+  </style>
+  <script>
+    (function () {
+      var from = new URLSearchParams(location.search).get('from') || '';
+      if (!/^[a-f0-9]{32}$/.test(from)) return;            // only a real ticket link
+      var a = document.getElementById('backToTicket');
+      a.href = '/queue/t/' + from;
+      a.hidden = false;
+    })();
+  </script>
+
   <!-- header -->
   <header class="px-4 sm:px-8 pt-6 pb-4 flex flex-wrap items-center justify-between gap-4">
     <div class="flex items-center gap-4">
