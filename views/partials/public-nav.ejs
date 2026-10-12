@@ -13,6 +13,14 @@
     </a>
     <div class="ml-auto flex items-center gap-2 shrink-0">
       <%- include('theme-toggle') %>
+      <%# the office's TV board (public, no login), when the page passes board: 'Cashier' | 'Registrar' %>
+      <% if (typeof board !== 'undefined' && board) { %>
+      <a href="/display/<%= board.toLowerCase() %>" target="_blank" rel="noopener" aria-label="See the <%= board %> board" title="See the <%= board %> board: now serving and who's next"
+         class="inline-flex items-center gap-1 rounded-full bg-white ring-1 ring-hair hover:bg-mist w-9 h-9 sm:w-auto sm:h-auto justify-center sm:px-3 sm:py-2 text-[12.5px] font-semibold text-slateSoft transition-colors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>
+        <span class="hidden sm:inline">Board</span>
+      </a>
+      <% } %>
       <%# replays the first-time guide on pages that have one (partials/tour) %>
       <button type="button" data-tour-open hidden onclick="window.smartqTour && window.smartqTour()"
               class="inline-flex items-center gap-1 rounded-full bg-white ring-1 ring-hair hover:bg-mist w-9 h-9 sm:w-auto sm:h-auto justify-center sm:px-3 sm:py-2 text-[12.5px] font-semibold text-slateSoft transition-colors" aria-label="Show the guide">
