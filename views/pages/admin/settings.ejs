@@ -1,183 +1,448 @@
 <%- include('../../partials/head') %>
-<%- include('../../partials/nav', { active: '/admin/settings' }) %>
-<h2 class="text-xl font-extrabold mb-4">System settings</h2>
-<form method="POST" action="/admin/settings" class="grid lg:grid-cols-2 gap-4 max-w-4xl">
-  <section class="<%= UI.card %>">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Institution</h3></div>
-    <div class="<%= UI.body %> space-y-3">
-      <div><label class="<%= UI.lbl %>">Institution name</label><input name="institutionName" value="<%= settings.institutionName %>" class="<%= UI.input %>"></div>
-      <div><label class="<%= UI.lbl %>">Academic year</label><input name="academicYear" value="<%= settings.academicYear %>" class="<%= UI.input %>"></div>
-      <div><label class="<%= UI.lbl %>">Display announcement</label><input name="announcement" value="<%= settings.announcement %>" class="<%= UI.input %>"></div>
-      <div><label class="<%= UI.lbl %>">Display refresh (seconds)</label><input name="refreshRate" type="number" min="3" value="<%= settings.refreshRate %>" class="<%= UI.input %>"></div>
-    </div>
-  </section>
+<%
+  const groups = [
+    ['general',  'General'],
+    ['hours',    'Office hours'],
+    ['booking',  'Booking'],
+    ['limits',   'Queue & limits'],
+    ['cancel',   'Auto-cancel'],
+    ['learning', 'Estimates'],
+    ['baseline', 'Time saved'],
+  ];
+%>
+<%- include('../../partials/nav', { active: '/admin/settings', navSub: groups }) %>
+<%#
+  System settings: its groups sit under Settings in the main sidebar (a chip row
+  on phones), one column of
+  rows (what it does on the left, the control on the right), and a save bar
+  that appears only once something has changed. Field names are unchanged, so
+  POST /admin/settings saves exactly as before.
+%>
+<%
+  const isAuto = settings.capacityMode === 'auto';
+  // one setting: what it does (left), its control (right)
+  const row = 'grid gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,19rem)] md:gap-8 md:justify-start md:items-center px-5 py-4 border-b border-hair/60 last:border-0';
+  // a setting whose control needs the full width (choices, day chips)
+  const wide = 'grid gap-3 px-5 py-4 border-b border-hair/60 last:border-0';
+  const name = 'text-[13.5px] font-semibold text-ink';
+  const help = 'text-[12px] leading-relaxed text-slateSoft/80 mt-0.5';
+  const unit = 'text-[12.5px] text-slateSoft shrink-0 w-[5.5rem]';
+%>
+<style>
+  .sub-nav a.on{ background:rgba(255,255,255,.16); color:#fff; font-weight:700 }
+  .chip-nav a.on{ background:#e8f2fb; border-color:#bcd3e8; color:#1A6CAE }
+  .set-sec{ scroll-margin-top:84px }
+  /* wide screens: a group's settings sit two by two, so the cards use the width */
+  @media (min-width:1500px){
+    .set-rows{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#e8edf3 }
+    .set-rows > *{ background:#fff; border-bottom:0 !important }
+    .set-rows > :last-child:nth-child(odd){ grid-column:1 / -1 }
+    .set-rows > [class*="md:grid-cols"]{ grid-template-columns:minmax(0,16rem) minmax(0,17rem); column-gap:24px }
+  }
+  /* two-choice toggle cards */
+  .opt{ position:relative; display:block; cursor:pointer; border:1.5px solid #e2e8f0; border-radius:14px; padding:11px 12px 11px 38px; background:#fff; transition:border-color .15s, background .15s, box-shadow .15s }
+  .opt:hover{ border-color:#bcd3e8 }
+  .opt input{ position:absolute; opacity:0; pointer-events:none }
+  .opt::before{ content:''; position:absolute; left:13px; top:13px; width:16px; height:16px; border-radius:999px; border:1.5px solid #cbd5e1; background:#fff; transition:all .15s }
+  .opt:has(input:checked){ border-color:#2185D5; background:#f3f8fd; box-shadow:0 0 0 3px rgba(33,133,213,.12) }
+  .opt:has(input:checked)::before{ border:5px solid #2185D5 }
+  .opt:has(input:focus-visible){ outline:2px solid #2185D5; outline-offset:2px }
+  .opt b{ display:block; font-size:13px; color:#1b2a3a }
+  .opt span{ display:block; font-size:11.5px; color:#64748b; margin-top:1px; line-height:1.4 }
+  /* open days as chips */
+  .day{ cursor:pointer }
+  .day input{ position:absolute; opacity:0; pointer-events:none }
+  .day span{ display:inline-flex; align-items:center; justify-content:center; min-width:46px; height:36px; padding:0 10px; border-radius:10px; border:1.5px solid #e2e8f0; font-size:12.5px; font-weight:700; color:#64748b; transition:all .15s }
+  .day input:checked + span{ background:#2185D5; border-color:#2185D5; color:#fff }
+  .day input:focus-visible + span{ outline:2px solid #2185D5; outline-offset:2px }
+  #saveBar{ transition:transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s }
+  #saveBar[data-on="0"]{ transform:translateY(130%); opacity:0; pointer-events:none }
+  .changed{ box-shadow:inset 3px 0 0 #2185D5 }
+  @media (prefers-reduced-motion:reduce){ #saveBar{ transition:none } }
+</style>
 
-  <section class="<%= UI.card %>">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Office hours</h3></div>
-    <div class="<%= UI.body %> space-y-3">
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="<%= UI.lbl %>">Open</label><input name="openTime" type="time" value="<%= settings.openTime %>" class="<%= UI.input %>"></div>
-        <div><label class="<%= UI.lbl %>">Close</label><input name="closeTime" type="time" value="<%= settings.closeTime %>" class="<%= UI.input %>"></div>
-        <div><label class="<%= UI.lbl %>">Break start</label><input name="breakStart" type="time" value="<%= settings.breakStart %>" class="<%= UI.input %>"></div>
-        <div><label class="<%= UI.lbl %>">Break end</label><input name="breakEnd" type="time" value="<%= settings.breakEnd %>" class="<%= UI.input %>"></div>
-      </div>
-      <fieldset>
-        <legend class="<%= UI.lbl %>">Open days</legend>
-        <div class="flex flex-wrap gap-2.5 text-[12.5px]">
-          <% ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d, i){ %>
-          <label class="flex items-center gap-1.5">
-            <input type="checkbox" name="openDays" value="<%= i+1 %>" <%= settings.openDays.includes(i+1) ? 'checked' : '' %> class="rounded border-hair"><%= d %>
-          </label>
-          <% }) %>
-        </div>
-        <span class="<%= UI.hint %>">Students cannot schedule for a closed day.</span>
-      </fieldset>
-    </div>
-  </section>
+<div class="max-w-4xl min-[1500px]:max-w-[1400px]">
+  <div class="mb-5">
+    <h2 class="text-xl font-extrabold">System settings</h2>
+    <p class="text-[13px] text-slateSoft mt-1">Changes apply to both offices as soon as you save.</p>
+  </div>
 
-  <section class="<%= UI.card %>">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Capacity</h3></div>
-    <div class="<%= UI.body %> space-y-3">
-      <div><label class="<%= UI.lbl %>">Capacity mode</label>
-        <select name="capacityMode" id="capMode" class="<%= UI.input %>">
-          <option value="auto" <%= settings.capacityMode === 'auto' ? 'selected' : '' %>>Auto (from office hours)</option>
-          <option value="manual" <%= settings.capacityMode === 'manual' ? 'selected' : '' %>>Manual</option>
-        </select></div>
-      <%# The hidden inputs always carry the saved manual numbers; the visible boxes show
-          today's computed capacity in Auto mode so they match the dashboard. %>
-      <% const isAuto = settings.capacityMode === 'auto'; %>
-      <input type="hidden" name="cashierCapacity" value="<%= settings.cashierCapacity %>">
-      <input type="hidden" name="registrarCapacity" value="<%= settings.registrarCapacity %>">
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="<%= UI.lbl %>">Cashier capacity</label><input data-cap="cashierCapacity" data-auto="<%= load.Cashier.capacity %>" type="number" min="1" value="<%= isAuto ? load.Cashier.capacity : settings.cashierCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-slate-100 read-only:text-slate-500"></div>
-        <div><label class="<%= UI.lbl %>">Registrar capacity</label><input data-cap="registrarCapacity" data-auto="<%= load.Registrar.capacity %>" type="number" min="1" value="<%= isAuto ? load.Registrar.capacity : settings.registrarCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-slate-100 read-only:text-slate-500"></div>
-      </div>
-      <p id="capAutoNote" class="text-[11.5px] text-slate-500" <%= isAuto ? '' : 'hidden' %>>Auto mode: today's capacity is worked out from the saved office hours ÷ avg service minutes × open windows, so it changes when you open or close windows. Switch to Manual to set your own numbers.</p>
-      <script>
-        (function () {
-          var mode = document.getElementById('capMode');
-          var note = document.getElementById('capAutoNote');
-          var boxes = document.querySelectorAll('[data-cap]');
-          function hidden(box) { return document.querySelector('input[type=hidden][name="' + box.dataset.cap + '"]'); }
-          function apply() {
-            var auto = mode.value === 'auto';
-            note.hidden = !auto;
-            boxes.forEach(function (box) {
-              box.readOnly = auto;
-              box.value = auto ? box.dataset.auto : hidden(box).value;
-            });
-          }
-          boxes.forEach(function (box) {
-            box.addEventListener('input', function () { if (!box.readOnly) hidden(box).value = box.value; });
-          });
-          mode.addEventListener('change', apply);
-        })();
-      </script>
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="<%= UI.lbl %>">Avg service minutes</label><input name="avgServiceMinutes" type="number" min="1" value="<%= settings.avgServiceMinutes %>" class="<%= UI.input %>"></div>
-        <div><label class="<%= UI.lbl %>">Max items per request</label><input name="maxBatchDocuments" type="number" min="1" max="8" value="<%= settings.maxBatchDocuments %>" class="<%= UI.input %>"></div>
-      </div>
-    </div>
-  </section>
+  <%# phones: the groups as a scrolling chip row %>
+  <nav class="chip-nav lg:hidden -mx-1 mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Settings groups">
+    <% groups.forEach(function (g) { %>
+    <a href="#<%= g[0] %>" data-nav="<%= g[0] %>" class="shrink-0 rounded-full border border-hair bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-slateSoft">
+      <%= g[1] %></a>
+    <% }) %>
+  </nav>
 
-  <section class="<%= UI.card %>">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Auto-cancellation</h3></div>
-    <div class="<%= UI.body %> space-y-3">
-      <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12px] text-amber-900">
-        A transaction that has already been paid is never auto-cancelled.
-      </p>
-      <div class="grid grid-cols-3 gap-3">
-        <div><label class="<%= UI.lbl %>">Cancel after</label><input name="cancelAfterMinutes" type="number" min="5" max="60" value="<%= settings.cancelAfterMinutes %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">minutes</span></div>
-        <div><label class="<%= UI.lbl %>">Warn before</label><input name="warnBeforeMinutes" type="number" min="1" max="30" value="<%= settings.warnBeforeMinutes %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">minutes</span></div>
-        <div><label class="<%= UI.lbl %>">No-show after</label><input name="noShowAfterMinutes" type="number" min="1" max="30" value="<%= settings.noShowAfterMinutes %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">minutes</span></div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div class="sm:col-span-2 pt-2 mt-2 border-t border-hair">
-          <div class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Scheduling</div>
-        </div>
-        <div>
-          <label class="<%= UI.lbl %>">Students may book up to</label>
-          <input name="scheduleMaxDays" type="number" min="0" max="365"
-                 value="<%= settings.scheduleMaxDays %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">days ahead. Set 0 to allow same-day only.</span>
-        </div>
-        <div>
-          <label class="<%= UI.lbl %>">Same-day requests</label>
-          <select name="allowSameDay" class="<%= UI.input %>">
-            <option value="1" <%= settings.allowSameDay ? 'selected' : '' %>>Open - students can request now</option>
-            <option value="0" <%= !settings.allowSameDay ? 'selected' : '' %>>Closed - scheduled dates only</option>
-          </select>
-          <span class="<%= UI.hint %>">Close this on a busy day to stop walk-in numbers.</span>
-        </div>
-        <div>
-          <label class="<%= UI.lbl %>">When today's line is full</label>
-          <select name="fullDayMode" class="<%= UI.input %>">
-            <option value="warn" <%= settings.fullDayMode !== 'decline' ? 'selected' : '' %>>Warn - still give a number</option>
-            <option value="decline" <%= settings.fullDayMode === 'decline' ? 'selected' : '' %>>Decline - offer the earliest free time</option>
-          </select>
-          <span class="<%= UI.hint %>">"Full" = the day simulation says a new client would not be served before closing, even at a slow pace.</span>
-        </div>
-        <div>
-          <label class="<%= UI.lbl %>">Daily limit per office</label>
-          <input name="dailySlotLimit" type="number" min="0" max="999"
-                 value="<%= settings.dailySlotLimit %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">tickets per day. 0 means no cap.</span>
-        </div>
-        <div>
-          <label class="<%= UI.lbl %>">Maximum copies per document</label>
-          <input name="maxCopies" type="number" min="1" max="99"
-                 value="<%= settings.maxCopies %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">How many copies of one document a student may request.</span>
-        </div>
-        <div class="sm:col-span-2 pt-2 mt-2 border-t border-hair">
-          <div class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80 mb-2.5">Auto-cancellation</div>
-        </div>
-        <div><label class="<%= UI.lbl %>">Expire an unattended ticket after</label>
-          <input name="expireWaitingMinutes" type="number" min="10" max="480" value="<%= settings.expireWaitingMinutes %>" class="<%= UI.input %>">
-          <span class="<%= UI.hint %>">minutes. A number that is taken but never called is cancelled after this.</span></div>
-      </div>
-      <div><label class="<%= UI.lbl %>">Minimum samples for historical estimates</label>
-        <input name="minSamples" type="number" min="1" value="<%= settings.minSamples %>" class="<%= UI.input %> max-w-[10rem]"></div>
-    </div>
-  </section>
+  <div>
 
-  <%# The office's process before SmartQ (time-and-motion study / survey), for
-      the Time saved report. Minutes per client; 0 = not measured. %>
-  <section class="<%= UI.card %> lg:col-span-2">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Current process (before SmartQ)</h3></div>
-    <div class="<%= UI.body %>">
-      <p class="text-[12.5px] text-slateSoft mb-3">Minutes per client in the old, manual process, from your time-and-motion study or survey.
-        The <b>Time saved</b> report (Reports) compares them with what SmartQ measures. Leave 0 for a step you did not measure.</p>
-      <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        <% [['baseFormTrip','formTrip','min'],['baseCashierLine','cashierLine','min'],['baseRegistrarLine','registrarLine','min'],['baseReturnTrip','returnTrip','min'],['baseReturnRate','returnRate','%']].forEach(function (f) { %>
-        <div><label class="<%= UI.lbl %>"><%= baselineFields[f[1]].replace(/ \(%\)$/, '') %></label>
-          <div class="flex items-center gap-2"><input name="<%= f[0] %>" type="number" min="0" max="<%= f[2] === '%' ? 100 : 600 %>" step="1"
-                 value="<%= settings.timeBaseline[f[1]] %>" class="<%= UI.input %>"><span class="text-[12px] text-slateSoft"><%= f[2] %></span></div></div>
+    <form id="settingsForm" method="POST" action="/admin/settings" class="space-y-5 pb-28">
+
+      <%# ── General ── %>
+      <section id="general" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">General</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">Shown on tickets, receipts and the TV boards.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= row %>">
+          <div><label for="fInst" class="<%= name %>">Institution name</label></div>
+          <input id="fInst" name="institutionName" value="<%= settings.institutionName %>" class="<%= UI.input %>">
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fAy" class="<%= name %>">Academic year</label></div>
+          <input id="fAy" name="academicYear" value="<%= settings.academicYear %>" class="<%= UI.input %>">
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fAnn" class="<%= name %>">TV board announcement</label>
+            <p class="<%= help %>">The scrolling line at the bottom of the Cashier and Registrar boards.</p></div>
+          <input id="fAnn" name="announcement" value="<%= settings.announcement %>" class="<%= UI.input %>">
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fRef" class="<%= name %>">TV board refresh</label>
+            <p class="<%= help %>">How often the boards check for new numbers.</p></div>
+          <div class="flex items-center gap-2"><input id="fRef" name="refreshRate" type="number" min="3" value="<%= settings.refreshRate %>" class="<%= UI.input %>"><span class="<%= unit %>">seconds</span></div>
+        </div>
+        </div>
+      </section>
+
+      <%# ── Office hours ── %>
+      <section id="hours" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Office hours</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">Call Next is paused during the break. Close a single date in the Booking Calendar.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= row %>">
+          <div><span class="<%= name %>">Open</span>
+            <p class="<%= help %>">The same-day line opens 1 hour before this.</p></div>
+          <div class="flex items-center gap-2">
+            <input name="openTime" type="time" value="<%= settings.openTime %>" aria-label="Opens at" class="<%= UI.input %> min-w-0 px-2.5">
+            <span class="text-[12.5px] text-slateSoft shrink-0">to</span>
+            <input name="closeTime" type="time" value="<%= settings.closeTime %>" aria-label="Closes at" class="<%= UI.input %> min-w-0 px-2.5">
+          </div>
+        </div>
+        <div class="<%= row %>">
+          <div><span class="<%= name %>">Break</span>
+            <p class="<%= help %>">No one is called during the break.</p></div>
+          <div class="flex items-center gap-2">
+            <input name="breakStart" type="time" value="<%= settings.breakStart %>" aria-label="Break starts" class="<%= UI.input %> min-w-0 px-2.5">
+            <span class="text-[12.5px] text-slateSoft shrink-0">to</span>
+            <input name="breakEnd" type="time" value="<%= settings.breakEnd %>" aria-label="Break ends" class="<%= UI.input %> min-w-0 px-2.5">
+          </div>
+        </div>
+        <div class="<%= wide %>">
+          <div><span class="<%= name %>">Open days</span>
+            <p class="<%= help %>">Students cannot book a closed day.</p></div>
+          <div class="flex flex-wrap gap-2" role="group" aria-label="Open days">
+            <% ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d, i){ %>
+            <label class="day relative"><input type="checkbox" name="openDays" value="<%= i+1 %>" <%= settings.openDays.includes(i+1) ? 'checked' : '' %>><span><%= d %></span></label>
+            <% }) %>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <%# ── Booking ── %>
+      <section id="booking" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Booking</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">When students may get a number.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= wide %>">
+          <div><span class="<%= name %>">Same-day numbers</span>
+            <p class="<%= help %>">Close this on a very busy day to stop walk-in numbers; booked times still work.</p></div>
+          <div class="grid sm:grid-cols-2 gap-2.5 max-w-[39rem]">
+            <label class="opt"><input type="radio" name="allowSameDay" value="1" <%= settings.allowSameDay ? 'checked' : '' %>>
+              <b>Open</b><span>Students can get a number for today.</span></label>
+            <label class="opt"><input type="radio" name="allowSameDay" value="0" <%= !settings.allowSameDay ? 'checked' : '' %>>
+              <b>Closed</b><span>Booked dates only.</span></label>
+          </div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fDays" class="<%= name %>">Book up to</label>
+            <p class="<%= help %>">How far ahead students may book. 0 = today only.</p></div>
+          <div class="flex items-center gap-2"><input id="fDays" name="scheduleMaxDays" type="number" min="0" max="365" value="<%= settings.scheduleMaxDays %>" class="<%= UI.input %>"><span class="<%= unit %>">days ahead</span></div>
+        </div>
+        </div>
+      </section>
+
+      <%# ── Queue & limits ── %>
+      <section id="limits" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Queue & limits</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">How much each office takes in a day.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= wide %>">
+          <div><span class="<%= name %>">When today's line is full</span>
+            <p class="<%= help %>">"Full" means the day simulation says a new client would not be served before closing, even at a slow pace.</p></div>
+          <div class="grid sm:grid-cols-2 gap-2.5 max-w-[39rem]">
+            <label class="opt"><input type="radio" name="fullDayMode" value="warn" <%= settings.fullDayMode !== 'decline' ? 'checked' : '' %>>
+              <b>Warn</b><span>Still give a number, with a warning.</span></label>
+            <label class="opt"><input type="radio" name="fullDayMode" value="decline" <%= settings.fullDayMode === 'decline' ? 'checked' : '' %>>
+              <b>Decline</b><span>Say no and offer the earliest free time.</span></label>
+          </div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fCap" class="<%= name %>">Daily limit per office</label>
+            <p class="<%= help %>">Tickets per office per day. 0 = no limit.</p></div>
+          <div class="flex items-center gap-2"><input id="fCap" name="dailySlotLimit" type="number" min="0" max="999" value="<%= settings.dailySlotLimit %>" class="<%= UI.input %>"><span class="<%= unit %>">tickets</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fItems" class="<%= name %>">Documents per request</label>
+            <p class="<%= help %>">The most a student can pick on one ticket.</p></div>
+          <div class="flex items-center gap-2"><input id="fItems" name="maxBatchDocuments" type="number" min="1" max="8" value="<%= settings.maxBatchDocuments %>" class="<%= UI.input %>"><span class="<%= unit %>">max</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fCopies" class="<%= name %>">Copies per document</label>
+            <p class="<%= help %>">For released documents only; fees and claims are always 1.</p></div>
+          <div class="flex items-center gap-2"><input id="fCopies" name="maxCopies" type="number" min="1" max="99" value="<%= settings.maxCopies %>" class="<%= UI.input %>"><span class="<%= unit %>">max</span></div>
+        </div>
+        <%# The hidden inputs always carry the saved manual numbers; the visible boxes show
+            today's computed capacity in Auto mode so they match the dashboard. %>
+        <input type="hidden" name="cashierCapacity" value="<%= settings.cashierCapacity %>">
+        <input type="hidden" name="registrarCapacity" value="<%= settings.registrarCapacity %>">
+        <div class="<%= wide %>">
+          <div><span class="<%= name %>">Dashboard capacity</span>
+            <p class="<%= help %>">The "clients a day" figure on the dashboards.</p></div>
+          <div class="grid sm:grid-cols-2 gap-2.5 max-w-[39rem]">
+            <label class="opt"><input type="radio" name="capacityMode" value="auto" <%= isAuto ? 'checked' : '' %>>
+              <b>Auto</b><span>Office hours ÷ avg service minutes × open windows.</span></label>
+            <label class="opt"><input type="radio" name="capacityMode" value="manual" <%= !isAuto ? 'checked' : '' %>>
+              <b>Manual</b><span>Type your own numbers.</span></label>
+          </div>
+          <div class="grid grid-cols-2 gap-3 max-w-[39rem]">
+            <div><label class="<%= UI.lbl %>">Cashier</label>
+              <div class="flex items-center gap-2"><input data-cap="cashierCapacity" data-auto="<%= load.Cashier.capacity %>" type="number" min="1" value="<%= isAuto ? load.Cashier.capacity : settings.cashierCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-mist read-only:text-slateSoft"><span class="text-[12.5px] text-slateSoft shrink-0">a day</span></div></div>
+            <div><label class="<%= UI.lbl %>">Registrar</label>
+              <div class="flex items-center gap-2"><input data-cap="registrarCapacity" data-auto="<%= load.Registrar.capacity %>" type="number" min="1" value="<%= isAuto ? load.Registrar.capacity : settings.registrarCapacity %>" <%= isAuto ? 'readonly' : '' %> class="<%= UI.input %> read-only:bg-mist read-only:text-slateSoft"><span class="text-[12.5px] text-slateSoft shrink-0">a day</span></div></div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <%# ── Auto-cancel ── %>
+      <section id="cancel" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Auto-cancel</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">Frees the window when a called client doesn't come or doesn't finish. A paid transaction is never cancelled.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= row %>">
+          <div><label for="fCancel" class="<%= name %>">Cancel an unfinished client after</label>
+            <p class="<%= help %>">At the window, but the transaction is never completed.</p></div>
+          <div class="flex items-center gap-2"><input id="fCancel" name="cancelAfterMinutes" type="number" min="5" max="60" value="<%= settings.cancelAfterMinutes %>" class="<%= UI.input %>"><span class="<%= unit %>">minutes</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fWarn" class="<%= name %>">Warn them first</label>
+            <p class="<%= help %>">How long before that cancel the client gets a warning.</p></div>
+          <div class="flex items-center gap-2"><input id="fWarn" name="warnBeforeMinutes" type="number" min="1" max="30" value="<%= settings.warnBeforeMinutes %>" class="<%= UI.input %>"><span class="<%= unit %>">min before</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fNoShow" class="<%= name %>">Extra time for a no-show</label>
+            <p class="<%= help %>">Called, but never came to the window: added on top of the cancel time.</p></div>
+          <div class="flex items-center gap-2"><input id="fNoShow" name="noShowAfterMinutes" type="number" min="1" max="30" value="<%= settings.noShowAfterMinutes %>" class="<%= UI.input %>"><span class="<%= unit %>">min more</span></div>
+        </div>
+        </div>
+        <div class="border-t border-hair/60 px-5 py-3.5 bg-mist/60 text-[12.5px] text-slateSoft leading-relaxed" data-cancel-summary></div>
+        <%# kept so a save keeps its value; waiting tickets are no longer expired on a timer %>
+        <input type="hidden" name="expireWaitingMinutes" value="<%= settings.expireWaitingMinutes %>">
+      </section>
+
+      <%# ── Estimates ── %>
+      <section id="learning" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Estimates</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">Where the waiting times come from.</p></div></div>
+        <div class="set-rows">
+        <div class="<%= row %>">
+          <div><label for="fAvg" class="<%= name %>">Starting service time</label>
+            <p class="<%= help %>">Used for a document with no set minutes and no history yet.</p></div>
+          <div class="flex items-center gap-2"><input id="fAvg" name="avgServiceMinutes" type="number" min="1" value="<%= settings.avgServiceMinutes %>" class="<%= UI.input %>"><span class="<%= unit %>">minutes</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><label for="fMin" class="<%= name %>">Trust history after</label>
+            <p class="<%= help %>">Finished services a document needs before its real times are used.</p></div>
+          <div class="flex items-center gap-2"><input id="fMin" name="minSamples" type="number" min="1" value="<%= settings.minSamples %>" class="<%= UI.input %>"><span class="<%= unit %>">services</span></div>
+        </div>
+        <div class="<%= row %>">
+          <div><span class="<%= name %>">Learning from real services</span>
+            <p class="<%= help %>">
+              Learning from <b class="text-ink"><%= learning.counted %></b> of <%= learning.total %> finished services<%
+              if (learning.since) { %>, since <b class="text-ink"><%= new Date(learning.since).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) %></b><% } %>.
+              After test runs or practice, start fresh so quick test clicks don't shorten the times. Records and reports are kept.</p></div>
+          <div class="md:self-center"><button type="submit" form="learningForm" class="<%= UI.btn %> <%= UI.btnGh %> w-full">Start learning fresh</button></div>
+        </div>
+        </div>
+      </section>
+
+      <%# ── Time saved baseline: the office's process before SmartQ (time-and-motion
+          study / survey), for the Time saved report. Minutes per client; 0 = not measured. %>
+      <section id="baseline" class="set-sec <%= UI.card %>">
+        <div class="<%= UI.cardHd %>"><div><h3 class="<%= UI.cardTtl %>">Time saved: the process before SmartQ</h3>
+          <p class="text-[12px] text-slateSoft/80 mt-0.5">From your time-and-motion study or survey. The <b>Time saved</b> report compares these with what SmartQ measures. Leave 0 for a step you did not measure.</p></div></div>
+        <div class="set-rows">
+        <% [['baseFormTrip','formTrip','minutes'],['baseCashierLine','cashierLine','minutes'],['baseRegistrarLine','registrarLine','minutes'],['baseReturnTrip','returnTrip','minutes'],['baseReturnRate','returnRate','%']].forEach(function (f) { %>
+        <div class="<%= row %>">
+          <div><label for="b_<%= f[0] %>" class="<%= name %>"><%= baselineFields[f[1]].replace(/ \(%\)$/, '') %></label></div>
+          <div class="flex items-center gap-2"><input id="b_<%= f[0] %>" name="<%= f[0] %>" type="number" min="0" max="<%= f[2] === '%' ? 100 : 600 %>" step="1"
+                 value="<%= settings.timeBaseline[f[1]] %>" class="<%= UI.input %>"><span class="<%= unit %>"><%= f[2] === '%' ? '% of clients' : 'minutes' %></span></div>
+        </div>
         <% }) %>
+        </div>
+      </section>
+
+      <%# appears once something changed %>
+      <div id="saveBar" data-on="0" class="fixed bottom-4 left-0 right-0 lg:left-64 z-40 px-4 pointer-events-none" role="region" aria-label="Unsaved changes">
+        <div class="pointer-events-auto mx-auto max-w-xl flex items-center gap-3 rounded-2xl bg-ink text-white pl-5 pr-2.5 py-2.5 shadow-[0_18px_40px_-12px_rgba(0,0,0,.45)]">
+          <span class="text-[13px] font-semibold" data-save-count>Unsaved changes</span>
+          <button type="button" data-discard class="ml-auto rounded-xl px-3.5 min-h-[40px] text-[13px] font-semibold text-white/75 hover:text-white hover:bg-white/10">Discard</button>
+          <button type="submit" class="rounded-xl px-4 min-h-[40px] text-[13px] font-bold bg-brand hover:bg-brand-deep">Save changes</button>
+        </div>
       </div>
-    </div>
-  </section>
+    </form>
+  </div>
+</div>
 
-  <div class="lg:col-span-2"><button type="submit" class="<%= UI.btn %> <%= UI.btnMain %>">Save settings</button></div>
-</form>
+<form id="learningForm" method="POST" action="/admin/settings/reset-learning" hidden
+      onsubmit="return confirm('Start learning fresh? Services finished before now will no longer shape the estimates. Records and reports are kept.')"></form>
 
-<form id="learning" method="POST" action="/admin/settings/reset-learning" class="max-w-4xl mt-4"
-      onsubmit="return confirm('Start learning fresh? Services finished before now will no longer shape the estimates. Records and reports are kept.')">
-  <section class="<%= UI.card %>">
-    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Learning from real services</h3></div>
-    <div class="<%= UI.body %> flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-      <p class="text-[13px] text-slateSoft">
-        Estimates start from each document's set minutes and learn from finished services.
-        Learning from <b class="text-ink"><%= learning.counted %></b> of <%= learning.total %> finished services<%
-        if (learning.since) { %>, since <b class="text-ink"><%= new Date(learning.since).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) %></b><% } %>.
-        <span class="block mt-1 text-[12px] text-slateSoft/75">After test runs or practice, start fresh so quick test clicks don't shorten the times. Records and reports are kept.</span>
-      </p>
-      <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> shrink-0">Start learning fresh</button>
-    </div>
-  </section>
-</form>
+<script>
+(function () {
+  var form = document.getElementById('settingsForm');
+  var bar = document.getElementById('saveBar');
+
+  // ── capacity: Auto shows today's computed numbers, read-only ──
+  var boxes = form.querySelectorAll('[data-cap]');
+  function hiddenOf(box) { return form.querySelector('input[type=hidden][name="' + box.dataset.cap + '"]'); }
+  function capMode() { var r = form.querySelector('input[name=capacityMode]:checked'); return r ? r.value : 'auto'; }
+  function applyCap() {
+    var auto = capMode() === 'auto';
+    boxes.forEach(function (box) { box.readOnly = auto; box.value = auto ? box.dataset.auto : hiddenOf(box).value; });
+  }
+  boxes.forEach(function (box) { box.addEventListener('input', function () { if (!box.readOnly) hiddenOf(box).value = box.value; }); });
+  form.querySelectorAll('input[name=capacityMode]').forEach(function (r) { r.addEventListener('change', applyCap); });
+
+  // ── auto-cancel in plain words ──
+  var sum = form.querySelector('[data-cancel-summary]');
+  function n(name) { return Math.max(0, parseInt(form.elements[name].value, 10) || 0); }
+  function summary() {
+    var c = n('cancelAfterMinutes'), w = n('warnBeforeMinutes'), s = n('noShowAfterMinutes');
+    sum.innerHTML = 'After a client is called: a warning at <b class="text-ink">' + Math.max(0, c - w) + ' min</b>, '
+      + 'a no-show at <b class="text-ink">' + (c + s) + ' min</b> if they never came, '
+      + 'and an unfinished transaction is cancelled <b class="text-ink">' + c + ' min</b> after it started.';
+  }
+  ['cancelAfterMinutes', 'warnBeforeMinutes', 'noShowAfterMinutes'].forEach(function (k) { form.elements[k].addEventListener('input', summary); });
+  summary();
+
+  // ── unsaved changes: the save bar, a mark on each changed row ──
+  function snap() {
+    var out = {};
+    form.querySelectorAll('input[name], select[name]').forEach(function (el) {
+      if (el.type === 'hidden') return;
+      var k = el.name + (el.type === 'checkbox' || el.type === 'radio' ? '=' + el.value : '');
+      out[k] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
+    });
+    out['cashierCapacity'] = form.elements.cashierCapacity.value;
+    out['registrarCapacity'] = form.elements.registrarCapacity.value;
+    return out;
+  }
+  var start = snap(), saving = false;
+  function refresh() {
+    var now = snap(), changed = 0, rows = new Set();
+    Object.keys(now).forEach(function (k) {
+      if (now[k] === start[k]) return;
+      var name = k.split('=')[0], el = form.querySelector('[name="' + name + '"]:not([type=hidden])') || form.querySelector('[data-cap="' + name + '"]');
+      var r = el && el.closest('[class*="border-b"]');
+      if (r && !rows.has(r)) { rows.add(r); changed++; }
+    });
+    form.querySelectorAll('.changed').forEach(function (r) { if (!rows.has(r)) r.classList.remove('changed'); });
+    rows.forEach(function (r) { r.classList.add('changed'); });
+    bar.querySelectorAll('button').forEach(function (b) { b.hidden = false; });
+    bar.dataset.on = changed ? '1' : '0';
+    bar.querySelector('[data-save-count]').textContent = changed === 1 ? '1 unsaved change' : changed + ' unsaved changes';
+  }
+  form.addEventListener('input', refresh);
+  form.addEventListener('change', refresh);
+  bar.querySelector('[data-discard]').addEventListener('click', function () {
+    form.reset(); applyCap(); summary(); refresh();
+  });
+  form.addEventListener('submit', function () {
+    saving = true;
+    onScroll();
+    var at = document.querySelector('[data-nav].on');            // come back to the same group
+    if (at) form.action = '/admin/settings' + at.getAttribute('href');
+  });
+  addEventListener('beforeunload', function (e) { if (!saving && bar.dataset.on === '1') { e.preventDefault(); e.returnValue = ''; } });
+
+  // ── the menu follows the scroll ──
+  var links = document.querySelectorAll('[data-nav]');
+  var marked = null;
+  function mark(id) {
+    links.forEach(function (a) { a.classList.toggle('on', a.dataset.nav === id); });
+    if (id === marked) return;
+    marked = id;
+    // keep the lit group in view inside the sidebar's own scroll
+    var a = document.querySelector('#sidebar .sub-nav a.on'), box = a && a.closest('nav');
+    if (box && box.scrollHeight > box.clientHeight) {
+      var r = a.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (r.bottom > b.bottom - 8) box.scrollBy({ top: r.bottom - b.bottom + 40, behavior: 'smooth' });
+      else if (r.top < b.top + 8) box.scrollBy({ top: -(b.top - r.top + 40), behavior: 'smooth' });
+    }
+  }
+  var secs = Array.prototype.slice.call(document.querySelectorAll('.set-sec'));
+  var gliding = false;
+  function onScroll() {
+    if (gliding) return;                               // the picked group stays lit while sliding
+    var cur = secs[0].id;
+    secs.forEach(function (s) { if (s.getBoundingClientRect().top < 140) cur = s.id; });
+    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = secs[secs.length - 1].id;
+    mark(cur);
+  }
+  addEventListener('scroll', onScroll, { passive: true });
+
+  // picking a group slides the page to it (no jump)
+  var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function glide(sec) {
+    var from = scrollY, max = document.documentElement.scrollHeight - innerHeight;
+    var to = Math.min(max, Math.max(0, from + sec.getBoundingClientRect().top - (parseFloat(getComputedStyle(sec).scrollMarginTop) || 0)));
+    var dist = to - from;
+    if (still || Math.abs(dist) < 2) { scrollTo(0, to); return; }
+    var time = Math.min(900, Math.max(450, Math.abs(dist) * 0.35)), t0 = null;
+    gliding = true;
+    function ease(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+    function step(now) {
+      if (t0 === null) t0 = now;
+      var p = Math.min(1, (now - t0) / time);
+      scrollTo(0, from + dist * ease(p));
+      if (p < 1) requestAnimationFrame(step); else { gliding = false; onScroll(); mark(sec.id); }
+    }
+    requestAnimationFrame(step);
+  }
+  links.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var sec = document.getElementById(a.dataset.nav);
+      if (!sec) return;
+      e.preventDefault();
+      mark(a.dataset.nav);
+      history.replaceState(null, '', '#' + a.dataset.nav);
+      glide(sec);
+    });
+  });
+  // phones: a group picked in the slide-out menu closes it
+  var side = document.getElementById('sidebar');
+  document.querySelectorAll('.sub-nav a').forEach(function (a) { a.addEventListener('click', function () { if (side && innerWidth < 1024) side.classList.add('-translate-x-full'); }); });
+
+  // back from a save: the same group, and the message where the eyes are
+  var target = location.hash && document.getElementById(location.hash.slice(1));
+  function goBack() { if (target && target.classList.contains('set-sec')) { target.scrollIntoView({ block: 'start' }); onScroll(); } }
+  goBack();
+  onScroll();
+  // again once the styles have settled (the layout moves while Tailwind builds them)
+  if (target) { addEventListener('load', goBack); setTimeout(goBack, 400); }
+  var saved = <%- JSON.stringify(typeof flash === 'string' ? flash : '') %>;
+  if (saved && target) {
+    var count = bar.querySelector('[data-save-count]'), btns = bar.querySelectorAll('button');
+    count.textContent = '✓ ' + saved;
+    btns.forEach(function (b) { b.hidden = true; });
+    bar.dataset.on = '1';
+    setTimeout(function () {
+      if (bar.querySelector('[data-discard]').hidden) { bar.dataset.on = '0'; setTimeout(function () { btns.forEach(function (b) { b.hidden = false; }); refresh(); }, 300); }
+    }, 2600);
+  }
+})();
+</script>
 <%- include('../../partials/foot') %>
 <%- include('../../partials/scripts') %>
