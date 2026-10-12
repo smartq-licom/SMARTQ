@@ -53,7 +53,7 @@
         <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= new Date(t.serviceDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) %></td>
         <td class="<%= UI.td %> text-[12px] whitespace-nowrap"><%= t.requestedAt ? new Date(t.requestedAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) : '-' %></td>
         <td class="<%= UI.td %> text-[12px]"><%= t.department %><%= t.windowLabel ? ' · ' + t.windowLabel : '' %></td>
-        <td class="<%= UI.td %> text-[12px]"><%= t.staffName || '-' %></td>
+        <% var hb = handledBy(t); %><td class="<%= UI.td %> text-[12px] <%= hb.staff ? '' : 'italic text-slateSoft/70' %>"><%= hb.name %></td>
         <td class="<%= UI.td %> font-mono text-[12px] whitespace-nowrap">
           <%= t.amountDue > 0 ? peso(t.amountDue) : '-' %>
           <% if (t.receiptNo) { %><span class="block text-[10.5px] text-slateSoft/70"><%= t.receiptNo %></span><% } %>

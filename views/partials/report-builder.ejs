@@ -140,7 +140,7 @@
           <% if (x.studentNo) { %><span class="block text-[10.5px] font-mono text-slateSoft/70"><%= x.studentNo %></span><% } %></td>
         <td class="<%= UI.td %> text-[12px]"><%= x.documents.map(function (y) { return y.label; }).join(', ') %></td>
         <td class="<%= UI.td %> text-[12px]"><%= x.department %><%= x.windowLabel ? ' · ' + x.windowLabel : '' %></td>
-        <td class="<%= UI.td %> text-[12px]"><%= x.staffName || '-' %></td>
+        <% var hb = handledBy(x); %><td class="<%= UI.td %> text-[12px] <%= hb.staff ? '' : 'italic text-slateSoft/70' %>"><%= hb.name %></td>
         <td class="<%= UI.td %> font-mono text-[12px] whitespace-nowrap"><%= x.amountDue > 0 ? peso(x.amountDue) : '-' %>
           <% if (x.receiptNo) { %><span class="block text-[10.5px] text-slateSoft/70"><%= x.receiptNo %></span><% } %></td>
         <td class="<%= UI.td %>"><span class="<%= pill %> <%= tone(x.ticketStatus) %>"><%= x.ticketStatus %></span></td>
@@ -206,6 +206,63 @@
       <td class="<%= UI.td %> font-mono font-extrabold text-right"><%= peso(t.collected) %></td></tr></tfoot>
     <% } %>
   </table></div>
+
+  <% } else if (r.type === 'timesaved') { var mn = function (v) { return v === null || v === undefined ? '-' : (v > 0 && v < 0.1 ? 'under 0.1 min' : (Math.round(v * 10) / 10) + ' min'); }; %>
+  <%# SmartQ against the current process (data/timesaved.js) %>
+  <% if (!r.baseline.isSet) { %>
+  <p class="mx-5 mt-4 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
+    The current-process times are not set yet, so only SmartQ's measured times are shown. Enter them in
+    <% if (!isPrint) { %><a class="underline font-semibold" href="/admin/settings">Settings &rarr; Current process</a><% } else { %>Settings &rarr; Current process<% } %>.
+  </p>
+  <% } else { %>
+  <div class="grid sm:grid-cols-3 gap-3 px-5 pt-4">
+    <div class="rounded-2xl bg-emerald-50 ring-1 ring-inset ring-emerald-200 px-4 py-3">
+      <div class="text-[11px] font-bold uppercase tracking-wider text-emerald-800/80">Saved per client</div>
+      <div class="text-[26px] font-extrabold text-emerald-900 leading-tight"><%= mn(t.savedPer) %></div>
+      <div class="text-[12px] text-emerald-800"><%= t.pct %>% less time in the office</div>
+    </div>
+    <div class="rounded-2xl bg-brand-wash ring-1 ring-inset ring-brand-line px-4 py-3">
+      <div class="text-[11px] font-bold uppercase tracking-wider text-brand-night/70">Total saved</div>
+      <div class="text-[26px] font-extrabold text-brand-night leading-tight"><%= (Math.round(t.savedHours * 10) / 10) %> hours</div>
+      <div class="text-[12px] text-brand-night/80">across <%= t.clients %> clients served</div>
+    </div>
+    <div class="rounded-2xl bg-mist ring-1 ring-inset ring-hair px-4 py-3">
+      <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/80">Smart order vs plain FCFS</div>
+      <div class="text-[26px] font-extrabold text-ink leading-tight"><%= mn(t.orderSaved) %></div>
+      <div class="text-[12px] text-slateSoft"><%= t.orderSaved < 0.5 ? 'little to reorder: few clients waited at once on these days' : 'less waiting per client, same days replayed' %></div>
+    </div>
+  </div>
+  <% } %>
+  <div class="overflow-x-auto mt-3"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Office</th><th class="<%= UI.th %>">Clients</th>
+      <th class="<%= UI.th %>">Current process</th><th class="<%= UI.th %>">With SmartQ</th>
+      <th class="<%= UI.th %>">Saved / client</th><th class="<%= UI.th %>">Total saved</th>
+      <th class="<%= UI.th %>">Smart order saved</th>
+    </tr></thead>
+    <tbody>
+      <% r.rows.forEach(function (x) { %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= x.department %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.clients %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.baseline.isSet ? mn(x.oldPer) : 'not set' %></td>
+        <td class="<%= UI.td %> font-mono"><%= mn(x.newPer) %><span class="block text-[11px] text-slateSoft/70 font-sans">whole wait <%= mn(x.avgWait) %>, anywhere</span></td>
+        <td class="<%= UI.td %> font-mono font-bold text-emerald-700"><%= x.savedPer === null ? '-' : mn(x.savedPer) + (x.pct !== null ? ' (' + x.pct + '%)' : '') %></td>
+        <td class="<%= UI.td %> font-mono"><%= x.savedHours === null ? '-' : (Math.round(x.savedHours * 10) / 10) + ' h' %></td>
+        <td class="<%= UI.td %> font-mono"><%= mn(x.orderSaved) %><span class="block text-[11px] text-slateSoft/70 font-sans">FCFS <%= mn(x.fcfsWait) %> &rarr; Smart <%= mn(x.smartWait) %>, <%= x.days %> day<%= x.days === 1 ? '' : 's' %></span></td>
+      </tr>
+      <% }) %>
+      <% if (!r.rows.length) { %><tr><td colspan="7" class="px-4 py-10 text-center text-[13px] text-slateSoft/80">No completed transactions in this period.</td></tr><% } %>
+    </tbody>
+  </table></div>
+  <div class="px-5 py-4 border-t border-hair text-[12px] text-slateSoft leading-relaxed">
+    <b class="text-ink">How it is measured.</b>
+    <b>Current process</b> = the minutes in Settings: <%= r.baseline.formTrip %> min to get the form (Cashier requests for documents to claim),
+    <%= r.baseline.cashierLine %> / <%= r.baseline.registrarLine %> min in the Cashier / Registrar line, and <%= r.baseline.returnRate %>% of claims with a <%= r.baseline.returnTrip %>-min wasted trip.
+    <b>With SmartQ</b> = each completed ticket's real wait, counted in the office only up to <%= r.inOffice %> min (clients wait anywhere and come when the phone says "Leave now");
+    no form trip (requested online) and no wasted trip (the ready date is known). Service at the window is the same either way, so it is left out.
+    <b>Smart order</b> = every day replayed with its real arrivals, service times and windows: plain first come, first served against the Smart Priority Score.
+  </div>
 
   <% } else { %>
   <div class="overflow-x-auto"><table class="w-full">

@@ -7,7 +7,7 @@
 <div class="bg-white rounded-2xl border border-hair/80 shadow-card px-5 py-4">
   <div class="flex items-center justify-between gap-3">
     <span class="text-[11px] font-semibold uppercase tracking-wider text-slateSoft/65">Estimated wait</span>
-    <span class="rounded-full bg-brand-wash px-2.5 py-0.5 text-[12px] font-semibold text-brand-night">your turn ~<%= e.atClock %></span>
+    <% if (!e.doneClock) { %><span class="rounded-full bg-brand-wash px-2.5 py-0.5 text-[12px] font-semibold text-brand-night">your turn ~<%= e.atClock %></span><% } %>
   </div>
   <div class="flex items-baseline gap-2 mt-1.5">
     <span class="text-[44px] font-extrabold font-mono leading-none text-brand-night"
@@ -24,6 +24,14 @@
   <div class="mt-1.5 text-[12.5px] text-slateSoft">
     <strong class="text-ink"><%= e.ahead %></strong> ahead of you<% if (e.jumpers) { %> plus <strong class="text-ink"><%= e.jumpers %></strong> priority<% } %>
   </div>
+
+  <% if (e.doneClock) { %>
+  <%# when the turn starts, and when they walk away done %>
+  <ol class="eta-steps" aria-label="Your visit">
+    <li><i></i><span>Your turn</span><b><%= e.atClock %></b></li>
+    <li class="is-end"><i></i><span>Done around</span><b><%= e.doneClock %></b></li>
+  </ol>
+  <% } %>
 
   <%# The window Smart Call Next will most likely give them (data/dispatch.js),
       shown once the turn is near; the call itself has the final say. %>
@@ -51,6 +59,7 @@
   <div class="text-[11px] font-semibold uppercase tracking-wider text-white/70">Estimated wait</div>
   <div class="text-[26px] font-extrabold leading-tight mt-0.5"><%= e.onBreak ? 'You are next after the break' : 'You are next' %></div>
   <% if (e.window) { %><div class="text-[13.5px] font-semibold mt-1">Most likely at <%= e.window %></div><% } %>
+  <% if (e.doneClock && !e.onBreak) { %><div class="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold">Done around <%= e.doneClock %></div><% } %>
   <div class="text-[12px] text-white/80 mt-1"><%= e.onBreak ? 'The windows call again at ' + e.breakEnds + '. Please be back by then.' : 'Stay close to the window.' %></div>
   <% if (e.paused) { %>
   <div class="mt-2.5 rounded-xl bg-white/15 px-3 py-2 text-[11.5px] text-white/90">
@@ -63,6 +72,7 @@
 <div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white px-5 py-4">
   <div class="text-[24px] font-extrabold">It is your turn</div>
   <div class="text-[12.5px] text-white/85 mt-0.5">Please proceed to the window.</div>
+  <% if (e.doneClock) { %><div class="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold">Done around <%= e.doneClock %></div><% } %>
 </div>
 <% } else if (e && e.state === 'closed') { %>
 <div class="rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[12.5px] text-amber-900">
@@ -77,3 +87,14 @@
   <%= e.label %>. <%= /today$/.test(e.label) ? 'Your estimate appears when your slot starts.' : 'An estimate appears on the day.' %>
 </div>
 <% } %>
+
+<style>
+  /* "Your turn -> Done around": two stops on a short line */
+  .eta-steps{ position:relative; display:grid; grid-template-columns:1fr 1fr; margin-top:14px; padding-top:14px; border-top:1px solid var(--hair-c, rgba(15,23,42,.08)) }
+  .eta-steps::before{ content:""; position:absolute; top:19px; left:6px; right:calc(50% - 6px); height:2px; background:rgb(var(--c-brand-line)) }
+  .eta-steps li{ position:relative; display:flex; flex-direction:column; padding-left:0 }
+  .eta-steps i{ width:12px; height:12px; border-radius:50%; background:rgb(var(--c-brand)); box-shadow:0 0 0 3px var(--card-bg); margin-bottom:6px; position:relative; z-index:1 }
+  .eta-steps li.is-end i{ background:rgb(16 185 129) }
+  .eta-steps span{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--soft-c) }
+  .eta-steps b{ font-size:17px; font-weight:800; color:var(--ink-c); line-height:1.2 }
+</style>

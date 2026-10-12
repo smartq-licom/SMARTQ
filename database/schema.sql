@@ -295,6 +295,8 @@ CREATE TABLE settings (
   refresh_rate          INT NOT NULL DEFAULT 10,
   announcement          VARCHAR(255) DEFAULT 'Please watch the screen for your number.',
   learn_from            DATETIME NULL DEFAULT NULL,  -- services before this are not learned from
+  full_day_mode         ENUM('warn','decline') NOT NULL DEFAULT 'warn',  -- today's line cannot take more
+  time_baseline         TEXT NULL,                    -- the current process, minutes per step (Time saved report)
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

@@ -90,6 +90,8 @@ async function getSettings() {
     maxBatchDocuments: s.max_batch_documents, refreshRate: s.refresh_rate,
     announcement: s.announcement || '',
     learnFrom: s.learn_from || null,
+    fullDayMode: s.full_day_mode === 'decline' ? 'decline' : 'warn',
+    timeBaseline: require('./timesaved').readBaseline(s.time_baseline),
   };
 }
 
@@ -114,7 +116,7 @@ async function saveSettings(b) {
       cashier_capacity=?,registrar_capacity=?,capacity_mode=?,avg_service_minutes=?,
       min_samples=?,cancel_after_minutes=?,warn_before_minutes=?,no_show_after_minutes=?,
       expire_waiting_minutes=?,schedule_max_days=?,allow_same_day=?,daily_slot_limit=?,
-      max_copies=?,max_batch_documents=?,refresh_rate=?,announcement=? WHERE id=1`,
+      max_copies=?,max_batch_documents=?,refresh_rate=?,announcement=?,full_day_mode=?,time_baseline=? WHERE id=1`,
     [ b.institutionName || 'Libon Community College', b.systemName || 'SmartQ',
       b.academicYear || '2025-2026',
       b.openTime || '08:00', b.closeTime || '17:00',
@@ -129,7 +131,10 @@ async function saveSettings(b) {
       (b.allowSameDay === 'on' || b.allowSameDay === '1' || b.allowSameDay === true) ? 1 : 0,
       Math.max(0, +b.dailySlotLimit || 0), Math.max(1, +b.maxCopies || 10),
       +b.maxBatchDocuments || 4,
-      +b.refreshRate || 8, b.announcement || '' ]
+      +b.refreshRate || 8, b.announcement || '', b.fullDayMode === 'decline' ? 'decline' : 'warn',
+      JSON.stringify((({ isSet, ...minutes }) => minutes)(require('./timesaved').readBaseline({
+        formTrip: b.baseFormTrip, cashierLine: b.baseCashierLine, registrarLine: b.baseRegistrarLine,
+        returnTrip: b.baseReturnTrip, returnRate: b.baseReturnRate }))) ]
   );
   return getSettings();
 }
@@ -637,6 +642,7 @@ async function setDayOverride(staff, department, date, b) {
     return { ok: true, cleared: true };
   }
 
+  const wasClosed = !!((await getDayOverrides(department, date, date))[date] || {}).isClosed;
   await run(
     `INSERT INTO day_overrides (department,day,is_closed,slot_limit,note,set_by,setter_name)
      VALUES (?,?,?,?,?,?,?)
@@ -644,6 +650,11 @@ async function setDayOverride(staff, department, date, b) {
        note=VALUES(note), set_by=VALUES(set_by), setter_name=VALUES(setter_name)`,
     [department, date, closed ? 1 : 0, limit,
      String(b.note || '').trim() || null, staff.id, staff.fullName]);
+  // just closed: the tickets already on that day move to the next open day
+  if (closed && !wasClosed && date >= today()) {
+    const m = await moveClosedDay(department, date, String(b.note || '').trim());
+    return { ok: true, moved: m.moved, failed: m.failed };
+  }
   return { ok: true };
 }
 
@@ -1518,6 +1529,14 @@ async function createRequest(user, b, { walkIn = false } = {}) {
       decision = await engine.evaluateJoin(department, { lane: category, service: forecast.service });
       forecast.wait = decision.minutes;
     } catch (e) { /* the decision must never block a ticket */ }
+    // Settings "when today's line is full: decline": no number today, but the
+    // earliest free time on a coming day, ready to book with one tap
+    if (decision && !decision.fits && s.fullDayMode === 'decline') {
+      const next = await earliestSlot(department, today(), forecast.service);
+      return { error: `Today's ${department} line is full: you would not be served before closing (${decision.closeClock}).` +
+                      (next ? ` The earliest free time is ${longDate(next.date)}, ${next.slot.label}.` : ' Please book another day.'),
+               dayFull: true, suggest: next ? { date: next.date, slot: next.slot.start, label: `${longDate(next.date)}, ${next.slot.label}` } : null };
+    }
   }
 
   const conn = await pool.getConnection();
@@ -2008,13 +2027,17 @@ async function getClaimableLines(userId, { txIds = null } = {}) {
          WHERE ci.line_id = td.id AND c.ticket_status NOT IN ('cancelled','no-show'))
      ORDER BY p.paid_at DESC, td.id`, ids ? ids : [userId]);
   const out = [];
+  const prep = await prepTimes();
   for (const r of rows) {
     const paidAt = r.paid_at ? ymd(new Date(r.paid_at)) : null;
     const days = Number(r.processing_days) || 0;
+    // same-day documents: the learned preparation time (db.prepTimes)
+    const pt = !days ? prep[r.document_name] : null;
+    const readyAt = pt && pt.minutes && r.paid_at ? await readyMoment(r.paid_at, pt.minutes) : null;
     out.push({
       id: r.id, name: r.document_name, copies: Number(r.copies) || 1,
       paidTicket: r.ticket_no, receiptNo: r.receipt_no || '', paidAt,
-      processingDays: days, readyOn: paidAt && days ? await releaseDate(paidAt, days) : paidAt,
+      processingDays: days, readyOn: paidAt && days ? await releaseDate(paidAt, days) : (readyAt ? ymd(readyAt) : paidAt), readyAt,
     });
   }
   return out;
@@ -2068,15 +2091,226 @@ async function getReleaseInfo(txId) {
 /** The claim ticket that covers a paid line (waiting, at a window or done), if any. */
 async function claimFor(lineId) {
   const c = await q(
-    `SELECT c.id, c.ticket_no, c.access_token, c.service_date, c.slot_start, c.slot_end, c.ticket_status
+    `SELECT c.id, c.ticket_no, c.access_token, c.service_date, c.slot_start, c.slot_end, c.ticket_status, c.completed_at, c.window_label
      FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
      WHERE ci.line_id = ? AND c.ticket_status NOT IN ('cancelled','no-show')
      ORDER BY c.id DESC LIMIT 1`, [lineId]);
   if (!c.length) return null;
   const x = c[0], date = ymd(new Date(x.service_date));
   return { id: x.id, ticketNo: x.ticket_no, accessToken: x.access_token, status: x.ticket_status,
-           date, dateText: shortDate(date), done: x.ticket_status === 'completed',
+           date, dateText: shortDate(date), done: x.ticket_status === 'completed', completedAt: x.completed_at,
+           atWindow: ['called', 'serving'].includes(x.ticket_status), windowLabel: x.window_label || null,
            slotLabel: x.slot_start ? `${clock12(String(x.slot_start).slice(0, 5))} – ${clock12(String(x.slot_end).slice(0, 5))}` : '' };
+}
+
+// ── LEARNED PREPARATION TIME ─────────────────────────────────────────────────
+/**
+ * How long after payment a same-day document (Good Moral, COG...) is really
+ * ready, learned from past releases. Most students come back later than they
+ * need to, so the average release time says little; but whoever came right
+ * after paying had to wait for it, so the FAST end of the releases (the 20th
+ * percentile of paid -> released minutes) is the preparation time. Blended
+ * toward "ready right after paying" while releases are few (the same careful
+ * learning as service minutes), and only from releases after "Start learning
+ * fresh". Multi-day documents (the OTR) keep the client's processing days.
+ */
+const PREP_QUANTILE = 0.2;
+let prepCache = { at: 0, value: null };
+async function prepTimes() {
+  if (prepCache.value && Date.now() - prepCache.at < 10 * 60000) return prepCache.value;
+  const s = await getSettings();
+  const rows = await q(
+    `SELECT td.document_name AS name, TIMESTAMPDIFF(MINUTE, p.paid_at, c.completed_at) AS m
+     FROM claim_items ci
+     JOIN transactions c ON c.id = ci.claim_tx_id AND c.ticket_status = 'completed'
+     JOIN transaction_documents td ON td.id = ci.line_id
+     JOIN documents d ON d.id = td.document_id AND d.processing_days = 0
+     JOIN payments p ON p.transaction_id = td.transaction_id AND p.status = 'paid'
+     WHERE c.completed_at >= NOW() - INTERVAL 120 DAY
+       AND c.completed_at >= COALESCE((SELECT learn_from FROM settings WHERE id=1), '2000-01-01')
+       AND TIMESTAMPDIFF(MINUTE, p.paid_at, c.completed_at) BETWEEN 0 AND 43200`);
+  const by = {};
+  rows.forEach(r => (by[r.name] = by[r.name] || []).push(Number(r.m)));
+  const out = {};
+  for (const name in by) {
+    const v = by[name].sort((a, b) => a - b), n = v.length;
+    const fast = v[Math.min(n - 1, Math.floor(n * PREP_QUANTILE))];
+    out[name] = { samples: n, fast, learned: n >= s.minSamples,
+                  minutes: n >= s.minSamples ? Math.round(require('./prediction').shrink(fast, n, 0)) : 0 };
+  }
+  prepCache = { at: Date.now(), value: out };
+  return out;
+}
+
+/** When a same-day document paid at `paidAt` should be ready (moved to the next opening if after hours). */
+async function readyMoment(paidAt, minutes) {
+  let t = new Date(new Date(paidAt).getTime() + minutes * 60000);
+  if (!minutes) return t;
+  const s = await getSettings();
+  const close = new Date(`${ymd(t)}T${s.closeTime}:00`);
+  if (t > close) {                                   // after hours: first thing on the next open day
+    const next = await releaseDate(ymd(t), 1);
+    t = new Date(`${next}T${s.openTime}:00`);
+  }
+  return t;
+}
+
+// ── DOCUMENT TRACKER ─────────────────────────────────────────────────────────
+/**
+ * Where each requested document stands, step by step:
+ *   Queued -> Processing -> Ready to claim -> Claimed
+ * (a fee with nothing to collect: Queued -> Paid -> Done). Each step is
+ * done / current / todo with a short note (a time, a date, what to do).
+ * By Cashier ticket(s), by person (student record), or by paid line ids
+ * (what a Registrar claim ticket is collecting). Last `sinceDays` days.
+ */
+const stamp = d => {                       // today: just the time; before: the date and time
+  if (!d) return '';
+  const t = clock12(new Date(d).toTimeString().slice(0, 5)), day = ymd(new Date(d));
+  return day === today() ? t : `${shortDate(day)}, ${t}`;
+};
+async function documentTracker({ txIds = null, userId = null, lineIds = null, sinceDays = 120 } = {}) {
+  let who, params;
+  if (lineIds) { if (!lineIds.length) return []; who = `td.id IN (${lineIds.map(() => '?').join(',')})`; params = lineIds; }
+  else if (txIds) { if (!txIds.length) return []; who = `t.id IN (${txIds.map(() => '?').join(',')})`; params = txIds; }
+  else { who = 't.user_id = ?'; params = [userId]; }
+  const rows = await q(
+    `SELECT td.id, td.document_name, td.copies, d.processing_days, d.requires_claim,
+            t.id AS tx_id, t.ticket_no, t.access_token, t.ticket_status, t.payment_status, t.service_date,
+            t.queue_at, t.called_at, t.slot_start, t.window_label, p.paid_at
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d    ON d.id = td.document_id
+     LEFT JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     WHERE ${who} AND t.department = 'Cashier' AND t.service_date >= CURDATE() - INTERVAL ? DAY
+     ORDER BY t.service_date DESC, t.id DESC, td.id`, [...params, sinceDays]);
+  const now = today(), out = [];
+  const prep = await prepTimes();
+  // a ticket still in line today: its likely window and turn (the same
+  // forecast as the ticket page), worked out once per ticket
+  const eta = {};
+  const lineInfo = async r => {
+    const id = r.tx_id;
+    if (!(id in eta)) {
+      try { eta[id] = await require('./prediction').ticketEta(await getTransaction(id)); }
+      catch (e) { eta[id] = null; }
+    }
+    const e = eta[id];
+    if (!e) return 'In line now';
+    const win = e.window ? e.window.replace(/^(Cashier|Registrar) /, '') : null;
+    if (e.state === 'next') return (win ? win + ' · ' : '') + 'you are next';
+    if (e.state === 'waiting') return (win ? win + ' · ' : '') + '~' + e.atClock;
+    return e.label || 'In line now';
+  };
+  for (const r of rows) {
+    const paid = !!r.paid_at || r.payment_status === 'paid';
+    const base = { lineId: r.id, name: r.document_name, copies: Number(r.copies) || 1,
+                   ticketNo: r.ticket_no, accessToken: r.access_token };
+    if (!paid && ['cancelled', 'no-show'].includes(r.ticket_status)) {
+      out.push({ ...base, status: 'Cancelled', cancelled: true, steps: [] });
+      continue;
+    }
+    const days = Number(r.processing_days) || 0;
+    const paidYmd = r.paid_at ? ymd(new Date(r.paid_at)) : (paid ? ymd(new Date(r.service_date)) : null);
+    // same-day documents: ready after the LEARNED preparation time, not the moment it is paid
+    const pt = !days && r.requires_claim ? (prep[r.document_name] || { minutes: 0, samples: 0, learned: false }) : null;
+    const readyAt = pt && r.paid_at ? await readyMoment(r.paid_at, pt.minutes) : null;
+    const readyOn = paidYmd ? (days ? await releaseDate(paidYmd, days) : (readyAt ? ymd(readyAt) : paidYmd)) : null;
+    const ready = readyAt ? readyAt <= new Date() : (!!readyOn && readyOn <= now);
+    const readyClock = readyAt ? (ymd(readyAt) === now ? '' : shortDate(ymd(readyAt)) + ', ') + clock12(readyAt.toTimeString().slice(0, 5)) : null;
+    const atWindow = ['called', 'serving'].includes(r.ticket_status);
+    const sd = ymd(new Date(r.service_date));
+    const steps = [];
+
+    // 1. queued
+    steps.push(atWindow || paid
+      ? { label: 'Queued', state: 'done', note: stamp(r.queue_at) }
+      : { label: 'Queued', state: 'current',
+          note: sd > now ? 'Booked for ' + shortDate(sd) + (r.slot_start ? ', ' + clock12(String(r.slot_start).slice(0, 5)) : '')
+              : await lineInfo(r) });
+    // 2. processing (payment, then the processing days, if any)
+    if (!paid) steps.push({ label: 'Processing', state: atWindow ? 'current' : 'todo',
+                            note: atWindow ? 'At ' + (r.window_label || 'the Cashier window') : 'Pay at the Cashier' });
+    else if (days && !ready) steps.push({ label: 'Processing', state: 'current', note: 'Paid ' + (paidYmd === now ? 'today' : shortDate(paidYmd)) + ' · ' + days + ' days' });
+    else if (readyAt && !ready) steps.push({ label: 'Processing', state: 'current', note: 'Being prepared \u00b7 usually ~' + readyClock });
+    else steps.push({ label: r.requires_claim ? 'Processing' : 'Paid', state: 'done', note: stamp(r.paid_at) || shortDate(paidYmd) });
+
+    let claim = null;
+    if (r.requires_claim) {
+      claim = paid ? await claimFor(r.id) : null;
+      // 3. ready to claim: and, once they take a Registrar number, that line too
+      if (claim && (claim.done || claim.atWindow)) steps.push({ label: 'Ready to claim', state: 'done', note: shortDate(readyOn) });
+      else if (ready && claim && claim.date === now)
+        steps.push({ label: 'Ready to claim', state: 'current', note: claim.ticketNo + ' · ' + await lineInfo({ tx_id: claim.id }) });
+      else if (ready) steps.push({ label: 'Ready to claim', state: 'current',
+          note: claim ? 'Claim booked ' + claim.dateText + (claim.slotLabel ? ', ' + claim.slotLabel.split(' – ')[0] : '') : 'At the Registrar now' });
+      else steps.push({ label: 'Ready to claim', state: 'todo',
+          note: readyClock ? '~' + readyClock : readyOn ? shortDate(readyOn) : (days ? days + ' days after paying' : 'Right after paying') });
+      // 4. claimed: being released at a Registrar window, or done
+      steps.push(claim && claim.done ? { label: 'Claimed', state: 'done', note: stamp(claim.completedAt) }
+        : claim && claim.atWindow ? { label: 'Claimed', state: 'current', note: 'At ' + (claim.windowLabel || 'the Registrar window') }
+        : { label: 'Claimed', state: 'todo', note: 'Bring receipt + ID' });
+    } else {
+      steps.push(paid ? { label: 'Done', state: 'done', note: 'Nothing to claim' } : { label: 'Done', state: 'todo', note: '' });
+    }
+    const cur = steps.find(s => s.state === 'current');
+    out.push({ ...base, steps, readyOn, ready, claim, fee: !r.requires_claim, readyAt, readyClock, prep: pt,
+               done: !cur, status: cur ? (cur.label === 'Ready to claim' ? 'Ready to claim' : cur.label === 'Claimed' ? 'Claiming now' : cur.label === 'Queued' ? 'Queued' : 'Processing')
+                                       : (r.requires_claim ? 'Claimed' : 'Done') });
+  }
+  return out;
+}
+
+/** A Registrar claim ticket: the paid lines it is collecting. */
+async function claimLineIds(claimTxId) {
+  return (await q('SELECT line_id FROM claim_items WHERE claim_tx_id=?', [claimTxId])).map(r => r.line_id);
+}
+
+/** "Track my documents": a student by number + last name, a visitor by booking code + last name. */
+async function trackDocuments({ studentNo, code, lastName } = {}) {
+  if (code != null) {
+    code = String(code || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code) || !normName(lastName)) return null;
+    const t = (await q(`SELECT id, last_name FROM transactions WHERE booking_code=? AND department='Cashier'
+                        AND service_date >= CURDATE() - INTERVAL 120 DAY ORDER BY id DESC LIMIT 1`, [code]))[0];
+    if (!t || normName(t.last_name) !== normName(lastName)) return null;
+    return documentTracker({ txIds: [t.id] });
+  }
+  const no = String(studentNo || '').trim();
+  if (!STUDENT_NO_RE.test(no) || !normName(lastName)) return null;
+  const u = (await q(`SELECT id, last_name FROM users WHERE student_no=? AND role='student' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
+  if (!u || normName(lastName) !== normName(u.last_name)) return null;
+  return documentTracker({ userId: u.id });
+}
+
+/** Phone alert after paying: what happens next for each document. */
+async function notifyPaid(t) {
+  try {
+    const lines = await documentTracker({ txIds: [t.id] });
+    if (!lines.length) return;
+    const now = lines.filter(l => !l.fee && l.ready).map(l => l.name);
+    const later = lines.filter(l => !l.fee && !l.ready && l.readyOn)
+      .map(l => l.readyClock ? `${l.name} around ${l.readyClock}` : `${l.name} on ${shortDate(l.readyOn)}`);
+    const fees = lines.filter(l => l.fee).map(l => l.name);
+    const parts = [];
+    if (now.length) parts.push(`Ready to claim at the Registrar: ${now.join(', ')}.`);
+    if (later.length) parts.push(`Usually ready: ${later.join('; ')}. We'll notify you.`);
+    if (fees.length && !now.length && !later.length) parts.push(`${fees.join(', ')} paid. You're all done.`);
+    push.sendToTicket(t.id, { title: `Paid \u2713 ${t.ticketNo}`, body: parts.join(' '), url: '/queue/t/' + t.accessToken });
+  } catch (e) { /* an alert must never block the payment */ }
+}
+
+/** Phone alert when a claim ticket is finished: the documents were released. */
+async function notifyClaimed(claimTx) {
+  try {
+    const lines = await documentTracker({ lineIds: await claimLineIds(claimTx.id) });
+    if (!lines.length) return;
+    const names = lines.map(l => l.name).join(', ');
+    push.sendToTickets([claimTx.id, ...(await q(
+      `SELECT DISTINCT td.transaction_id AS id FROM transaction_documents td WHERE td.id IN (${lines.map(() => '?').join(',')})`,
+      lines.map(l => l.lineId))).map(r => r.id)],
+      { title: `Completed \u2713 ${claimTx.ticketNo}`, body: `Released: ${names}. Thank you!`, url: '/queue/t/' + claimTx.accessToken });
+  } catch (e) { /* never block the Registrar */ }
 }
 
 /**
@@ -2135,7 +2369,7 @@ async function bookClaim(cashierTx) {
 }
 
 /** Each extra document on one claim adds this share of the claim's base time. */
-const CLAIM_EXTRA_SHARE = 0.6;
+const CLAIM_EXTRA_SHARE = 0.6;   // exported: the form's estimate uses it too
 
 /** A student may hold this many unfinished tickets per office (one per day). */
 const MAX_OPEN_PER_OFFICE = 2;
@@ -2277,7 +2511,8 @@ async function guestClaimableLines(lineIds, lastName) {
 const toPickup = lines => lines.map(l => ({
   id: l.id, name: l.name, copies: l.copies, receiptNo: l.receiptNo, paidTicket: l.paidTicket,
   paidText: l.paidAt ? shortDate(l.paidAt) : '', readyOn: l.readyOn,
-  readyText: l.readyOn ? shortDate(l.readyOn) : '', ready: !l.readyOn || l.readyOn <= today(),
+  readyText: l.readyAt && l.readyAt > new Date() ? 'about ' + clock12(l.readyAt.toTimeString().slice(0, 5)) : (l.readyOn ? shortDate(l.readyOn) : ''),
+  ready: l.readyAt ? l.readyAt <= new Date() : (!l.readyOn || l.readyOn <= today()),
 }));
 
 /** A Registrar document that collects something paid for at the Cashier. */
@@ -2329,7 +2564,7 @@ async function getQueue(department, { date = null } = {}) {
 /** Clients ready to be called, per lane, first come first served (for data/dispatch.js). */
 async function readyLanes(department, settings) {
   const rows = await q(
-    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until FROM transactions
+    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until, slot_start, risk_at FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
        AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
      ORDER BY queue_at ASC, id ASC`, [department]);
@@ -2338,6 +2573,11 @@ async function readyLanes(department, settings) {
     id: r.id, ticketNo: r.ticket_no, skip: Number(r.skip_count) || 0,
     svc: Number(r.predicted_service) || settings.avgServiceMinutes,
     readyAt: Math.max(new Date(r.queue_at).getTime(), r.hold_until ? new Date(r.hold_until).getTime() : 0),
+    // for the Smart Priority Score: place in line (kept through "available from"),
+    // a booked time, and the closing-time risk the day simulation flagged
+    queuedAt: new Date(r.queue_at).getTime(),
+    slotStart: r.slot_start ? new Date(`${today()}T${String(r.slot_start).slice(0, 8)}`).getTime() : null,
+    atRisk: !!r.risk_at,
   }));
   return lanes;
 }
@@ -2352,22 +2592,62 @@ async function lastCalledLane(department) {
 }
 
 /**
- * Who this window should call next: one fair line (FCFS, priority and regular
- * 1:1), matched to the window by data/dispatch.js (window speed, shortest task
- * for a clearly slower window, priority to a less busy free window, nobody
- * passed over more than twice). With no staff given, the plain line order.
- * The decision rides along as `_decision`.
+ * The office's assignment plan right now: every free window with its own
+ * client (data/dispatch.js planOffice), so no two windows ever show or call
+ * the same student. Also used for the "-> Window 1" tags in the lane lists.
  */
-async function pickNextTicket(department, staff = null) {
+async function officePlan(department, { acting = null } = {}) {
   const settings = await getSettings();
   const lanes = await readyLanes(department, settings);
   const wins = await dispatch.officeWindows(department);
+  const open = wins.filter(w => w.status === 'open' && w.staffId);
+  const ready = lanes.priority.length + lanes.regular.length;
+  const peak = dispatch.isPeak(await dispatch.peakHours(department), new Date().getHours(), ready, open.length);
+  const plan = dispatch.planOffice(open.filter(w => w.free), open, lanes, await lastCalledLane(department), { peak, acting });
+  return { plan, wins, open, lanes, peak };
+}
+
+/** Ticket number -> the window it is assigned to, for the staff screens. */
+async function officeAssignments(department) {
+  const { plan, wins } = await officePlan(department);
+  const out = {};
+  plan.forEach((d, winId) => {
+    const w = wins.find(x => x.id === winId);
+    out[d.pick.ticketNo] = { windowId: winId, label: w ? w.label : 'a window' };
+  });
+  return out;
+}
+
+/**
+ * Who this window should call next: its own client from the office plan
+ * (Smart Priority Score, window speed and workload, nobody passed over more
+ * than twice). When every waiting client is assigned to another window, the
+ * first of them comes back flagged `reserved` (yours if that window does not
+ * call within RESERVE_SECONDS). With no staff window given, the plain order.
+ * The decision rides along as `_decision`.
+ */
+async function pickNextTicket(department, staff = null, { acting = false } = {}) {
+  // acting: this window is pressing Call Next now (an idle assigned window may be overtaken)
+  const { plan, wins, open, lanes, peak } = await officePlan(department, { acting: acting && staff ? staff.windowId : null });
   const mine = staff && staff.windowId ? wins.find(w => w.id === staff.windowId) : null;
-  const win = mine || { id: null, label: 'this window', speed: 1, workToday: 0 };
-  const others = mine ? wins.filter(w => w.id !== win.id && w.status === 'open' && w.staffId) : [];
-  const d = dispatch.decide(win, lanes, await lastCalledLane(department), others);
+  let d;
+  if (!mine) {
+    d = dispatch.decide({ id: null, label: 'this window', speed: 1, workToday: 0 }, lanes,
+                        await lastCalledLane(department), [], { peak, reserve: false });
+  } else if (plan.has(mine.id)) {
+    d = plan.get(mine.id);
+  } else if (plan.size) {
+    // every waiting client already belongs to another window
+    const [bestId, bd] = [...plan.entries()][0];
+    const best = wins.find(w => w.id === bestId);
+    const left = dispatch.RESERVE_SECONDS - (Date.now() - Math.max(bd.pick.readyAt || 0, best.freeSince || 0)) / 1000;
+    d = { pick: null, head: bd.pick, lane: bd.lane, skipped: [], rule: 'reserved', reserved: true,
+          forWindow: best.label, secondsLeft: Math.max(1, Math.ceil(left)),
+          reason: `${bd.pick.ticketNo} is saved for ${best.label}, ${dispatch.whyBetter(best, mine)}` };
+  } else {
+    return null;
+  }
   if (!d) return null;
-  // saved for a better free window: the row is the client, flagged as reserved
   const r = await q('SELECT * FROM transactions WHERE id=?', [(d.pick || d.head).id]);
   if (!r.length) return null;
   r[0]._decision = d;
@@ -2421,7 +2701,7 @@ async function callNext(staff, department) {
   // window took the same client in the same instant, pick again.
   let t = null;
   for (let attempt = 0; attempt < 3 && !t; attempt++) {
-    const cand = await pickNextTicket(department, { ...staff, windowId: win.id });
+    const cand = await pickNextTicket(department, { ...staff, windowId: win.id }, { acting: true });
     if (!cand) return { error: 'There are no clients waiting in this queue.' };
     const cd = cand._decision;
     if (cd && cd.reserved)
@@ -2448,7 +2728,12 @@ async function callNext(staff, department) {
     await engine.logDecision(t.id, department, 'assigned',
       `${t.ticket_no} to ${win.label}: ${d.reason}. Passed over once: ${d.skipped.map(x => x.ticketNo).join(', ')} ` +
       `(each at most ${dispatch.MAX_SKIPS} times).`,
-      { window: win.label, rule: d.rule, skipped: d.skipped.map(x => x.ticketNo) });
+      { window: win.label, rule: d.rule, why: d.why, peak: d.peak, skipped: d.skipped.map(x => x.ticketNo) });
+  } else if (d) {
+    // every call keeps its "why", so staff and the admin can see the score
+    await engine.logDecision(t.id, department, 'assigned',
+      `${t.ticket_no} to ${win.label}: ` + (d.reason ? d.reason + '.' : `first by the Smart Priority Score (${d.why.replace(/^Score /, 'score ')}).`),
+      { window: win.label, rule: d.rule, why: d.why, peak: d.peak });
   }
   await run(
     `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,window_label)
@@ -2461,6 +2746,14 @@ async function callNext(staff, department) {
   await announce(called);
   notifyCalled(called);          // fire and forget; email must never block the queue
   return called;
+}
+
+/** Why Call Next chose this client (the score kept with the call), for the staff screen. */
+async function callReason(txId) {
+  const r = await q(`SELECT detail FROM decision_log WHERE transaction_id=? AND decision='assigned' ORDER BY id DESC LIMIT 1`, [txId]);
+  if (!r.length || !r[0].detail) return null;
+  try { const d = typeof r[0].detail === 'string' ? JSON.parse(r[0].detail) : r[0].detail; return d.why ? d : null; }
+  catch (e) { return null; }
 }
 
 async function acceptTicket(staff, txId) {
@@ -2563,6 +2856,7 @@ async function payAndComplete(staff, txId) {
   }
   const c = await completeCashier(staff, txId);
   if (c.error) return c;
+  notifyPaid(t);                 // fire and forget: "Paid ✓, ready to claim / ready on ..."
   return { ok: true, ticketNo: t.ticketNo, receiptNo, amount: t.amountDue };
 }
 
@@ -2583,6 +2877,7 @@ async function completeRegistrar(staff, txId) {
      VALUES (?,?,'completed',?,?,'Registrar',?)`,
     [txId, t.ticketNo, staff.id, staff.fullName, t.windowLabel]);
 
+  notifyClaimed(t);              // fire and forget: "Completed ✓ Released: ..."
   return await getTransaction(txId);
 }
 
@@ -2623,20 +2918,52 @@ async function cancelByStudent(user, txId, reason) {
  * "Book tomorrow" from a ticket the system warned about: move it to the
  * earliest open 30-minute slot on the next open day, with that day's number.
  */
-async function rebookTicket(txId) {
+/**
+ * The earliest bookable 30-minute slot after `afterDate` (open day, under the
+ * day's cap, a slot with room for this much service). `preferStart` keeps the
+ * same time of day when that slot is free.
+ */
+async function earliestSlot(department, afterDate, service, preferStart = null) {
+  const s = await getSettings();
+  for (let i = 1; i <= s.scheduleMaxDays + 7; i++) {
+    const date = addDays(afterDate, i);
+    if (date > addDays(today(), s.scheduleMaxDays)) break;
+    if ((await validateSchedule('schedule', date, department)).error) continue;   // closed day
+    const dayOv = (await getDayOverrides(department, date, date))[date];
+    const cap = dayOv && dayOv.slotLimit != null ? dayOv.slotLimit : s.dailySlotLimit;
+    if (cap > 0 && await slotsUsed(department, date) >= cap) continue;
+    const plan = await engine.slotPlan(department, date, service, s);
+    const slot = (preferStart && plan.slots.find(x => x.available && x.start === preferStart)) || plan.slots.find(x => x.available);
+    if (slot) return { date, slot };
+  }
+  return null;
+}
+
+/**
+ * The office closes a date (Calendar): every ticket still waiting on it moves
+ * to the next open day, at the same time when it is free, with a new number
+ * and a phone alert saying why. Paid tickets are never touched.
+ */
+async function moveClosedDay(department, date, note) {
+  const rows = await q(
+    `SELECT id FROM transactions WHERE department=? AND service_date=? AND ticket_status='waiting'
+       AND payment_status <> 'paid' ORDER BY queue_at, id`, [department, date]);
+  let moved = 0, failed = 0;
+  for (const r of rows) {
+    const x = await rebookTicket(r.id, { after: date, keepTime: true, reason: note || 'the office is closed that day', closedDay: date });
+    if (x.ok) moved++; else failed++;
+  }
+  return { moved, failed };
+}
+
+async function rebookTicket(txId, { after = null, keepTime = false, reason = null, closedDay = null } = {}) {
   const t = await getTransaction(txId);
   if (!t || t.ticketStatus !== 'waiting' || t.paymentStatus === 'paid')
     return { error: 'This ticket can no longer be moved. Please ask the office.' };
-  const s = await getSettings();
-  for (let i = 1; i <= s.scheduleMaxDays; i++) {
-    const date = addDays(today(), i);
-    if ((await validateSchedule('schedule', date, t.department)).error) continue;   // closed day
-    const dayOv = (await getDayOverrides(t.department, date, date))[date];
-    const cap = dayOv && dayOv.slotLimit != null ? dayOv.slotLimit : s.dailySlotLimit;
-    if (cap > 0 && await slotsUsed(t.department, date) >= cap) continue;
-    const plan = await engine.slotPlan(t.department, date, t.predictedService, s);
-    const slot = plan.slots.find(x => x.available);
-    if (!slot) continue;
+  const pref = keepTime && t.slotStart ? String(t.slotStart).slice(0, 5) : null;
+  const found = await earliestSlot(t.department, after || today(), t.predictedService, pref);
+  if (found) {
+    const { date, slot } = found;
 
     const conn = await pool.getConnection();
     try {
@@ -2650,10 +2977,17 @@ async function rebookTicket(txId) {
       if (!u.affectedRows) { await conn.rollback(); return { error: 'This ticket can no longer be moved.' }; }
       await conn.execute(
         `INSERT INTO queue_history (transaction_id,ticket_no,action,department,note) VALUES (?,?,'rebooked',?,?)`,
-        [t.id, newNo, t.department, `Moved by the student from ${t.ticketNo} today to ${date}, ${slot.label}`]);
+        [t.id, newNo, t.department, closedDay
+          ? `Office closed on ${closedDay} (${reason}): moved from ${t.ticketNo} to ${date}, ${slot.label}`
+          : `Moved by the student from ${t.ticketNo} today to ${date}, ${slot.label}`]);
       await conn.commit();
       await engine.logDecision(t.id, t.department, 'rebooked',
-        `${t.ticketNo} moved to ${date} ${slot.label} as ${newNo} (first open slot).`, { date, slot: slot.label });
+        `${t.ticketNo} moved to ${date} ${slot.label} as ${newNo} (` + (closedDay ? `office closed on ${closedDay}: ${reason}` : 'first open slot') + ').',
+        { date, slot: slot.label });
+      if (closedDay) push.sendToTicket(t.id, {
+        title: `${t.ticketNo} moved to ${shortDate(date)}`,
+        body: `The ${t.department} is closed on ${shortDate(closedDay)} (${reason}). Your new number is ${newNo}, ${longDate(date)}, ${slot.label}.`,
+        url: '/queue/t/' + t.accessToken });
       return { ok: true, from: t.ticketNo, to: newNo, date, slot };
     } catch (e) {
       await conn.rollback();
@@ -3224,11 +3558,26 @@ async function getHistoryForClient(userId, f, page = 1) {
 // ── REPORT BUILDER ───────────────────────────────────────────────────────────
 // The user picks a report type and filters; only matching records are read,
 // filtered in SQL (historyWhere), one page at a time unless exporting.
+/**
+ * Who handled a ticket, for reports and history. A ticket that never reached
+ * a window has no staff: say who ended it instead of a blank.
+ */
+function handledBy(t) {
+  if (t.staffName) return { name: t.staffName, staff: true };
+  const why = String(t.cancelReason || '');
+  if (['waiting', 'called', 'serving'].includes(t.ticketStatus)) return { name: 'Not called yet', staff: false };
+  if (/^Cancelled by (the )?(student|client)/i.test(why)) return { name: 'Student (cancelled)', staff: false };
+  if (/^(Expired|Auto-cancelled|Closed|No show|Missed turn)/i.test(why)) return { name: 'System (auto-cancelled)', staff: false };
+  if (t.ticketStatus === 'completed') return { name: 'Not recorded', staff: false };   // demo history / older data
+  return { name: 'No staff', staff: false };
+}
+
 const REPORT_TYPES = {
   transactions: 'Transactions',
   payments:     'Payments & receipts',
   documents:    'Summary by document',
   staff:        'Summary by staff',
+  timesaved:    'Time saved vs current process',
 };
 
 /** Filters for the builder: the history filters plus a client search on the ticket. */
@@ -3302,6 +3651,12 @@ async function runReport(type, f, { page = 1, all = false } = {}) {
       collected: Number(r.collected) || 0 }));
     return { type, rows: list, pg: null, totals: {
       requests: list.reduce((s, r) => s + r.requests, 0), collected: list.reduce((s, r) => s + r.collected, 0) } };
+  }
+
+  if (type === 'timesaved') {
+    const raw = (await q('SELECT time_baseline FROM settings WHERE id=1'))[0];
+    const x = await require('./timesaved').timeSavedReport(where, p, raw ? raw.time_baseline : null);
+    return { type, rows: x.rows, pg: null, totals: x.totals, baseline: x.baseline, inOffice: x.inOffice };
   }
 
   // staff
@@ -3559,7 +3914,8 @@ module.exports = {
   getDocumentRequirements, getRequirementsByDocument,
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
-  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS,
+  getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, officeAssignments,
+  documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,

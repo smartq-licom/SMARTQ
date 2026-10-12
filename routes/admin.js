@@ -197,7 +197,10 @@ router.post('/calendar/day', async (req, res, next) => {
     const office = req.body.office === 'Registrar' ? 'Registrar' : 'Cashier';
     const r = await db.setDayOverride(req.session.user, office, req.body.date, req.body);
     if (r.error) req.session.error = r.error;
-    else req.session.flash = r.cleared ? 'That day now follows the office defaults.' : 'Day updated.';
+    else req.session.flash = r.cleared ? 'That day now follows the office defaults.'
+      : r.moved || r.failed ? `Day closed. ${r.moved} ticket${r.moved === 1 ? '' : 's'} moved to the next open day; the students were notified.` +
+                              (r.failed ? ` ${r.failed} could not be moved (no free time ahead): please contact them.` : '')
+      : 'Day updated.';
     const d = new Date(req.body.date + 'T00:00:00');
     res.redirect(`/admin/calendar?office=${office}&y=${d.getFullYear()}&m=${d.getMonth() + 1}&d=${req.body.date}`);
   } catch (e) { next(e); }
@@ -247,6 +250,7 @@ router.use('/history', require('./history')('/admin/history'));
 
 // Priority requests: shared with the Cashier and Registrar (routes/priority.js).
 router.use('/priority', require('./priority')('/admin/priority', { canRevoke: true }));
+router.use('/workload', require('./workload')('/admin/workload'));
 
 // Report builder: print view (all matching rows) and CSV download.
 router.get('/reports/print', async (req, res, next) => {
@@ -302,7 +306,8 @@ router.get('/qr-poster', async (req, res, next) => {
 router.get('/settings', async (req, res, next) => {
   try {
     const [settings, load, learning] = await Promise.all([db.getSettings(), db.getLoad(), db.learningStatus()]);
-    res.render('pages/admin/settings', { title: 'System Settings', settings, load, learning });
+    res.render('pages/admin/settings', { title: 'System Settings', settings, load, learning,
+      baselineFields: require('../data/timesaved').FIELDS });
   } catch (e) { next(e); }
 });
 

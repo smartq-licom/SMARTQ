@@ -262,9 +262,14 @@
   <% } %>
 
   <div data-live="info">
+  <%# Each document, step by step (db.documentTracker): queued, processing,
+      ready to claim, claimed. Updated live with the rest of the page. %>
+  <%- include('../../partials/doc-tracker', { lines: typeof tracker !== 'undefined' ? tracker : [], title: 'Your documents' }) %>
   <%# Documents that take days to process (the OTR: 14): when they can be
-      released. Before payment, how long it will take. %>
+      released, and the claim to book. The tracker above already says where
+      each one stands, so this card only shows before payment. %>
   <% (typeof release !== 'undefined' ? release : []).forEach(function (rl) { %>
+  <% if (!(typeof tracker !== 'undefined' && tracker.length) || !rl.readyOn) { %>
   <div class="mt-4 rounded-2xl px-4 py-3.5 flex items-center gap-3.5 <%= rl.ready ? 'bg-emerald-50 ring-1 ring-inset ring-emerald-200' : 'bg-white border border-hair/80 shadow-card' %>">
     <span class="grid place-items-center w-11 h-11 rounded-xl shrink-0 <%= rl.ready ? 'bg-emerald-500 text-white' : 'bg-brand-wash text-brand' %>" aria-hidden="true">
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><% if (rl.ready) { %><path d="m5 12.5 4.5 4.5L19 7.5"/><% } else { %><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><% } %></svg>
@@ -285,6 +290,7 @@
       <% } %>
     </div>
   </div>
+  <% } %>
   <%# The claim: already booked (a link to it), or one tap to book the earliest
       free time on or after the release date. %>
   <% if (rl.readyOn && rl.claim && !rl.claim.done) { %>

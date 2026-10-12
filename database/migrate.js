@@ -156,6 +156,18 @@ const STEPS = [
     add:   'ALTER TABLE settings ADD COLUMN learn_from DATETIME NULL DEFAULT NULL',
   },
   {
+    name: 'the current process, minutes per step, for the Time saved report (time_baseline)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'settings' AND column_name = 'time_baseline'`,
+    add:   'ALTER TABLE settings ADD COLUMN time_baseline TEXT NULL',
+  },
+  {
+    name: 'when today\'s line is full: warn, or decline and offer the earliest time (full_day_mode)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'settings' AND column_name = 'full_day_mode'`,
+    add:   "ALTER TABLE settings ADD COLUMN full_day_mode ENUM('warn','decline') NOT NULL DEFAULT 'warn'",
+  },
+  {
     name: 'why a priority proof was rejected, so a blurred photo can be sent again (reason_code)',
     check: `SELECT COUNT(*) AS has FROM information_schema.columns
             WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'reason_code'`,

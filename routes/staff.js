@@ -29,6 +29,7 @@ router.get('/dashboard', async (req, res, next) => {
     ]);
     const mine = queue.find(t => t.staffId === me.id && ['called','serving'].includes(t.ticketStatus)) || null;
     const timeLeft = mine ? await db.getTimeLeft(mine.id) : null;
+    const why = mine ? await db.callReason(mine.id) : null;
     const requirements = mine ? await db.getTransactionRequirements(mine.id) : [];
 
     // Today's busy-hour shape for this office, so staff can time breaks and
@@ -41,12 +42,13 @@ router.get('/dashboard', async (req, res, next) => {
 
     res.render('pages/staff/dashboard', {
       title: dept + ' Counter', dept, queue, windows, load: load[dept],
-      current: mine, timeLeft, requirements, peakHours,
+      current: mine, timeLeft, requirements, peakHours, why,
       nowHour: new Date().getHours(),
       waitingPriority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority'),
       waitingRegular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular'),
       completed:       queue.filter(t => t.ticketStatus === 'completed'),
       nextUp: await db.pickNextTicket(dept, me),   // who Call Next would give THIS window
+      assigned: await db.officeAssignments(dept), myWindowId: me.windowId,   // "-> Window 1" tags
       onBreak: db.isBreakTime(settings), breakEnds: db.clock12(settings.breakEnd),
       // the Registrar plans OTR releases: due list (payment order) and the coming days
       release: dept === 'Registrar' ? { outlook: await db.releaseOutlook(), due: await db.releasesDue() } : null,
@@ -83,6 +85,7 @@ router.use('/history', require('./history')('/staff/history', { officeOf: u => o
 
 // Staff can approve or reject priority-lane requests too (routes/priority.js).
 router.use('/priority', require('./priority')('/staff/priority'));
+router.use('/workload', require('./workload')('/staff/workload', { lockedOffice: req => deptOf(req.session.user) }));
 
 router.post('/call-next', async (req, res, next) => {
   try {
@@ -207,6 +210,8 @@ router.post('/calendar/day', async (req, res, next) => {
     if (r.error) req.session.error = r.error;
     else req.session.flash = r.cleared
       ? 'That day now follows the office defaults.'
+      : r.moved || r.failed ? `Day closed. ${r.moved} ticket${r.moved === 1 ? '' : 's'} moved to the next open day; the students were notified.` +
+                              (r.failed ? ` ${r.failed} could not be moved (no free time ahead): please contact them.` : '')
       : 'Day updated.';
     const d = new Date(req.body.date + 'T00:00:00');
     res.redirect(`/staff/calendar?y=${d.getFullYear()}&m=${d.getMonth() + 1}&d=${req.body.date}`);

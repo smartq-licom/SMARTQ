@@ -67,4 +67,29 @@ async function sendToTicket(txId, { title, body, url }) {
   return sent;
 }
 
-module.exports = { ENABLED, PUBLIC_KEY, subscribe, sendToTicket };
+/** The same alert to the phones of several tickets, once per phone. */
+async function sendToTickets(txIds, { title, body, url }) {
+  if (!ENABLED) return 0;
+  const ids = [...new Set((txIds || []).filter(Boolean))];
+  if (!ids.length) return 0;
+  let sent = 0;
+  try {
+    const subs = await q(`SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE transaction_id IN (${ids.map(() => '?').join(',')})`, ids);
+    const seen = new Set();
+    for (const s of subs) {
+      if (seen.has(s.endpoint)) continue;
+      seen.add(s.endpoint);
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+          JSON.stringify({ title, body, url: url || '/queue', tag: 'smartq-' + ids[0] }), { TTL: 60 * 60 * 24, urgency: 'normal' });
+        sent++;
+      } catch (e) {
+        if (e.statusCode === 404 || e.statusCode === 410) await q('DELETE FROM push_subscriptions WHERE id=?', [s.id]);
+        else console.error('[PUSH]', e.statusCode || e.message);
+      }
+    }
+  } catch (e) { console.error('[PUSH]', e.message); }
+  return sent;
+}
+
+module.exports = { ENABLED, PUBLIC_KEY, subscribe, sendToTicket, sendToTickets };

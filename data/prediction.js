@@ -309,8 +309,14 @@ async function ticketEta(t) {
   const settings = await db.getSettings();
 
   // already at the window, or finished
-  if (['called', 'serving'].includes(t.ticketStatus))
-    return { state: 'now', label: 'It is your turn', minutes: 0, seconds: 0 };
+  if (['called', 'serving'].includes(t.ticketStatus)) {
+    // at the window: done about one service time after it started
+    const from = t.startedAt || t.calledAt;
+    const doneClock = from && t.predictedService
+      ? db.clock12(new Date(new Date(from).getTime() + Math.max(1, Math.round(t.predictedService)) * 60000).toTimeString().slice(0, 5))
+      : null;
+    return { state: 'now', label: 'It is your turn', minutes: 0, seconds: 0, doneClock };
+  }
   if (['completed', 'cancelled', 'no-show'].includes(t.ticketStatus))
     return { state: 'done', label: null, minutes: null };
 
@@ -389,12 +395,13 @@ async function ticketEta(t) {
 
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
   // rest of the day forward window by window, with each ticket's own documents.
-  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, claimsAhead = 0, patternUsed = false, window = null;
+  let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, claimsAhead = 0, patternUsed = false, window = null, doneClock = null;
   try {
     const f = await require('./engine').ticketForecast(t);
     if (f) {
       minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
       expectedAhead = f.expectedAhead; claimsAhead = f.claimsAhead || 0; patternUsed = f.patternUsed; window = f.window;
+      doneClock = f.endClock;
       basis = 'simulated';
     }
   } catch (e) { /* fall back to the position estimate */ }
@@ -427,7 +434,7 @@ async function ticketEta(t) {
       state: 'next', label: onBreak ? 'You are next after the break' : 'You are next',
       minutes: 0, seconds: 0, paused, idleMinutes: idle, onBreak, breakEnds,
       ahead: 0, jumpers, inService, pace: Math.round(pace * 10) / 10,
-      basis, basisLabel, openWindows, fits, slowEndClock, closeClock, window,
+      basis, basisLabel, openWindows, fits, slowEndClock, closeClock, window, doneClock,
     };
   }
 
@@ -446,6 +453,9 @@ async function ticketEta(t) {
     pace: Math.round(pace * 10) / 10,
     basis, basisLabel, openWindows,
     fits, slowEndClock, closeClock, window,
+    // done at the window: the simulation's end, or the turn plus this ticket's service time
+    doneClock: doneClock || (t.predictedService
+      ? db.clock12(new Date(at.getTime() + Math.round(t.predictedService) * 60000).toTimeString().slice(0, 5)) : null),
   };
 }
 

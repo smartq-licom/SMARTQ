@@ -113,6 +113,14 @@
           <span class="<%= UI.hint %>">Close this on a busy day to stop walk-in numbers.</span>
         </div>
         <div>
+          <label class="<%= UI.lbl %>">When today's line is full</label>
+          <select name="fullDayMode" class="<%= UI.input %>">
+            <option value="warn" <%= settings.fullDayMode !== 'decline' ? 'selected' : '' %>>Warn - still give a number</option>
+            <option value="decline" <%= settings.fullDayMode === 'decline' ? 'selected' : '' %>>Decline - offer the earliest free time</option>
+          </select>
+          <span class="<%= UI.hint %>">"Full" = the day simulation says a new client would not be served before closing, even at a slow pace.</span>
+        </div>
+        <div>
           <label class="<%= UI.lbl %>">Daily limit per office</label>
           <input name="dailySlotLimit" type="number" min="0" max="999"
                  value="<%= settings.dailySlotLimit %>" class="<%= UI.input %>">
@@ -133,6 +141,23 @@
       </div>
       <div><label class="<%= UI.lbl %>">Minimum samples for historical estimates</label>
         <input name="minSamples" type="number" min="1" value="<%= settings.minSamples %>" class="<%= UI.input %> max-w-[10rem]"></div>
+    </div>
+  </section>
+
+  <%# The office's process before SmartQ (time-and-motion study / survey), for
+      the Time saved report. Minutes per client; 0 = not measured. %>
+  <section class="<%= UI.card %> lg:col-span-2">
+    <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Current process (before SmartQ)</h3></div>
+    <div class="<%= UI.body %>">
+      <p class="text-[12.5px] text-slateSoft mb-3">Minutes per client in the old, manual process, from your time-and-motion study or survey.
+        The <b>Time saved</b> report (Reports) compares them with what SmartQ measures. Leave 0 for a step you did not measure.</p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <% [['baseFormTrip','formTrip','min'],['baseCashierLine','cashierLine','min'],['baseRegistrarLine','registrarLine','min'],['baseReturnTrip','returnTrip','min'],['baseReturnRate','returnRate','%']].forEach(function (f) { %>
+        <div><label class="<%= UI.lbl %>"><%= baselineFields[f[1]].replace(/ \(%\)$/, '') %></label>
+          <div class="flex items-center gap-2"><input name="<%= f[0] %>" type="number" min="0" max="<%= f[2] === '%' ? 100 : 600 %>" step="1"
+                 value="<%= settings.timeBaseline[f[1]] %>" class="<%= UI.input %>"><span class="text-[12px] text-slateSoft"><%= f[2] %></span></div></div>
+        <% }) %>
+      </div>
     </div>
   </section>
 

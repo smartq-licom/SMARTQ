@@ -71,6 +71,7 @@ const findLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeade
   message: 'Too many tries from this network. Please wait a few minutes, or ask at the office window.' });
 app.use('/queue/find', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/claimables', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
+app.use('/queue/track', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 const newTicketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false,
   message: 'Too many requests from this network. Please wait a few minutes and try again.' });
 app.use('/queue/new', (req, res, next) => (req.method === 'POST' ? newTicketLimiter(req, res, next) : next()));
@@ -186,6 +187,8 @@ app.locals.tone = s => ({
 app.locals.peso  = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 app.locals.chip  = 'font-mono font-bold text-[12.5px] bg-brand-wash ring-1 ring-inset ring-brand-line rounded-md px-2 py-0.5 text-brand-deep';
 app.locals.label = s => String(s || '').replace(/_/g, ' ');
+// who handled a ticket (staff, or who ended it when it never reached a window)
+app.locals.handledBy = t => require('./data/db').handledBy(t);
 // 472 -> "about 7 hours and 52 minutes"; 25 -> "about 25 minutes".
 // short: "~7 h 52 min" (small labels).
 app.locals.duration = (m, short) => {

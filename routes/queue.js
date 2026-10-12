@@ -104,6 +104,7 @@ async function officeSnapshot(sameDayOpen) {
       nowServing: windows.filter(w => w.serving).map(w => ({ label: w.label, ticket: w.serving })),
       openWindows, avgWait: avg,
       minutes: join ? join.minutes : null, startClock: join ? join.startClock : null,
+      endClock: join ? join.endClock : null,
       fits: join ? join.fits : true, closed: !openWindows,
     };
   }
@@ -160,6 +161,27 @@ router.get('/new', async (req, res, next) => {
     const form = {};
     if (['Cashier', 'Registrar'].includes(req.query.office)) form.office = req.query.office;
     await renderForm(req, res, form, null);
+  } catch (e) { next(e); }
+});
+
+// "If you join now" for THESE documents: when the turn starts and when they
+// would be done, from the same day simulation as the ticket itself.
+router.get('/estimate', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const office = ['Cashier', 'Registrar'].includes(req.query.office) ? req.query.office : null;
+    if (!office) return res.status(400).json({ error: 'Choose an office.' });
+    const settings = await db.getSettings();
+    if (!sameDayStatus(settings).open) return res.json({ open: false });
+    const ids = String(req.query.docs || '').split(',').map(Number).filter(Boolean).slice(0, 10);
+    const items = (await Promise.all(ids.map(id => db.getDocument(id)))).filter(Boolean);
+    if (!items.length) return res.json({ open: true, none: true });
+    let svc = (await predict.estimateService(items, office, settings)).minutes;
+    const claims = Math.min(20, Math.max(0, parseInt(req.query.claims, 10) || 0));
+    if (claims > 1) svc = Math.round(svc * (1 + db.CLAIM_EXTRA_SHARE * (claims - 1)) * 10) / 10;
+    const j = await engine.evaluateJoin(office, { service: svc });
+    res.json({ open: true, minutes: j.minutes, startClock: j.startClock, endClock: j.endClock,
+               service: Math.max(1, Math.round(svc)), fits: j.fits, closeClock: j.closeClock });
   } catch (e) { next(e); }
 });
 
@@ -234,6 +256,10 @@ router.post('/new', proofToMemory, async (req, res, next) => {
       const msg = r.blockedBy
         ? `${r.error} If it is not on this phone, use "Find my ticket" with its booking code.`
         : r.error;
+      // today is full: the earliest free time is filled in, ready to book
+      if (r.dayFull && r.suggest)
+        return renderForm(req, res, { ...b, mode: 'schedule', scheduledDate: r.suggest.date, slot: r.suggest.slot },
+          msg + ' We filled it in for you below: check it and submit to book.');
       return renderForm(req, res, b, msg);
     }
     // a repeated submit returns the same ticket: do not file the proof twice
@@ -261,6 +287,23 @@ router.post('/new', proofToMemory, async (req, res, next) => {
 // ── find a ticket on another phone ───────────────────────────────────────────
 router.get('/find', (req, res) =>
   res.render('pages/queue/find', { title: 'Find My Ticket', form: {}, formError: null }));
+
+// "Track my documents": every document of a student (number + last name) or of a
+// visitor's Cashier ticket (booking code + last name), step by step. Rate-limited.
+router.get('/track', (req, res) =>
+  res.render('pages/queue/track', { title: 'Track My Documents', form: { as: 'student' }, lines: null, formError: null }));
+router.post('/track', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const visitor = b.as === 'visitor';
+    const lines = await db.trackDocuments(visitor ? { code: b.code, lastName: b.lastName } : { studentNo: b.studentNo, lastName: b.lastName });
+    res.render('pages/queue/track', {
+      title: 'Track My Documents', form: { ...b, as: visitor ? 'visitor' : 'student' }, lines,
+      formError: lines ? null : (visitor ? 'No match. Check the booking code on your Cashier ticket and your last name.'
+                                         : 'No match. Check your student number and last name, exactly as on your ticket.'),
+    });
+  } catch (e) { next(e); }
+});
 
 // Claiming at the Registrar: the paid documents waiting for this student, only
 // when the student number and last name match (rate-limited in app.js).
@@ -324,6 +367,9 @@ router.get('/t/:token', async (req, res, next) => {
       release: t.department === 'Cashier' ? await db.getReleaseInfo(t.id) : [],
       announcement: await db.latestAnnouncementFor(t.id),
       priorityRequest: await db.getTicketPriorityRequest(t.id),
+      // each document's steps: a Cashier ticket's own, or what a claim ticket collects
+      tracker: t.department === 'Cashier' ? await db.documentTracker({ txIds: [t.id] })
+             : await db.documentTracker({ lineIds: await db.claimLineIds(t.id) }),
       priorityLabels: db.PRIORITY_LABELS,
       pushKey: push.ENABLED ? push.PUBLIC_KEY : '',
       holdChoices: holdChoices(await db.getSettings()),
@@ -445,6 +491,7 @@ router.get('/t/:token/receipt', async (req, res, next) => {
     if (!r) return res.redirect('/queue/t/' + t.accessToken);
     res.render('pages/queue/receipt', {
       title: 'Receipt ' + r.receiptNo, r, settings: await db.getSettings(), release: await db.getReleaseInfo(t.id),
+      tracker: await db.documentTracker({ txIds: [t.id] }),
       back: '/queue/t/' + t.accessToken,
     });
   } catch (e) { next(e); }

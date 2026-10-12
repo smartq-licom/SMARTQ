@@ -31,8 +31,9 @@
  * all weekdays combined and says so in `basis`, so the page can label the
  * figure as provisional instead of presenting thin data as fact.
  *
- * Everything here is READ-ONLY. Peak hours inform the staff and the student;
- * they never change queue order, booking limits or the wait estimate.
+ * Everything here is READ-ONLY. Peak hours inform the staff and the student,
+ * and Smart Call Next (data/dispatch.js) reads them: at a busy or peak hour a
+ * short task gets a small boost in the Smart Priority Score.
  */
 const pool = require('../database/connection');
 const q = async (sql, p = []) => (await pool.execute(sql, p))[0];

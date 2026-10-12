@@ -18,6 +18,18 @@
   @keyframes prio-wave{ 0%,100%{ transform:rotate(0) } 25%{ transform:rotate(-10deg) } 60%{ transform:rotate(8deg) } }
   #proofBox.is-open{ animation:open .35s cubic-bezier(.2,.8,.2,1) both }
   @media (prefers-reduced-motion:reduce){ .prio-card.is-pop .prio-ico, .prio-card.is-pop .prio-ico svg, #proofBox.is-open{ animation:none !important } }
+  /* "join now" estimate for the documents picked */
+  .join-est{ display:block; margin-top:12px; padding:12px 12px 10px; border-radius:14px; background:var(--card-bg); box-shadow:inset 0 0 0 1px rgb(var(--c-brand-line)); animation:open .3s ease-out }
+  .join-line{ position:relative; display:flex; justify-content:space-between; margin:0 calc(16.66% - 6px) }
+  .join-line::before{ content:""; position:absolute; left:6px; right:6px; top:5px; height:2px; background:linear-gradient(90deg, rgb(var(--c-brand)), rgb(16 185 129)); border-radius:2px }
+  .join-line i{ position:relative; width:12px; height:12px; border-radius:50%; background:rgb(var(--c-brand)); box-shadow:0 0 0 3px var(--card-bg) }
+  .join-line i.is-end{ background:rgb(16 185 129) }
+  .join-stops{ display:grid; grid-template-columns:repeat(3, 1fr); margin-top:6px; text-align:center }
+  .join-stops small{ display:block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--soft-c) }
+  .join-stops b{ display:block; font-size:14.5px; font-weight:800; color:var(--ink-c); line-height:1.25 }
+  .join-stops em{ display:block; font-style:normal; font-size:11px; color:var(--soft-c) }
+  .join-est-note{ display:block; margin-top:8px; padding-top:8px; border-top:1px solid rgb(var(--c-brand-line)); font-size:11.5px; font-weight:600; color:rgb(180 83 9); text-align:center }
+  .join-est.is-loading b, .join-est.is-loading em{ opacity:.35 }
   .rep-prio-note{ border-radius:10px; padding:9px 12px; font-size:12.5px; line-height:1.45; background:rgb(245 243 255); color:rgb(76 29 149); border:1px solid rgb(221 214 254) }
   .claim-who{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; border-radius:12px; background:var(--mist-bg) }
   .claim-who button{ padding:8px; border-radius:9px; font-size:12.5px; font-weight:700; color:var(--soft-c); transition:background .15s, color .15s }
@@ -374,6 +386,18 @@
                        <%= sameDay.open && form.mode !== 'schedule' ? 'checked' : '' %> onchange="toggleMode()">
                 <div class="text-[14px] font-bold">Join the line now</div>
                 <div class="text-[12px] text-slateSoft/80 mt-0.5"><%= sameDay.open ? "Even from class: your place starts now, and we alert you when to come" : 'Not available right now' %></div>
+                <% if (sameDay.open) { %>
+                <%# for the documents picked: when the turn starts and when they'd be done %>
+                <div class="join-est" data-join-est hidden>
+                  <span class="join-line" aria-hidden="true"><i></i><i></i><i class="is-end"></i></span>
+                  <span class="join-stops">
+                    <span><small>Join</small><b>Now</b></span>
+                    <span><small>Your turn</small><b data-est-start></b><em data-est-wait></em></span>
+                    <span><small>Done</small><b data-est-end></b><em data-est-svc></em></span>
+                  </span>
+                  <span class="join-est-note" data-est-note hidden></span>
+                </div>
+                <% } %>
               </label>
               <% } %>
               <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3.5 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
@@ -679,6 +703,42 @@
 </div>
 
 <script>
+// "Join the line now": ask the day simulation when THESE documents would start
+// and be done, so the client can choose between now and booking a time.
+var estAsk = 0, estTimer = null;
+function loadEstimate(){
+  clearTimeout(estTimer);
+  estTimer = setTimeout(function () {
+    var box = document.querySelector('[data-join-est]');
+    var office = document.querySelector('input[name=office]:checked');
+    if (!box || !office) return;
+    var docs = [].map.call(document.querySelectorAll('input[name=documentIds]:checked'), function (b) { return b.value; });
+    var claims = document.querySelectorAll('input[name=claimLines]:checked').length;
+    if (!docs.length) { box.hidden = true; return; }
+    var mine = ++estAsk;
+    box.classList.add('is-loading');
+    fetch('/queue/estimate?office=' + encodeURIComponent(office.value) + '&docs=' + docs.join(',') + '&claims=' + claims, { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (mine !== estAsk) return;                 // an older answer arrived late
+        box.classList.remove('is-loading');
+        if (!d.open || d.none || !d.startClock) { box.hidden = true; return; }
+        box.querySelector('[data-est-start]').textContent = d.startClock;
+        box.querySelector('[data-est-wait]').textContent = d.minutes < 1 ? 'no wait' : '~' + d.minutes + ' min wait';
+        box.querySelector('[data-est-end]').textContent = d.endClock;
+        box.querySelector('[data-est-svc]').textContent = '~' + d.service + ' min';
+        var note = box.querySelector('[data-est-note]');
+        note.hidden = d.fits;
+        note.textContent = 'The line is long: you may not be done before closing (' + d.closeClock + '). Booking a time is safer.';
+        box.hidden = false;
+      })
+      .catch(function () { box.classList.remove('is-loading'); box.hidden = true; });
+  }, 250);
+}
+document.addEventListener('change', function (e) {
+  if (e.target.name === 'claimLines' || e.target.name === 'office') loadEstimate();
+});
+
 function toggleMode(){
   var sched = document.querySelector('input[name=mode][value=schedule]');
   var box = document.getElementById('scheduleBox');
@@ -1091,7 +1151,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     cur.classList.remove('wiz-fwd', 'wiz-back'); void cur.offsetWidth;
     if (dir) cur.classList.add(dir);
     if (n === LAST) buildReview();
-    if (n === 2) loadSlots();                        // documents may have changed
+    if (n === 2) { loadSlots(); loadEstimate(); }    // documents may have changed
     paintBar();
     var top = document.querySelector('nav[aria-label="Request steps"]');
     if (top && !stay) top.scrollIntoView({ behavior: 'smooth', block: 'start' });

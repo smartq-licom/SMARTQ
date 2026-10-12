@@ -186,7 +186,8 @@
                  class="mt-0.5 rounded border-hair">
           <span>
             <span class="font-semibold">Close this date</span>
-            <span class="block text-[11.5px] text-slateSoft/75">Students cannot book it. Existing bookings are kept.</span>
+            <span class="block text-[11.5px] text-slateSoft/75">Students cannot book it.<% if (pickDay.booked - pickDay.done > 0 && !pickDay.closed) { %>
+              <strong class="text-amber-800">The <%= pickDay.booked - pickDay.done %> waiting ticket<%= pickDay.booked - pickDay.done === 1 ? '' : 's' %> on this date will move to the next open day</strong> (same time when free), and each student is told why.<% } else { %> Tickets already on it move to the next open day.<% } %></span>
           </span>
         </label>
 

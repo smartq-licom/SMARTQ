@@ -120,7 +120,7 @@
       <div class="text-[12px] text-slateSoft/75"><%= o.waiting ? o.waiting + ' already in line' : "you'd be among the first" %></div>
       <% } else { %>
       <div class="text-[22px] font-extrabold text-brand-night leading-tight mt-0.5"><%= mins(o.minutes).replace('about ', '~') %></div>
-      <div class="text-[12px] text-slateSoft/75">your turn around <strong class="text-ink"><%= o.startClock %></strong><%= o.closed ? ' (once a window opens)' : '' %></div>
+      <div class="text-[12px] text-slateSoft/75">your turn around <strong class="text-ink"><%= o.startClock %></strong><% if (o.endClock) { %> &middot; done around <strong class="text-ink"><%= o.endClock %></strong><% } %><%= o.closed ? ' (once a window opens)' : '' %></div>
       <% if (breakEnds) { %><div class="mt-1 text-[12px] font-medium text-amber-700">&#9749; Break time: the windows call again at <%= breakEnds %></div><% } %>
       <% } %>
 
@@ -134,7 +134,11 @@
 
     <% if (o.minutes != null && !o.fits) { %>
     <p class="mx-5 mt-3 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-3 py-2 text-[12px] text-amber-900">
+      <% if (settings.fullDayMode === 'decline') { %>
+      &#9888;&#65039; <strong>Today's line is full.</strong> New numbers for today are not given; book a time on the next open day instead.
+      <% } else { %>
       &#9888;&#65039; The line is long: if you join now you may not be served before closing. Consider booking a time tomorrow.
+      <% } %>
     </p>
     <% } %>
 

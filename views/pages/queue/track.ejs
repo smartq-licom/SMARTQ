@@ -1,0 +1,66 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/public-nav') %>
+<div class="max-w-md mx-auto">
+  <a href="/queue/find" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %> mb-4 no-print">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    Back
+  </a>
+  <div class="mb-4">
+    <h2 class="text-xl font-extrabold">Track my documents</h2>
+    <p class="text-[13px] text-slateSoft/80 mt-0.5">See where each document is: queued, processing, ready to claim or claimed.</p>
+  </div>
+
+  <% if (formError) { %>
+  <div role="alert" class="mb-4 rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><%= formError %></div>
+  <% } %>
+
+  <form method="POST" action="/queue/track" class="<%= UI.card %> p-5 space-y-4" data-once data-track>
+    <input type="hidden" name="as" value="<%= form.as %>">
+    <div class="trk-who" role="tablist" aria-label="Who is checking">
+      <button type="button" role="tab" data-as="student" aria-selected="<%= form.as !== 'visitor' %>">I'm a student</button>
+      <button type="button" role="tab" data-as="visitor" aria-selected="<%= form.as === 'visitor' %>">I'm a visitor</button>
+    </div>
+    <div data-for="student" <%= form.as === 'visitor' ? 'hidden' : '' %>>
+      <label for="studentNo" class="<%= UI.lbl %>">Student number</label>
+      <input id="studentNo" name="studentNo" inputmode="numeric" maxlength="9" autocomplete="off" placeholder="9 digits"
+             value="<%= form.studentNo || '' %>" class="<%= UI.input %> font-mono">
+    </div>
+    <div data-for="visitor" <%= form.as === 'visitor' ? '' : 'hidden' %>>
+      <label for="code" class="<%= UI.lbl %>">Booking code of your Cashier ticket</label>
+      <input id="code" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="e.g. K7MX2Q"
+             value="<%= form.code || '' %>" class="<%= UI.input %> font-mono uppercase tracking-[.2em]">
+    </div>
+    <div>
+      <label for="lastName" class="<%= UI.lbl %>">Last name</label>
+      <input id="lastName" name="lastName" required maxlength="60" autocomplete="off" value="<%= form.lastName || '' %>" class="<%= UI.input %>">
+    </div>
+    <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3">Show my documents</button>
+  </form>
+
+  <% if (lines) { %>
+    <% if (!lines.length) { %>
+    <p class="mt-4 rounded-2xl bg-white border border-hair px-4 py-3 text-[13px] text-slateSoft">No documents requested in the last 120 days.</p>
+    <% } else { %>
+    <%- include('../../partials/doc-tracker', { lines: lines, showTicket: true, title: lines.length + ' document' + (lines.length === 1 ? '' : 's') }) %>
+    <% } %>
+  <% } %>
+</div>
+<style>
+  .trk-who{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; border-radius:12px; background:var(--mist-bg) }
+  .trk-who button{ padding:8px; border-radius:9px; font-size:12.5px; font-weight:700; color:var(--soft-c) }
+  .trk-who button[aria-selected="true"]{ background:var(--card-bg); color:var(--ink-c); box-shadow:0 1px 3px rgba(16,24,40,.12) }
+</style>
+<script>
+(function () {
+  var f = document.querySelector('[data-track]');
+  f.querySelectorAll('[data-as]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      f.elements.as.value = b.dataset.as;
+      f.querySelectorAll('[data-as]').forEach(function (o) { o.setAttribute('aria-selected', o === b ? 'true' : 'false'); });
+      f.querySelectorAll('[data-for]').forEach(function (d) { d.hidden = d.dataset.for !== b.dataset.as; });
+    });
+  });
+})();
+</script>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

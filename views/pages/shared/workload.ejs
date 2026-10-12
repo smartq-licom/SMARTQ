@@ -1,0 +1,217 @@
+<%- include('../../partials/head') %>
+<%- include('../../partials/nav', { active: base }) %>
+<%
+  // w from data/workload.js page(): today (window cards), hourly, staff, staffing
+  var t = w.today, h = w.hourly, s = w.staff, st = w.staffing;
+  var dlong = function (x) { return new Date(x + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }); };
+  var dshort = function (x) { return new Date(x + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }); };
+  var qs = function (o) { var p = Object.assign({ office: canPickOffice ? office : '', day: w.day, from: w.from, to: w.to }, o);
+    return Object.keys(p).filter(function (k) { return p[k]; }).map(function (k) { return k + '=' + encodeURIComponent(p[k]); }).join('&'); };
+  var utilTone = function (u) { return u >= 85 ? 'bg-red-500' : u >= 60 ? 'bg-amber-500' : 'bg-emerald-500'; };
+%>
+<div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+  <div>
+    <h2 class="text-xl font-extrabold">Workload</h2>
+    <p class="text-[13px] text-slateSoft/80">How the work is shared, how busy each window is, and how each staff member performs.</p>
+  </div>
+  <div class="flex flex-wrap gap-2 no-print">
+    <% if (canPickOffice) { %>
+    <div class="inline-flex rounded-xl bg-mist p-1">
+      <% ['Cashier', 'Registrar'].forEach(function (o) { %>
+      <a href="<%= base %>?<%= qs({ office: o }) %>" class="px-3 py-1.5 rounded-lg text-[13px] font-semibold <%= o === office ? 'bg-white shadow-card text-ink' : 'text-slateSoft' %>"><%= o %></a>
+      <% }) %>
+    </div>
+    <% } %>
+    <button type="button" onclick="window.print()" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Print</button>
+  </div>
+</div>
+
+<%# ── 1. the day, window by window ───────────────────────────────────────── %>
+<section class="<%= UI.card %> mb-4">
+  <div class="<%= UI.cardHd %> flex-wrap gap-2">
+    <h3 class="<%= UI.cardTtl %>"><%= office %> windows · <%= t.isToday ? 'today' : dlong(t.date) %></h3>
+    <form method="GET" class="flex items-center gap-2 no-print">
+      <% if (canPickOffice) { %><input type="hidden" name="office" value="<%= office %>"><% } %>
+      <input type="hidden" name="from" value="<%= w.from %>"><input type="hidden" name="to" value="<%= w.to %>">
+      <label for="wday" class="text-[12px] text-slateSoft">Day</label>
+      <input id="wday" type="date" name="day" value="<%= t.date %>" class="<%= UI.input %> !py-1.5 max-w-[11rem]" onchange="this.form.submit()">
+    </form>
+  </div>
+  <div class="<%= UI.body %>">
+    <% if (t.unusual && t.unusual.known && t.unusual.unusual) { %>
+    <p class="mb-3 rounded-xl <%= t.unusual.percent > 0 ? 'bg-amber-50 ring-amber-200 text-amber-900' : 'bg-mist ring-hair text-slateSoft' %> ring-1 ring-inset px-3.5 py-2.5 text-[12.5px]">
+      <strong><%= t.unusual.percent > 0 ? 'Busier than usual:' : 'Quieter than usual:' %></strong>
+      <%= t.unusual.today %> clients so far, against about <%= t.unusual.usual %> by this time on a usual <%= new Date().toLocaleDateString('en-PH', { weekday: 'long' }) %>
+      (<%= t.unusual.percent > 0 ? '+' : '' %><%= t.unusual.percent %>%).
+    </p>
+    <% } %>
+
+    <div class="grid sm:grid-cols-3 gap-3 mb-4">
+      <div class="rounded-2xl bg-mist px-4 py-3">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/70">Served</div>
+        <div class="text-[26px] font-extrabold leading-tight"><%= t.total %></div>
+        <div class="text-[12px] text-slateSoft"><%= Math.round(t.openMin / 6) / 10 %> h open<%= t.isToday ? ' so far' : '' %></div>
+      </div>
+      <div class="rounded-2xl bg-mist px-4 py-3">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/70">Balance score</div>
+        <div class="text-[26px] font-extrabold leading-tight"><%= t.score === null ? '–' : t.score + ' / 100' %></div>
+        <div class="text-[12px] text-slateSoft"><%= t.score === null ? (t.cards.length > 1 ? 'no clients served yet' : 'one window: nothing to balance') : t.score >= 80 ? 'work shared evenly' : t.score >= 50 ? 'somewhat uneven' : 'uneven: one window carries most' %></div>
+      </div>
+      <div class="rounded-2xl bg-mist px-4 py-3">
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/70">Busiest hour</div>
+        <div class="text-[26px] font-extrabold leading-tight"><%= h.peak === null ? '–' : h.hours.find(function (x) { return x.hour === h.peak; }).label %></div>
+        <div class="text-[12px] text-slateSoft"><%= h.peak === null ? 'no arrivals yet' : (function (n) { return n + (n === 1 ? ' client' : ' clients') + ' arrived'; })(h.hours.find(function (x) { return x.hour === h.peak; }).arrived) %></div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <% t.cards.forEach(function (c) { %>
+      <div class="rounded-2xl border border-hair p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-bold text-[14px]"><%= c.label %></div>
+            <div class="text-[12px] text-slateSoft truncate"><%= c.staff || 'No staff assigned' %></div>
+          </div>
+          <span class="<%= pill %> <%= c.status === 'open' ? (c.serving ? tone('serving') : tone('paid')) : tone('cancelled') %>">
+            <%= c.status !== 'open' ? c.status : c.serving ? 'serving ' + c.serving : t.isToday ? 'free' : 'open' %></span>
+        </div>
+        <div class="mt-3">
+          <div class="flex justify-between text-[12px]"><span class="text-slateSoft">Utilization</span><b><%= c.utilization %>%</b></div>
+          <div class="mt-1 h-2 rounded-full bg-mist overflow-hidden"><div class="h-full rounded-full <%= utilTone(c.utilization) %>" style="width:<%= c.utilization %>%"></div></div>
+        </div>
+        <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+          <dt class="text-slateSoft">Served</dt><dd class="text-right font-semibold"><%= c.served %><%= t.total ? ' (' + c.share + '%)' : '' %></dd>
+          <dt class="text-slateSoft">Busy / idle</dt><dd class="text-right font-semibold"><%= c.busy %> / <%= c.idle %> min</dd>
+          <dt class="text-slateSoft">Avg service</dt><dd class="text-right font-semibold"><%= c.avgMin === null ? '–' : c.avgMin + ' min' %></dd>
+          <dt class="text-slateSoft">Pace</dt><dd class="text-right font-semibold"><%= c.pace === null ? '–' : c.pace <= 1 ? Math.round((1 - c.pace) * 100) + '% faster' : Math.round((c.pace - 1) * 100) + '% slower' %></dd>
+        </dl>
+      </div>
+      <% }) %>
+    </div>
+    <% if (t.tips.length) { %>
+    <ul class="mt-3 space-y-1.5">
+      <% t.tips.forEach(function (tip) { %><li class="rounded-xl bg-brand-wash px-3.5 py-2 text-[12.5px] text-brand-night">&#128161; <%= tip %></li><% }) %>
+    </ul>
+    <% } %>
+  </div>
+</section>
+
+<%# ── 2. hour by hour ─────────────────────────────────────────────────────── %>
+<section class="<%= UI.card %> mb-4">
+  <div class="<%= UI.cardHd %> flex-wrap gap-2">
+    <h3 class="<%= UI.cardTtl %>">Hour by hour · <%= t.isToday ? 'today' : dshort(t.date) %></h3>
+    <div class="flex flex-wrap items-center gap-3 text-[12px] text-slateSoft" aria-hidden="true">
+      <span class="inline-flex items-center gap-1.5"><i class="inline-block w-3 h-3 rounded-sm" style="background:#2185D5"></i>Arrived</span>
+      <span class="inline-flex items-center gap-1.5"><i class="inline-block w-3 h-3 rounded-sm" style="background:#10B981"></i>Served</span>
+      <span class="inline-flex items-center gap-1.5"><i class="inline-block w-4 h-0.5" style="background:#D97706"></i>Still waiting</span>
+    </div>
+  </div>
+  <div class="<%= UI.body %>">
+    <% var H = 180, n = h.hours.length, W = Math.max(n * 48, 320), bw = 14, step = W / n,
+           y = function (v) { return H - 18 - (v / h.max) * (H - 34); }; %>
+    <div class="overflow-x-auto">
+    <svg viewBox="0 0 <%= W %> <%= H %>" width="100%" style="min-width:<%= Math.min(W, 520) %>px" role="img"
+         aria-label="Clients arrived, served and still waiting per hour on <%= dlong(t.date) %>">
+      <% [0, Math.round(h.max / 2), h.max].filter(function (v, i, a) { return a.indexOf(v) === i; }).forEach(function (v) { var gy = y(v); %>
+      <line x1="0" x2="<%= W %>" y1="<%= gy %>" y2="<%= gy %>" stroke="rgba(15,23,42,.08)" stroke-width="1"/>
+      <text x="2" y="<%= gy - 3 %>" font-size="10" fill="#64748b"><%= v %></text>
+      <% }) %>
+      <% h.hours.forEach(function (x, i) { var cx = step * i + step / 2; %>
+      <g>
+        <title><%= x.label %>: <%= x.arrived %> arrived, <%= x.served %> served<%= x.waiting === null ? '' : ', ' + x.waiting + ' still waiting at the end of the hour' %><%= x.isBreak ? ' (break)' : '' %></title>
+        <rect x="<%= cx - step / 2 %>" y="0" width="<%= step %>" height="<%= H %>" fill="<%= x.hour === h.peak ? 'rgba(33,133,213,.07)' : 'transparent' %>"/>
+        <% if (x.arrived) { %><rect x="<%= cx - bw - 1 %>" y="<%= y(x.arrived) %>" width="<%= bw %>" height="<%= H - 18 - y(x.arrived) %>" rx="3" fill="#2185D5"/><% } %>
+        <% if (x.served) { %><rect x="<%= cx + 1 %>" y="<%= y(x.served) %>" width="<%= bw %>" height="<%= H - 18 - y(x.served) %>" rx="3" fill="#10B981"/><% } %>
+        <text x="<%= cx %>" y="<%= H - 4 %>" font-size="10" text-anchor="middle" fill="<%= x.future ? '#cbd5e1' : '#64748b' %>"><%= x.label.replace(' ', '') %></text>
+      </g>
+      <% }) %>
+      <% var pts = h.hours.map(function (x, i) { return x.waiting === null ? null : [step * i + step / 2, y(x.waiting)]; }).filter(Boolean); %>
+      <% if (pts.length > 1) { %><polyline points="<%= pts.map(function (p) { return p.join(','); }).join(' ') %>" fill="none" stroke="#D97706" stroke-width="2" stroke-linejoin="round"/><% } %>
+      <% pts.forEach(function (p) { %><circle cx="<%= p[0] %>" cy="<%= p[1] %>" r="4" fill="#D97706" stroke="#fff" stroke-width="2"/><% }) %>
+    </svg>
+    </div>
+    <details class="mt-2 text-[12.5px]">
+      <summary class="cursor-pointer font-semibold text-slateSoft">Show as a table</summary>
+      <table class="mt-2 w-full">
+        <thead><tr><th class="<%= UI.th %>">Hour</th><th class="<%= UI.th %>">Arrived</th><th class="<%= UI.th %>">Served</th><th class="<%= UI.th %>">Still waiting</th></tr></thead>
+        <tbody><% h.hours.forEach(function (x) { %><tr class="<%= UI.tr %>"><td class="<%= UI.td %>"><%= x.label %><%= x.isBreak ? ' (break)' : '' %></td><td class="<%= UI.td %> font-mono"><%= x.arrived %></td><td class="<%= UI.td %> font-mono"><%= x.served %></td><td class="<%= UI.td %> font-mono"><%= x.waiting === null ? '–' : x.waiting %></td></tr><% }) %></tbody>
+      </table>
+    </details>
+    <p class="mt-2 text-[12px] text-slateSoft">A rising orange line means clients are arriving faster than they are served: a backlog is building.</p>
+  </div>
+</section>
+
+<%# ── 3. staff performance over a period ──────────────────────────────────── %>
+<section class="<%= UI.card %> mb-4">
+  <div class="<%= UI.cardHd %> flex-wrap gap-2">
+    <h3 class="<%= UI.cardTtl %>">Staff performance · <%= dshort(w.from) %> – <%= dshort(w.to) %></h3>
+    <form method="GET" class="flex flex-wrap items-center gap-2 no-print">
+      <% if (canPickOffice) { %><input type="hidden" name="office" value="<%= office %>"><% } %>
+      <input type="hidden" name="day" value="<%= w.day %>">
+      <input type="date" name="from" value="<%= w.from %>" class="<%= UI.input %> !py-1.5 max-w-[10rem]" aria-label="From">
+      <input type="date" name="to" value="<%= w.to %>" class="<%= UI.input %> !py-1.5 max-w-[10rem]" aria-label="To">
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnGh %> <%= UI.btnSm %>">Apply</button>
+    </form>
+  </div>
+  <div class="overflow-x-auto"><table class="w-full">
+    <thead><tr>
+      <th class="<%= UI.th %>">Staff</th><th class="<%= UI.th %>">Served</th><th class="<%= UI.th %>">Per day</th>
+      <th class="<%= UI.th %>">Avg service</th><th class="<%= UI.th %>">Speed vs expected</th><th class="<%= UI.th %>">Utilization</th>
+      <th class="<%= UI.th %>">Cancelled / missed</th><% if (office === 'Cashier') { %><th class="<%= UI.th %> text-right">Collected</th><% } %>
+      <th class="<%= UI.th %>">Week by week</th>
+    </tr></thead>
+    <tbody>
+      <% s.rows.filter(function (r) { return r.department === office; }).forEach(function (r) { var mx = Math.max(1, Math.max.apply(null, r.trend)); %>
+      <tr class="<%= UI.tr %>">
+        <td class="<%= UI.td %> font-semibold"><%= r.name %><span class="block text-[11px] font-normal text-slateSoft"><%= r.days %> day<%= r.days === 1 ? '' : 's' %> worked</span></td>
+        <td class="<%= UI.td %> font-mono"><%= r.served %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.perDay %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.avgMin === null ? '–' : r.avgMin + ' min' %></td>
+        <td class="<%= UI.td %> text-[12.5px] <%= r.pace === null ? '' : r.pace <= 1 ? 'text-emerald-700 font-semibold' : r.pace >= 1.15 ? 'text-amber-700 font-semibold' : '' %>"><%= r.paceText || '–' %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.utilization === null ? '–' : r.utilization + '%' %></td>
+        <td class="<%= UI.td %> font-mono"><%= r.ended %> / <%= r.missed %></td>
+        <% if (office === 'Cashier') { %><td class="<%= UI.td %> font-mono text-right"><%= peso(r.collected) %></td><% } %>
+        <td class="<%= UI.td %>">
+          <svg width="<%= r.trend.length * 12 %>" height="26" role="img" aria-label="Clients served each week: <%= r.trend.join(', ') %>">
+            <% r.trend.forEach(function (v, i) { var bh = Math.max(1, v / mx * 22); %>
+            <rect x="<%= i * 12 %>" y="<%= 26 - bh %>" width="9" height="<%= bh %>" rx="2" fill="#2185D5"><title>Week of <%= dshort(s.weeks[i]) %>: <%= v %> served</title></rect>
+            <% }) %>
+          </svg>
+        </td>
+      </tr>
+      <% }) %>
+      <% if (!s.rows.filter(function (r) { return r.department === office; }).length) { %>
+      <tr><td colspan="9" class="px-4 py-8 text-center text-[13px] text-slateSoft/80">No staff activity in this period.</td></tr>
+      <% } %>
+    </tbody>
+  </table></div>
+  <p class="px-5 py-3 border-t border-hair text-[12px] text-slateSoft">
+    <b>Speed vs expected</b>: the minutes they really took against what the documents were expected to take (learned from all services), so a
+    staff member who handles long requests is not judged as slow. <b>Utilization</b>: minutes serving ÷ minutes the office was open on the days they worked.
+  </p>
+</section>
+
+<%# ── 4. staffing advice for today ─────────────────────────────────────────── %>
+<section class="<%= UI.card %> mb-6">
+  <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Windows needed today</h3>
+    <span class="text-[12px] text-slateSoft"><%= st.configured %> <%= office %> window<%= st.configured === 1 ? '' : 's' %> set up</span></div>
+  <div class="<%= UI.body %>">
+    <% if (!st.basedOn) { %>
+    <p class="text-[13px] text-slateSoft">Not enough history for this weekday yet. Advice appears after a few weeks of use.</p>
+    <% } else { %>
+    <p class="text-[12.5px] text-slateSoft mb-3">About <b class="text-ink"><%= st.total %> clients</b> are expected today, from the last <%= st.basedOn %> <%= new Date().toLocaleDateString('en-PH', { weekday: 'long' }) %>s and today's bookings.
+      Windows needed to keep the average wait under <%= st.target %> minutes:</p>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <% st.blocks.forEach(function (b) { %>
+      <div class="rounded-2xl px-4 py-3 <%= b.short ? 'bg-amber-50 ring-1 ring-inset ring-amber-300' : 'bg-mist' %>">
+        <div class="text-[12px] font-semibold text-slateSoft"><%= b.label %></div>
+        <div class="text-[22px] font-extrabold leading-tight"><%= b.windows %> window<%= b.windows === 1 ? '' : 's' %></div>
+        <div class="text-[12px] <%= b.short ? 'text-amber-900 font-semibold' : 'text-slateSoft' %>"><%= b.expected %> clients expected<%= b.short ? ' · open another window' : '' %></div>
+      </div>
+      <% }) %>
+    </div>
+    <% } %>
+  </div>
+</section>
+<%- include('../../partials/foot') %>
+<%- include('../../partials/scripts') %>

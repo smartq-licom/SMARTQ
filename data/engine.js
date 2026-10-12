@@ -210,7 +210,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
 
   const rows = await q(
     `SELECT id, ticket_no, queue_category, ticket_status, queue_at, hold_until, called_at, started_at,
-            predicted_service, skip_count, window_id
+            predicted_service, skip_count, window_id, slot_start, risk_at
      FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status IN ('waiting','called','serving')
      ORDER BY queue_at, id`, [department]);
@@ -279,7 +279,13 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   [...lane.priority, ...lane.regular].forEach(x => {
     x.svc = Number(x.predicted_service) || pr.median;
     x.skip = Number(x.skip_count) || 0;
+    // the Smart Priority Score's inputs, as Call Next sees them
+    x.ticketNo = x.ticket_no;
+    x.queuedAt = new Date(x.queue_at).getTime();
+    x.slotStart = x.slot_start ? at(today, String(x.slot_start).slice(0, 5)).getTime() : null;
+    x.atRisk = !!x.risk_at;
   });
+  const peakSet = await dispatch.peakHours(department);
 
   let guard = 0;
   const realLeft = () => lane.regular.some(x => !x.expected) || lane.priority.some(x => !x.expected);
@@ -299,7 +305,9 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     const ready = { priority: lane.priority.filter(x => readyAt(x) <= t0.getTime()),
                     regular:  lane.regular.filter(x => readyAt(x) <= t0.getTime()) };
     const others = slots.filter(o => o !== win).map(o => ({ label: o.label, speed: o.speed, free: o.free <= t0, workToday: o.work }));
-    const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others, { reserve: false });
+    const peak = dispatch.isPeak(peakSet, t0.getHours(), ready.priority.length + ready.regular.length, slots.length);
+    const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others,
+                              { reserve: false, now: t0.getTime(), peak });
     if (!d) {                                        // nobody ready yet: jump to the next one who is
       win.free = new Date(Math.min(...lane.priority.concat(lane.regular).map(readyAt)));
       continue;
@@ -345,6 +353,8 @@ async function evaluateJoin(department, { lane = 'regular', service = null } = {
     fits, minutes, expectedAhead: e.expectedAhead || 0, claimsAhead: e.claimsAhead || 0,
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     startClock: clock(e.start),
+    endClock: clock(e.end),                       // done at the window (typical pace)
+    serviceMinutes: Math.max(1, Math.round((e.end - e.start) / 60000)),
     slowEndClock: clock(sl.end),
     closeClock: clock(slow.close),
     windows: typ.windows, assumed: typ.assumed,
@@ -364,7 +374,7 @@ async function ticketForecast(t) {
   const a = typ.result[t.id], b = slow.result[t.id];
   if (!a) return null;
   return {
-    start: a.start, startClock: clock(a.start),
+    start: a.start, startClock: clock(a.start), endClock: clock(a.end),
     minutes: Math.max(0, Math.round((a.start - Date.now()) / 60000)),
     fits: b ? b.end <= slow.close : true,
     slowEndClock: b ? clock(b.end) : null,
@@ -398,6 +408,32 @@ async function releaseAlerts(db, settings) {
        AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
                        WHERE ci.line_id = td.id AND c.ticket_status = 'completed')
      LIMIT 50`);
+  // same-day documents: once their LEARNED preparation time has passed
+  // (db.prepTimes); with nothing learned yet they count as ready on payment
+  // and the payment alert already said so
+  const prep = await db.prepTimes();
+  const sameDay = await q(
+    `SELECT td.id, td.document_name, p.paid_at, t.id AS tx_id, t.access_token
+     FROM transaction_documents td
+     JOIN transactions t ON t.id = td.transaction_id
+     JOIN documents d ON d.id = td.document_id
+     JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
+     WHERE d.processing_days = 0 AND d.requires_claim = 1 AND td.ready_notified_at IS NULL
+       AND t.department = 'Cashier' AND p.paid_at >= NOW() - INTERVAL 3 DAY
+       AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
+                       WHERE ci.line_id = td.id AND c.ticket_status IN ('completed','called','serving'))
+     LIMIT 50`);
+  for (const r of sameDay) {
+    const pt = prep[r.document_name];
+    if (!pt || !pt.minutes) continue;
+    if (await db.readyMoment(r.paid_at, pt.minutes) > now) continue;
+    await q('UPDATE transaction_documents SET ready_notified_at=NOW() WHERE id=?', [r.id]);
+    await push.sendToTicket(r.tx_id, {
+      title: `Your ${r.document_name} should be ready`,
+      body: 'It is usually prepared by now. Claim it at the Registrar with your receipt and a valid ID.',
+      url: r.access_token ? '/queue/t/' + r.access_token : '/queue',
+    });
+  }
   for (const r of rows) {
     const readyOn = await db.releaseDate(db.ymd ? db.ymd(new Date(r.paid_at)) : new Date(r.paid_at).toISOString().slice(0, 10), Number(r.processing_days));
     if (readyOn > db.today()) continue;               // moved past a closed day: not yet

@@ -1,0 +1,63 @@
+<%
+  // `lines` from db.documentTracker(): each document's steps,
+  // Queued -> Processing -> Ready to claim -> Claimed (fees: -> Paid -> Done).
+  // `showTicket`: also name the Cashier ticket (on "Track my documents").
+%>
+<% if (lines && lines.length) { %>
+<section class="trk <%= typeof cls !== 'undefined' ? cls : '' %>">
+  <% if (typeof title !== 'undefined' && title) { %><h3 class="trk-title"><%= title %></h3><% } %>
+  <% lines.forEach(function (l) { %>
+  <div class="trk-doc">
+    <div class="trk-head">
+      <div class="min-w-0">
+        <div class="trk-name"><%= l.name %><%= l.copies > 1 ? ' \u00d7' + l.copies : '' %></div>
+        <% if (typeof showTicket !== 'undefined' && showTicket) { %>
+        <a class="trk-ticket" href="/queue/t/<%= l.accessToken %>">Ticket <%= l.ticketNo %> &rarr;</a>
+        <% } %>
+      </div>
+      <span class="trk-chip trk-<%= l.cancelled ? 'off' : l.done ? 'done' : l.status === 'Ready to claim' ? 'ready' : 'on' %>"><%= l.status %></span>
+    </div>
+    <% if (l.steps.length) { %>
+    <ol class="trk-steps" style="--n:<%= l.steps.length %>">
+      <% l.steps.forEach(function (s) { %>
+      <li class="is-<%= s.state %>">
+        <i aria-hidden="true"><% if (s.state === 'done') { %>&#10003;<% } %></i>
+        <b><%= s.label %></b>
+        <small><%= s.note %></small>
+      </li>
+      <% }) %>
+    </ol>
+    <% } %>
+  </div>
+  <% }) %>
+</section>
+<style>
+  .trk{ margin-top:16px; border-radius:18px; background:var(--card-bg); box-shadow:0 1px 3px rgba(16,24,40,.06); border:1px solid rgb(var(--c-hair, 226 232 240) / .8); padding:14px 16px }
+  .trk-title{ font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--soft-c); margin-bottom:4px }
+  .trk-doc + .trk-doc{ border-top:1px solid rgb(var(--c-brand-line) / .6); margin-top:12px; padding-top:12px }
+  .trk-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px }
+  .trk-name{ font-size:14px; font-weight:800; color:var(--ink-c) }
+  .trk-ticket{ font-size:11.5px; font-weight:600; color:rgb(var(--c-brand)) }
+  .trk-chip{ flex:none; border-radius:999px; padding:3px 10px; font-size:11px; font-weight:800 }
+  .trk-on{ background:rgb(var(--c-brand-wash)); color:rgb(var(--c-brand)) }
+  .trk-ready{ background:rgb(245 158 11 / .16); color:rgb(180 83 9) }
+  .trk-done{ background:rgb(16 185 129 / .14); color:rgb(4 120 87) }
+  .trk-off{ background:var(--mist-bg); color:var(--soft-c) }
+  .trk-steps{ position:relative; display:grid; grid-template-columns:repeat(var(--n), 1fr); margin-top:12px }
+  .trk-steps li{ position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 2px }
+  .trk-steps li::before{ content:""; position:absolute; top:10px; right:50%; width:100%; height:2px; background:rgb(var(--c-brand-line)) }
+  .trk-steps li:first-child::before{ display:none }
+  .trk-steps li.is-done::before, .trk-steps li.is-current::before{ background:rgb(16 185 129) }
+  .trk-steps i{ position:relative; z-index:1; display:grid; place-items:center; width:22px; height:22px; border-radius:50%; font-style:normal; font-size:12px; font-weight:900;
+                background:var(--card-bg); box-shadow:inset 0 0 0 2px rgb(var(--c-brand-line)); color:#fff }
+  .trk-steps li.is-done i{ background:rgb(16 185 129); box-shadow:none }
+  .trk-steps li.is-current i{ background:rgb(var(--c-brand)); box-shadow:0 0 0 4px rgb(var(--c-brand) / .18) }
+  .trk-steps li.is-current i::after{ content:""; width:8px; height:8px; border-radius:50%; background:#fff; animation:trk-pulse 1.6s ease-in-out infinite }
+  .trk-steps b{ margin-top:6px; font-size:11px; font-weight:800; color:var(--ink-c); line-height:1.2 }
+  .trk-steps li.is-todo b{ color:var(--soft-c); font-weight:700 }
+  .trk-steps small{ margin-top:2px; font-size:10.5px; line-height:1.25; color:var(--soft-c) }
+  .trk-steps li.is-current small{ color:rgb(var(--c-brand)); font-weight:700 }
+  @keyframes trk-pulse{ 50%{ transform:scale(.55); opacity:.6 } }
+  @media (prefers-reduced-motion:reduce){ .trk-steps li.is-current i::after{ animation:none } }
+</style>
+<% } %>

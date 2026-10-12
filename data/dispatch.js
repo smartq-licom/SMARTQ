@@ -1,8 +1,25 @@
 'use strict';
 /**
- * Smart Call Next: which client goes to WHICH window.
+ * Smart Call Next: WHO is called next, and to WHICH window.
  *
- * There is one fair line (first come, first served, priority and regular 1:1).
+ * Who: the Smart Priority Score (a weighted priority score with aging).
+ * Inside each lane every client ready to be called gets
+ *
+ *   score = minutes already waited              (aging: first come stays the base)
+ *         + 8 per time passed over              (aging speeds up for anyone skipped)
+ *         + 15 if their booked time has come    (an appointment is honoured)
+ *         + 20 if they may not be served before closing (the day simulation said so)
+ *         + 1.5 x minutes shorter than the lane's average (2+ min), ONLY at a peak hour
+ *           (when the line is long, a short task first cuts everyone's average wait)
+ *
+ * and the highest score is called. Urgency is measured, never typed by the
+ * client: a due appointment, a closing-time risk, being passed over. Priority
+ * clients (PWD, Senior Citizen, pregnant) keep their own lane, called 1:1.
+ *
+ * Peak hour: the history marks this weekday and hour as busy (data/peak.js),
+ * or the line is long right now (PEAK_PER_WINDOW clients ready per open window).
+ *
+ * Where: the window rules below.
  * When a window presses Call Next, the dispatcher matches the client to that
  * window with three rules, and the day simulation (data/engine.js) uses the
  * very same rules, so the window a student is told in advance is the window
@@ -42,6 +59,8 @@ const LOOK_AHEAD  = 3;      // how deep into the lane a window may look
 const MAX_SKIPS   = 2;      // nobody is passed over more than this
 const SLOWER_BY   = 1.15;   // "clearly slower": 15% or more than the fastest open window
 const MIN_SAVING  = 2;      // minutes a shorter task must save to be worth a skip
+const SCORE = { WAIT: 1, PASSED: 8, BOOKED_DUE: 15, AT_RISK: 20, SHORT_AT_PEAK: 1.5 };
+const PEAK_PER_WINDOW = 3;  // this many ready clients per open window = a rush right now
 const PRIOR_N     = 10;     // blend weight while a staff member has few services
 const RESERVE_SECONDS = 120; // how long a client is saved for the best free window
 
@@ -121,7 +140,50 @@ function whyBetter(best, win) {
 // "a 6-min" / "an 8-min" / "an 11-min"
 const an = m => { const n = Math.round(m); return (/^(8|11|18)/.test(String(n)) ? 'an ' : 'a ') + n; };
 
-function decide(win, lanes, lastCat, others, { now = Date.now(), reserve = true } = {}) {
+// ── Smart Priority Score ─────────────────────────────────────────────────────
+/** One client's score, with the parts that made it (shown to staff as "why"). */
+function scoreOf(x, { now, peak, avgSvc }) {
+  const parts = [];
+  const waited = Math.max(0, (now - (x.queuedAt || x.readyAt || now)) / 60000);
+  let s = waited * SCORE.WAIT;
+  parts.push(`waited ${Math.round(waited)} min`);
+  if (x.skip) { s += x.skip * SCORE.PASSED; parts.push(`passed over ${x.skip}x +${x.skip * SCORE.PASSED}`); }
+  if (x.slotStart && now >= x.slotStart) { s += SCORE.BOOKED_DUE; parts.push(`booked time has come +${SCORE.BOOKED_DUE}`); }
+  if (x.atRisk) { s += SCORE.AT_RISK; parts.push(`may not be served before closing +${SCORE.AT_RISK}`); }
+  if (peak && avgSvc && avgSvc - x.svc >= MIN_SAVING) {           // clearly shorter, not a rounding
+    const b = Math.round((avgSvc - x.svc) * SCORE.SHORT_AT_PEAK);
+    if (b > 0) { s += b; parts.push(`short task at a peak hour +${b}`); }
+  }
+  return { score: Math.round(s), parts };
+}
+
+/**
+ * A lane in calling order: anyone already passed over MAX_SKIPS times first
+ * (in arrival order), then the highest score, ties by arrival.
+ */
+function rankLane(list, ctx) {
+  const avgSvc = list.length ? list.reduce((a, x) => a + x.svc, 0) / list.length : 0;
+  list.forEach((x, i) => { x._fcfs = i; x._score = scoreOf(x, { ...ctx, avgSvc }); });
+  const forced = x => x.skip >= MAX_SKIPS;
+  return list.slice().sort((a, b) =>
+    (forced(b) - forced(a)) ||
+    (forced(a) && forced(b) ? a._fcfs - b._fcfs : (b._score.score - a._score.score) || (a._fcfs - b._fcfs)));
+}
+
+/** Hours that this weekday's history marks busy or peak (data/peak.js), for today. */
+async function peakHours(department) {
+  try {
+    const db = require('./db'), peak = require('./peak');
+    const prof = await peak.hourlyProfile(department, { ...peak.optsFromSettings(await db.getSettings()), weekday: new Date().getDay() });
+    return new Set((prof.hours || []).filter(h => h.level === 'peak' || h.level === 'busy').map(h => h.hour));
+  } catch (e) { return new Set(); }
+}
+const isPeak = (hours, hour, ready, windows) => hours.has(hour) || ready >= PEAK_PER_WINDOW * Math.max(1, windows);
+
+/** The short "why" staff see on Call Next. */
+const whyOf = x => x && x._score ? `Score ${x._score.score}: ${x._score.parts.join(' + ')}` : '';
+
+function decide(win, lanes, lastCat, others, { now = Date.now(), reserve = true, peak = false } = {}) {
   const p = lanes.priority, r = lanes.regular;
   if (!p.length && !r.length) return null;
   let lane = p.length && r.length ? (lastCat === 'priority' ? 'regular' : 'priority') : (p.length ? 'priority' : 'regular');
@@ -155,9 +217,20 @@ function decide(win, lanes, lastCat, others, { now = Date.now(), reserve = true 
     }
   }
 
-  // 2. shortest task where it helps (only for a clearly slower window)
-  const list = lanes[lane];
+  // the Smart Priority Score orders the lane; a different first client than
+  // arrival order means the ones who came earlier were passed over once
+  const fcfs = lanes[lane];
+  const list = rankLane(fcfs, { now, peak });
   let pick = list[0];
+  if (pick !== fcfs[0]) {
+    skipped = skipped.concat(fcfs.slice(0, fcfs.indexOf(pick)));
+    rule = rule === 'fcfs' ? 'smart-score' : rule + '+smart-score';
+    reason = (reason ? reason + '; ' : '') +
+      `${pick.ticketNo || 'a client'} scored ${pick._score.score} (${pick._score.parts.join(', ')}) ` +
+      `over ${fcfs[0].ticketNo || 'a client'} with ${fcfs[0]._score.score} (${fcfs[0]._score.parts.join(', ')})`;
+  }
+
+  // 2. shortest task where it helps (only for a clearly slower window)
   const fastest = Math.min(...others.map(o => o.speed));
   if (pick.skip < MAX_SKIPS && others.length && win.speed >= fastest * SLOWER_BY) {
     const cands = list.slice(0, LOOK_AHEAD);
@@ -165,7 +238,7 @@ function decide(win, lanes, lastCat, others, { now = Date.now(), reserve = true 
     if (shortest !== pick && (pick.svc - shortest.svc) * win.speed >= MIN_SAVING) {
       const before = cands.slice(0, cands.indexOf(shortest)).filter(c => c.skip < MAX_SKIPS);
       if (before.length === cands.indexOf(shortest)) {          // nobody already at the limit is jumped
-        skipped = skipped.concat(before);
+        skipped = skipped.concat(before.filter(b => !skipped.includes(b)));
         reason = (reason ? reason + '; ' : '') +
           `${win.label} is ${Math.round((win.speed / fastest - 1) * 100)}% slower than the fastest open window, ` +
           `so it took ${an(shortest.svc)}-min task and left ${an(pick.svc)}-min one for a faster window`;
@@ -174,8 +247,45 @@ function decide(win, lanes, lastCat, others, { now = Date.now(), reserve = true 
       }
     }
   }
-  return { pick, lane, skipped, rule, reason };
+  return { pick, lane, skipped, rule, reason, why: whyOf(pick), peak };
 }
 
-module.exports = { LOOK_AHEAD, MAX_SKIPS, SLOWER_BY, MIN_SAVING, RESERVE_SECONDS,
-                   staffSpeeds, officeWindows, decide, compareWindows };
+// ── one plan for the whole office ────────────────────────────────────────────
+/**
+ * Every free window gets its OWN client, all at once, so two windows never
+ * show (or race for) the same student. Free windows are served best first
+ * (faster, then less work today, then next in turn); a window that has sat
+ * free for RESERVE_SECONDS while clients wait goes last, so nobody waits on an
+ * idle window. Each window then picks with decide(), and its client is taken
+ * off the list for the windows after it.
+ *
+ *   free     open, staffed windows with nobody at them
+ *   open     every open, staffed window (for the window rules)
+ * Returns a Map windowId -> decision ({ pick, lane, skipped, rule, reason, why }).
+ */
+function planOffice(free, open, lanes, lastCat, { now = Date.now(), peak = false, acting = null } = {}) {
+  const all = lanes.priority.concat(lanes.regular);
+  const oldest = all.length ? Math.min(...all.map(x => x.readyAt || now)) : now;
+  // the window pressing Call Next right now is clearly not idle
+  const idle = w => w.id !== acting && (now - Math.max(w.freeSince || 0, oldest)) / 1000 > RESERVE_SECONDS;
+  const order = free.slice().sort((a, b) => (idle(a) - idle(b)) || compareWindows(a, b));
+  const left = { priority: lanes.priority.slice(), regular: lanes.regular.slice() };
+  const plan = new Map();
+  for (const w of order) {
+    if (!left.priority.length && !left.regular.length) break;
+    // windows still waiting for their client count as free for the window rules
+    const others = open.filter(o => o.id !== w.id).map(o => ({ ...o, free: o.free && !plan.has(o.id) }));
+    const d = decide(w, left, lastCat, others, { reserve: false, now, peak });
+    if (!d) break;
+    plan.set(w.id, d);
+    left[d.lane].splice(left[d.lane].indexOf(d.pick), 1);
+    lastCat = d.lane;
+  }
+  // a client assigned to another window at the same time was not passed over
+  const taken = new Set([...plan.values()].map(d => d.pick.id));
+  plan.forEach(d => { d.skipped = d.skipped.filter(x => !taken.has(x.id)); });
+  return plan;
+}
+
+module.exports = { LOOK_AHEAD, MAX_SKIPS, SLOWER_BY, MIN_SAVING, RESERVE_SECONDS, SCORE, PEAK_PER_WINDOW,
+                   staffSpeeds, officeWindows, decide, compareWindows, whyBetter, scoreOf, rankLane, peakHours, isPeak, planOffice };

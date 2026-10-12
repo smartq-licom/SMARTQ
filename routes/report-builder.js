@@ -75,7 +75,7 @@ function toCsv(r) {
     head = ['Queue No.', 'Date', 'Requested', 'Office', 'Lane', 'Client', 'Student No.', 'Transaction',
             'Staff', 'Window', 'Status', 'Amount', 'Receipt', 'Completed'];
     lines = r.rows.map(t => [t.ticketNo, t.serviceDate, when(t.requestedAt), t.department, t.queueCategory,
-      t.fullName, t.studentNo, t.documents.map(d => d.label).join('; '), t.staffName, t.windowLabel,
+      t.fullName, t.studentNo, t.documents.map(d => d.label).join('; '), db.handledBy(t).name, t.windowLabel,
       t.ticketStatus, t.amountDue.toFixed(2), t.receiptNo || '', t.ticketStatus === 'completed' ? when(t.completedAt) : '']);
   } else if (r.type === 'payments') {
     head = ['Receipt No.', 'Paid', 'Queue No.', 'Client', 'Student No.', 'Transaction', 'Cashier', 'Window', 'Amount'];
@@ -85,6 +85,14 @@ function toCsv(r) {
   } else if (r.type === 'documents') {
     head = ['Document', 'Office', 'Requests', 'Copies', 'Completed', 'Cancelled / No-show', 'Collected'];
     lines = r.rows.map(x => [x.name, x.department, x.requests, x.copies, x.completed, x.cancelled, x.collected.toFixed(2)]);
+  } else if (r.type === 'timesaved') {
+    const m = v => v === null || v === undefined ? '' : (Math.round(v * 10) / 10);
+    head = ['Office', 'Clients', 'Current process (min/client)', 'With SmartQ in office (min/client)', 'Whole wait (min/client)',
+            'Saved (min/client)', 'Saved (%)', 'Total saved (hours)', 'Smart order saved (min/client)', 'FCFS wait (min)', 'Smart wait (min)'];
+    lines = r.rows.map(x => [x.department, x.clients, r.baseline.isSet ? m(x.oldPer) : 'not set', m(x.newPer), m(x.avgWait),
+      m(x.savedPer), x.pct === null ? '' : x.pct, m(x.savedHours), m(x.orderSaved), m(x.fcfsWait), m(x.smartWait)]);
+    lines.push(['Total', r.totals.clients, r.baseline.isSet ? m(r.totals.oldPer) : '', m(r.totals.newPer), '',
+      m(r.totals.savedPer), r.totals.pct === null ? '' : r.totals.pct, m(r.totals.savedHours), m(r.totals.orderSaved), '', '']);
   } else {
     head = ['Staff', 'Office', 'Handled', 'Completed', 'Cancelled / No-show', 'Avg service (min)', 'Collected'];
     lines = r.rows.map(x => [x.name, x.department, x.handled, x.completed, x.cancelled, x.avgMin === null ? '' : x.avgMin, x.collected.toFixed(2)]);
