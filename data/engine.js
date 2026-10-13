@@ -289,6 +289,16 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     x.queuedAt = new Date(x.queue_at).getTime();
     x.slotStart = x.slot_start ? at(today, String(x.slot_start).slice(0, 5)).getTime() : null;
   });
+  // "If you join now" without knowing the request (the board, the QR page): a
+  // request like the ones already waiting, never the shortest case. Otherwise
+  // the short-task bonus at busy times would place an imagined quick visitor
+  // ahead of people who are already in line.
+  if (extra && !extra.service) {
+    const mine = lane[extra.lane === 'priority' ? 'priority' : 'regular'];
+    const real = mine.filter(x => x.id !== 'extra' && !x.expected);
+    const x = mine.find(y => y.id === 'extra');
+    if (x && real.length) x.svc = x.predicted_service = Math.max(pr.median, real.reduce((s, y) => s + y.svc, 0) / real.length);
+  }
   const peakSet = await dispatch.peakHours(department);
 
   let guard = 0;
