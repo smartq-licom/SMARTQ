@@ -921,6 +921,22 @@ function toggleClient(){
   });
   toggleProof();
 }
+// Came from "Go to the Registrar" on a paid Cashier ticket: tick the claim and
+// look up the ready documents with that ticket's details, no typing.
+(function () {
+  var from = <%- JSON.stringify(form.claimFrom || null).replace(/</g, '\\u003c') %>;
+  if (!from) return;
+  setTimeout(function () {
+    var cb = document.querySelector('input[name=documentIds][data-claim="1"]');
+    var box = document.querySelector('.claim-box');
+    if (!cb || !box) return;
+    if (!cb.checked) cb.click();
+    if (from.code) { box.querySelector('[data-claim-as="visitor"]').click(); box.querySelector('#lkCode').value = from.code; }
+    else box.querySelector('#lkNo').value = from.studentNo || '';
+    box.querySelector('#lkLast').value = from.lastName || '';
+    box.querySelector('[data-claim-go]').click();
+  }, 300);
+})();
 // Remember me on this phone: the details from the last ticket fill the form
 // next time (never on a form the server sent back, which already has them).
 (function () {

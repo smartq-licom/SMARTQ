@@ -2245,8 +2245,11 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
       if (claim && (claim.done || claim.atWindow)) steps.push({ label: 'Ready to claim', state: 'done', note: shortDate(readyOn) });
       else if (ready && claim && claim.date === now)
         steps.push({ label: 'Ready to claim', state: 'current', note: claim.ticketNo + ' · ' + await lineInfo({ tx_id: claim.id }) });
-      else if (ready) steps.push({ label: 'Ready to claim', state: 'current',
-          note: claim ? 'Claim booked ' + claim.dateText + (claim.slotLabel ? ', ' + claim.slotLabel.split(' – ')[0] : '') : 'At the Registrar now' });
+      else if (ready && claim) steps.push({ label: 'Ready to claim', state: 'current',
+          note: 'Claim booked ' + claim.dateText + (claim.slotLabel ? ', ' + claim.slotLabel.split(' – ')[0] : '') });
+      // ready and not claimed yet: the Registrar does not prepare it until the
+      // student comes, so the step says what to do
+      else if (ready) steps.push({ label: 'Go to Registrar', state: 'current', note: 'Get a number to claim' });
       else steps.push({ label: 'Ready to claim', state: 'todo',
           note: readyClock ? '~' + readyClock : readyOn ? shortDate(readyOn) : (days ? days + ' days after paying' : 'Right after paying') });
       // 4. claimed: being released at a Registrar window, or done
@@ -2258,7 +2261,7 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
     }
     const cur = steps.find(s => s.state === 'current');
     out.push({ ...base, steps, readyOn, ready, claim, fee: !r.requires_claim, readyAt, readyClock, prep: pt,
-               done: !cur, status: cur ? (cur.label === 'Ready to claim' ? 'Ready to claim' : cur.label === 'Claimed' ? 'Claiming now' : cur.label === 'Queued' ? 'Queued' : 'Processing')
+               done: !cur, status: cur ? (cur.label === 'Ready to claim' || cur.label === 'Go to Registrar' ? 'Ready to claim' : cur.label === 'Claimed' ? 'Claiming now' : cur.label === 'Queued' ? 'Queued' : 'Processing')
                                        : (r.requires_claim ? 'Claimed' : 'Done') });
   }
   return out;

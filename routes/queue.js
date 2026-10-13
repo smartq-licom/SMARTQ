@@ -160,6 +160,20 @@ router.get('/new', async (req, res, next) => {
   try {
     const form = {};
     if (['Cashier', 'Registrar'].includes(req.query.office)) form.office = req.query.office;
+    // "Go to the Registrar" from a paid Cashier ticket (its private link proves it
+    // is theirs): the claim form with that ticket's details filled in, and the
+    // ready documents looked up at once
+    const from = await db.getTransactionByToken(req.query.claim);
+    if (from && from.department === 'Cashier' && from.paymentStatus === 'paid') {
+      const guest = from.clientType === 'guest';
+      Object.assign(form, {
+        office: 'Registrar', clientType: guest ? 'guest' : 'student',
+        firstName: from.firstName, middleName: from.middleName, lastName: from.lastName,
+        studentNo: guest ? '' : from.studentNo, course: guest ? '' : from.course, yearLevel: guest ? '' : from.yearLevel,
+        claimFrom: guest ? { code: from.bookingCode || '', lastName: from.lastName }
+                         : { studentNo: from.studentNo, lastName: from.lastName },
+      });
+    }
     await renderForm(req, res, form, null);
   } catch (e) { next(e); }
 });
