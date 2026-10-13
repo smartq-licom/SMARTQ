@@ -532,6 +532,12 @@
       <section class="<%= UI.card %> step">
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Your information</h3></div>
         <div class="<%= UI.body %>">
+          <%# filled in from this phone's last ticket (localStorage smartq.me) %>
+          <div data-me-note hidden class="mb-4 flex items-center gap-2.5 rounded-xl bg-brand-wash ring-1 ring-inset ring-brand-line px-3.5 py-2.5 text-[12.5px] text-brand-night">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>
+            <span class="flex-1">Filled in from last time on this phone.</span>
+            <button type="button" data-me-clear class="font-bold underline underline-offset-2">Not you? Clear</button>
+          </div>
           <fieldset class="mb-4">
             <legend class="sr-only">Are you a student?</legend>
             <div class="grid grid-cols-2 gap-2.5">
@@ -581,6 +587,10 @@
               </select>
             </div>
           </div>
+          <label class="mt-4 flex items-start gap-2.5 text-[12.5px] text-slateSoft cursor-pointer">
+            <input type="checkbox" data-me-keep checked class="mt-0.5 rounded border-hair text-brand focus:ring-brand/30">
+            <span><b class="text-ink">Remember my details on this phone</b> · next time the form is filled in for you. Untick on a shared phone.</span>
+          </label>
         </div>
       </section>
 
@@ -636,12 +646,12 @@
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Priority lane</h3></div>
         <div class="<%= UI.body %>">
           <fieldset>
-            <legend class="text-[13px] text-slateSoft mb-2.5" data-prio-ask>PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
+            <legend class="text-[13px] text-slateSoft mb-2.5" data-prio-ask data-prio-choices>PWD, Senior Citizen and pregnant clients are called ahead of the regular lane.</legend>
             <p class="rep-prio-note mb-2.5" data-rep-prio hidden>
               Priority goes to the person who comes to the window. Choose it only if <b data-rep-who>your representative</b> is a PWD,
               Senior Citizen or pregnant, and upload <b>their</b> ID.
             </p>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" data-prio-choices>
               <% var prioIcon = {"": "<circle cx=\"12\" cy=\"6\" r=\"2.6\"/><path d=\"M6.5 20v-3.5a5.5 5.5 0 0 1 11 0V20\"/>", "pwd": "<circle cx=\"10\" cy=\"4.5\" r=\"1.8\"/><path d=\"M10 7.5v6h5.5l2.5 5\"/><path d=\"M10 10.5h5\"/><path d=\"M7.2 11.3a5 5 0 1 0 7.3 6.2\"/>", "senior": "<circle cx=\"11\" cy=\"4.5\" r=\"2\"/><path d=\"M11 7.5c-1.6 0-2.6 1.4-2.6 3v3.5l-1.4 6\"/><path d=\"M11 7.5c1.2 0 2 .8 2.4 2l.9 2.5 2.2.6\"/><path d=\"M10.6 14l1.6 6\"/><path d=\"M17 12.6V20\"/><path d=\"M17 12.6c0-.9.6-1.4 1.3-1.4\"/>", "pregnant": "<circle cx=\"11\" cy=\"4.5\" r=\"2\"/><path d=\"M10 7.5c-1.4.3-2 1.6-2 3.2v3.8h1.6L9.2 20\"/><path d=\"M11 7.8c1 .6 1.5 1.6 1.6 2.6a3.4 3.4 0 0 1 .4 6.5L12.5 20\"/>"};
                  [['', 'No, regular'], ['pwd', priorityLabels.pwd], ['senior', priorityLabels.senior], ['pregnant', priorityLabels.pregnant]].forEach(function (p) { %>
               <label class="prio-card rounded-2xl border-2 transition has-[:checked]:shadow-card px-3 py-3 text-center cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
@@ -656,6 +666,19 @@
             </div>
           </fieldset>
           <div id="proofBox" class="mt-3 rounded-lg bg-violet-50 border border-violet-200 px-3.5 py-3" hidden>
+            <%# approved before and still remembered (student number + last name): no new photo %>
+            <div data-proof-known hidden class="flex items-start gap-2.5 text-emerald-900">
+              <span class="grid place-items-center w-7 h-7 rounded-full bg-emerald-500 text-white shrink-0 mt-0.5" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              </span>
+              <span class="text-[13px] leading-snug">
+                <b class="block text-[14px]">Your <span data-known-what></span> proof is already approved</b>
+                No photo needed: you go straight to the priority lane. Remembered until <span data-known-until></span>.
+                Bring the same ID to the window.
+                <button type="button" data-prio-optout class="block mt-1.5 text-[12px] font-semibold underline underline-offset-2 text-emerald-800">Use the regular line today</button>
+              </span>
+            </div>
+            <div data-proof-upload>
             <label for="proof" class="block text-[12.5px] font-bold text-violet-900 mb-1.5">
               Photo of <span data-proof-whose>your</span> proof * <span class="font-normal" data-proof-what></span>
             </label>
@@ -672,6 +695,7 @@
             <% if (formError && form.priorityType) { %>
             <p class="text-[12px] font-semibold text-violet-900 mt-1.5">Please choose the photo again.</p>
             <% } %>
+            </div>
           </div>
         </div>
       </section>
@@ -897,9 +921,103 @@ function toggleClient(){
   });
   toggleProof();
 }
+// Remember me on this phone: the details from the last ticket fill the form
+// next time (never on a form the server sent back, which already has them).
+(function () {
+  var KEY = 'smartq.me', FIELDS = ['firstName', 'middleName', 'lastName', 'studentNo', 'course', 'yearLevel'];
+  var form = document.querySelector('form[action="/queue/new"]');
+  var note = document.querySelector('[data-me-note]'), keep = document.querySelector('[data-me-keep]');
+  if (!form || !keep) return;
+  function el(id) { return document.getElementById(id); }
+  // "I have no middle name" follows a saved N/A
+  function noMiddle(on) {
+    var m = el('middleName'), box = m && m.closest('div').querySelector('[data-middle-none]');
+    if (!m || !box) return;
+    box.checked = on; m.readOnly = on;
+  }
+  var me = null;
+  try { me = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+  var empty = FIELDS.every(function (id) { return !el(id) || !String(el(id).value || '').trim(); });
+  if (me && empty && !<%- JSON.stringify(!!formError) %>) {
+    var who = document.querySelector('input[name=clientType][value="' + (me.clientType === 'guest' ? 'guest' : 'student') + '"]');
+    if (who) who.checked = true;
+    FIELDS.forEach(function (id) { if (el(id) && me[id] != null) el(id).value = me[id]; });
+    noMiddle(String(me.middleName || '').toUpperCase() === 'N/A');
+    if (window.toggleClient) toggleClient();
+    note.hidden = false;
+  }
+  note.querySelector('[data-me-clear]').addEventListener('click', function () {
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    FIELDS.forEach(function (id) { if (el(id)) el(id).value = ''; });
+    noMiddle(false);
+    var st = document.querySelector('input[name=clientType][value=student]'); if (st) st.checked = true;
+    if (window.toggleClient) toggleClient();
+    note.hidden = true; keep.checked = false;
+    if (el('firstName')) el('firstName').focus();
+  });
+  // saved when the form is sent (the page's own checks run first)
+  form.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;
+    try {
+      if (!keep.checked) { localStorage.removeItem(KEY); return; }
+      var guest = document.querySelector('input[name=clientType][value=guest]').checked, d = { clientType: guest ? 'guest' : 'student' };
+      FIELDS.forEach(function (id) { if (el(id) && !(guest && /studentNo|course|yearLevel/.test(id))) d[id] = String(el(id).value || '').trim(); });
+      localStorage.setItem(KEY, JSON.stringify(d));
+    } catch (err) {}
+  });
+})();
+// A student's approved priority is remembered (student number + last name):
+// ask the server once those are filled in. Approved: the lane is chosen for
+// them and the four choices go away ("already approved, no photo needed").
+var priorityKnown = null, knownAsked = '', prioOptOut = false, autoPicked = '';
+function askPriorityKnown() {
+  var no = (document.getElementById('studentNo').value || '').trim();
+  var last = (document.getElementById('lastName').value || '').trim();
+  var guest = document.querySelector('input[name=clientType][value=guest]').checked;
+  if (guest || !/^\d{9}$/.test(no) || !last) { if (priorityKnown) { priorityKnown = null; knownAsked = ''; toggleProof(); } return; }
+  var key = [no, last.toLowerCase()].join('|');
+  if (key === knownAsked) return;
+  knownAsked = key;
+  fetch('/queue/priority-known', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+    body: JSON.stringify({ studentNo: no, lastName: last }) })
+    .then(function (r) { return r.ok ? r.json() : { known: false }; })
+    .then(function (d) {
+      if (knownAsked !== key) return;                     // the details changed meanwhile
+      var was = !!priorityKnown;
+      priorityKnown = d && d.known ? d : null;
+      if (was || priorityKnown) toggleProof();
+    })
+    .catch(function () {});
+}
+['studentNo', 'lastName'].forEach(function (id) {
+  var f = document.getElementById(id);
+  if (f) f.addEventListener('change', askPriorityKnown);
+});
+// approved, but wants the regular line this time: the choices come back
+document.querySelector('[data-prio-optout]').addEventListener('click', function () {
+  prioOptOut = true;
+  var reg = document.querySelector('input[name=priorityType][value=""]');
+  if (reg) reg.checked = true;
+  toggleProof();
+});
 // Priority needs a photo of the ID or proof (checked by staff before the
 // ticket moves to the priority lane).
 function toggleProof(picked){
+  var guest0 = document.querySelector('input[name=clientType][value=guest]').checked;
+  var rep0 = document.querySelector('input[name=claimant][value=representative]').checked;
+  // approved before (this student, claiming it themselves): their lane is chosen
+  // for them and the choices are hidden, unless they asked for the regular line
+  var approved = !!priorityKnown && !guest0 && !rep0 && !prioOptOut;
+  if (approved) {
+    var mine = document.querySelector('input[name=priorityType][value="' + priorityKnown.type + '"]');
+    if (mine && !mine.checked) { mine.checked = true; autoPicked = mine.value; }
+  } else if (autoPicked) {
+    // picked for them, but it no longer applies (a representative, other details): back to regular
+    var auto = document.querySelector('input[name=priorityType][value="' + autoPicked + '"]');
+    if (auto && auto.checked) document.querySelector('input[name=priorityType][value=""]').checked = true;
+    autoPicked = '';
+  }
+  document.querySelectorAll('[data-prio-choices]').forEach(function (el) { el.hidden = approved; });
   var p = document.querySelector('input[name=priorityType]:checked');
   var on = !!(p && p.value);
   var box = document.getElementById('proofBox'), file = document.getElementById('proof');
@@ -913,10 +1031,21 @@ function toggleProof(picked){
   var guest = document.querySelector('input[name=clientType][value=guest]').checked;
   var rep = document.querySelector('input[name=claimant][value=representative]').checked;
   var mayRemember = on && !guest && !rep;
+  // already approved for this student number + last name: no photo at all
+  var known = mayRemember && priorityKnown && priorityKnown.type === p.value;
   box.hidden = !on;
   file.required = on && !mayRemember;
-  file.disabled = !on;
+  file.disabled = !on || known;
+  box.querySelector('[data-proof-known]').hidden = !known;
+  box.querySelector('[data-proof-upload]').hidden = !!known;
+  box.classList.toggle('bg-violet-50', !known); box.classList.toggle('border-violet-200', !known);
+  box.classList.toggle('bg-emerald-50', !!known); box.classList.toggle('border-emerald-200', !!known);
+  if (known) {
+    box.querySelector('[data-known-what]').textContent = { pwd: 'PWD', senior: 'Senior Citizen', pregnant: 'pregnancy' }[p.value];
+    box.querySelector('[data-known-until]').textContent = priorityKnown.until;
+  }
   box.querySelector('[data-proof-remember]').hidden = !mayRemember;
+  if (!guest && !rep) askPriorityKnown();
   var what = { pwd: '(PWD ID)', senior: '(Senior Citizen ID)', pregnant: '(medical certificate or prenatal record)' };
   box.querySelector('[data-proof-what]').textContent = on ? what[p.value] : '';
 }
@@ -1211,7 +1340,11 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       out.push(row('Course', esc(course.value + (year.value ? ', Year ' + year.value : ''))));
     var lane = form.querySelector('input[name=priorityType]:checked');
     var rep = form.querySelector('input[name=claimant][value=representative]');
-    out.push(row('Lane', lane && lane.value
+    var knownLane = lane && lane.value && priorityKnown && priorityKnown.type === lane.value && !(rep && rep.checked)
+                    && !document.getElementById('studentNo').disabled;
+    out.push(row('Lane', knownLane
+      ? 'Priority (' + esc(text(lane.closest('label'))) + ', already approved, no new proof needed)'
+      : lane && lane.value
       ? 'Regular until ' + (rep && rep.checked ? "the representative's " : 'your ') + esc(text(lane.closest('label'))) + ' proof is approved'
       : 'Regular'));
     out.push(row('Claimed by', rep && rep.checked

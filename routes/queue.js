@@ -319,6 +319,28 @@ router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next
   } catch (e) { next(e); }
 });
 
+// The join form: is this student's priority already approved (and still
+// remembered)? Then no new photo is needed. Only a yes/no and until when,
+// and only when the student number and last name match (rate-limited in app.js).
+router.post('/priority-known', express.json({ limit: '2kb' }), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    // no type given: whichever one this student has approved (the form then
+    // picks the lane for them instead of showing the choices)
+    let known = null;
+    for (const type of (b.priorityType ? [b.priorityType] : ['pwd', 'senior', 'pregnant'])) {
+      known = await db.rememberedPriority({
+        clientType: 'student', claimant: 'self', priorityType: type,
+        studentNo: b.studentNo, lastName: b.lastName,
+      });
+      if (known) break;
+    }
+    res.json(known
+      ? { known: true, type: known.type, until: db.longDate(new Date(known.until).toISOString().slice(0, 10)) }
+      : { known: false });
+  } catch (e) { next(e); }
+});
+
 router.post('/find', async (req, res, next) => {
   try {
     const token = await db.findTicketByCode(req.body.code, req.body.who);
