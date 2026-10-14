@@ -39,6 +39,8 @@
              box-shadow:0 24px 60px -12px rgba(0,0,0,.45); animation:tour-in .3s cubic-bezier(.2,.8,.2,1) both }
   .tour-tip::before{ content:''; position:absolute; left:var(--arrow,50%); width:14px; height:14px; background:var(--card-bg); transform:translateX(-50%) rotate(45deg); border-radius:3px }
   .tour-tip.below::before{ top:-6px } .tour-tip.above::before{ bottom:-6px }
+  .tour-tip.inside::before{ display:none }               /* over a tall section: no arrow needed */
+  .tour-tip.inside{ box-shadow:0 -8px 40px -6px rgba(0,0,0,.35), 0 24px 60px -12px rgba(0,0,0,.45) }
   @keyframes tour-in{ from{ opacity:0; transform:translateY(8px) scale(.98) } to{ opacity:1; transform:none } }
   .tour-count{ font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#2185D5 }
   .tour-title{ font-size:16px; font-weight:800; color:var(--ink-c); margin-top:4px; line-height:1.3 }
@@ -57,7 +59,11 @@
 </style>
 <script>
 (function () {
-  var STEPS = <%- JSON.stringify(tourSteps) %>, BASE = 'smartq.tour.<%= tourKey %>';
+  // only the essential hints (extra: true ones are skipped); the page whose
+  // steps end the walkthrough ends it whichever of its hints is shown last
+  var ALL = <%- JSON.stringify(tourSteps) %>, BASE = 'smartq.tour.<%= tourKey %>';
+  var STEPS = ALL.filter(function (s) { return !s.extra; });
+  var ENDS = ALL.some(function (s) { return s.end; });
   var el = document.getElementById('tour');
   if (!el || !STEPS.length) return;
   var spot = el.querySelector('.tour-spot'), tip = el.querySelector('.tour-tip');
@@ -76,7 +82,7 @@
   function close(finished) {
     done(); el.hidden = true; window.smartqTourOpen = false; document.documentElement.style.overflow = '';
     var last = steps[steps.length - 1];
-    if (finished && last && last.end) setGuide(false);          // the walkthrough is over
+    if (finished && ENDS) setGuide(false);                       // the walkthrough is over
     window.dispatchEvent(new Event('smartq:tour-closed'));
     if (finished && last && last.act) {                          // carry on: open the next page
       var target = document.querySelector(last.act);
@@ -86,14 +92,22 @@
   function place() {
     var s = steps[i], n = document.querySelector(s.sel);
     if (!visible(n)) return go(1);                    // that part is gone: next step
-    var r = n.getBoundingClientRect(), pad = 8;
-    spot.style.top = (r.top - pad) + 'px'; spot.style.left = (r.left - pad) + 'px';
-    spot.style.width = (r.width + pad * 2) + 'px'; spot.style.height = (r.height + pad * 2) + 'px';
-    // the bubble goes where there is more room, its arrow pointing at the lit part
-    var below = r.top + r.height / 2 < innerHeight / 2;
-    tip.classList.toggle('below', below); tip.classList.toggle('above', !below);
-    tip.style.top = below ? (r.bottom + pad + 14) + 'px' : '';
-    tip.style.bottom = below ? '' : (innerHeight - r.top + pad + 14) + 'px';
+    var r = n.getBoundingClientRect(), pad = 8, edge = 8;
+    // the lit part, kept on screen (a tall section is lit only where it shows)
+    var top = Math.max(edge, r.top - pad), bottom = Math.min(innerHeight - edge, r.bottom + pad);
+    spot.style.top = top + 'px'; spot.style.left = (r.left - pad) + 'px';
+    spot.style.width = (r.width + pad * 2) + 'px'; spot.style.height = Math.max(0, bottom - top) + 'px';
+    // The bubble must always be seen in full: below or above the lit part where
+    // it fits, otherwise (a tall section) over it, at the bottom of the screen.
+    var th = tip.offsetHeight || 170, room = 14;
+    var fitsBelow = r.bottom + pad + room + th <= innerHeight - edge;
+    var fitsAbove = r.top - pad - room - th >= edge;
+    var below = fitsBelow && (!fitsAbove || r.top + r.height / 2 < innerHeight / 2);
+    var inside = !fitsBelow && !fitsAbove;
+    tip.classList.toggle('below', below && !inside); tip.classList.toggle('above', !below && !inside);
+    tip.classList.toggle('inside', inside);
+    tip.style.top = inside ? '' : below ? (r.bottom + pad + room) + 'px' : '';
+    tip.style.bottom = inside ? (edge + 4) + 'px' : below ? '' : (innerHeight - r.top + pad + room) + 'px';
     var tr = tip.getBoundingClientRect();
     tip.style.setProperty('--arrow', Math.max(24, Math.min(tr.width - 24, r.left + r.width / 2 - tr.left)) + 'px');
   }
@@ -109,7 +123,12 @@
     el.querySelector('[data-tour-dots]').innerHTML = steps.map(function (_, k) { return '<i class="' + (k === i ? 'on' : '') + '"></i>'; }).join('');
     tip.style.animation = 'none'; void tip.offsetWidth; tip.style.animation = '';
     var n = document.querySelector(s.sel);
-    if (n) n.scrollIntoView({ block: 'center', behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+    if (n) {
+      // a tall section: its top under the header, so it starts on screen; otherwise centred
+      var tall = n.getBoundingClientRect().height > innerHeight * 0.5;
+      if (tall) window.scrollTo({ top: Math.max(0, n.getBoundingClientRect().top + scrollY - 84), behavior: 'auto' });
+      else n.scrollIntoView({ block: 'center', behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+    }
     setTimeout(place, 60);
     setTimeout(place, 750);                            // again once any entrance animation has settled
   }
@@ -123,8 +142,8 @@
     pane = curPane();
     steps = STEPS.filter(function (s) { return (s.pane == null || s.pane === pane) && visible(document.querySelector(s.sel)); });
     if (!steps.length) return;
-    var seen = false; try { seen = localStorage.getItem(key()) === '1'; } catch (e) {}
-    if (seen && !force && !guiding()) return;
+    // never on its own: only the walkthrough someone asked for (Show me how, Guide, ?tour=1)
+    if (!force && !guiding()) return;
     document.body.appendChild(el);                     // never boxed in by an animated parent
     i = 0; el.hidden = false; window.smartqTourOpen = true; show();
   }
