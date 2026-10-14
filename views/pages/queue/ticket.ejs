@@ -109,7 +109,7 @@
     function clock(ms) { var d = new Date(ms), h = d.getHours(); return ((h % 12) || 12) + ':' + String(d.getMinutes()).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); }
     function read() {
       var el = document.querySelector('[data-turn]');
-      return el ? { at: +el.dataset.at, ap: el.dataset.ap === '' ? null : +el.dataset.ap, ab: el.dataset.ab === '' ? null : +el.dataset.ab } : null;
+      return el ? { at: +el.dataset.at, ap: el.dataset.ap === '' ? null : +el.dataset.ap, ab: el.dataset.ab === '' ? null : +el.dataset.ab, paused: el.hasAttribute('data-paused') } : null;
     }
     function show(n) {
       if (!n || Date.now() > n.until) { box.hidden = true; return; }
@@ -121,7 +121,9 @@
       var now = read(), base = null, note = null;
       try { base = JSON.parse(sessionStorage.getItem(KEY) || 'null'); note = JSON.parse(sessionStorage.getItem(NOTE) || 'null'); } catch (e) {}
       if (!now) { box.hidden = true; return; }                     // at the window, done, or no estimate
-      if (!base || now.at < base.at) base = now;                   // first look, or good news
+      // first look, good news, or a paused line (its time slides later every
+      // minute; the paused card already says why, so start counting afresh)
+      if (!base || now.at < base.at || now.paused) base = now;
       else if (now.at - base.at >= BIG) {
         var why = now.ap != null && base.ap != null && now.ap > base.ap
             ? 'A priority client was added ahead of you (PWD, Senior Citizen and pregnant clients are called 1 to 1 with the regular line).'

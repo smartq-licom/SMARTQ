@@ -414,6 +414,23 @@ function simulateDayCached(department, ms = 8000) {
 }
 
 /** Today's estimate for one waiting ticket (typical and slow case). */
+/**
+ * How many clients are called before this ticket, in the real call order
+ * (lanes taking turns, the "you are next" promise), not just its own lane:
+ * a priority client who arrived after the promised one is not "next".
+ * Clients called at the same moment (two free windows) are not ahead.
+ */
+function placeIn(sim, id) {
+  const a = sim.result[id];
+  if (!a) return null;
+  return Object.values(sim.result).filter(x => !x.atWindow && x.start < a.start).length;
+}
+
+/** placeIn on the shared day simulation (cheap enough for the 1.5 s pulse). */
+async function callOrderAhead(department, id) {
+  try { return placeIn(await simulateDayCached(department), id); } catch (e) { return null; }
+}
+
 async function ticketForecast(t) {
   const db = require('./db');
   const settings = await db.getSettings();
@@ -433,6 +450,7 @@ async function ticketForecast(t) {
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     window: a.window || null,
     // who goes ahead of this ticket: when the turn moves later, the ticket can say why
+    aheadAll: placeIn(typ, t.id),
     aheadPriority: Object.values(typ.result).filter(x => !x.atWindow && x.start < a.start && x.lane === 'priority').length,
     aheadBooked: Object.values(typ.result).filter(x => !x.atWindow && x.start < a.start && x.lane !== 'priority' && x.booked).length,
   };
@@ -554,5 +572,5 @@ async function watch() {
 module.exports = {
   SLOT_MINUTES, BOOK_SHARE, LEAVE_NOW_MIN,
   daySlots, slotPlan, serviceProfile, simulateDay,
-  evaluateJoin, evaluateJoinCached, simulateDayCached, ticketForecast, logDecision, watch, clock,
+  evaluateJoin, evaluateJoinCached, simulateDayCached, ticketForecast, callOrderAhead, logDecision, watch, clock,
 };

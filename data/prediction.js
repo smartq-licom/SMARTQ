@@ -390,7 +390,7 @@ async function ticketEta(t) {
     }
   }
 
-  const effective = ahead + jumpers + inService * 0.5;
+  let effective = ahead + jumpers + inService * 0.5;
   let minutes     = Math.round(effective * pace);
 
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
@@ -405,6 +405,13 @@ async function ticketEta(t) {
       doneClock = f.endClock;
       aheadPriority = f.aheadPriority; aheadBooked = f.aheadBooked;
       basis = 'simulated';
+      // who is really ahead, in the call order (lanes take turns, "you are
+      // next" is kept), so only the client Call Next will call says "next"
+      if (f.aheadAll != null) {
+        jumpers = t.queueCategory === 'regular' ? Math.min(aheadPriority || 0, f.aheadAll) : 0;
+        ahead = f.aheadAll - jumpers;
+        effective = ahead + jumpers + inService * 0.5;
+      }
     }
   } catch (e) { /* fall back to the position estimate */ }
 

@@ -3232,11 +3232,20 @@ async function announcementPulseFor(txId, userId) {
      FROM transactions t WHERE t.id=? AND t.user_id=?`, [txId, userId]);
   if (!r.length) return { id: null };
   const t = r[0];
+  const isToday = ymd(new Date(t.service_date)) === today();
+  let ahead = t.ticket_status === 'waiting' ? Number(t.ahead) : null;
+  // today: who is really ahead in the call order (lanes take turns), so two
+  // tickets are never both told "you are next"
+  if (ahead != null && isToday) {
+    const tx = await q('SELECT department FROM transactions WHERE id=?', [txId]);
+    const real = tx.length ? await engine.callOrderAhead(tx[0].department, txId) : null;
+    if (real != null) ahead = real;
+  }
   return {
     id: t.call_id || null,
     status: t.ticket_status,
-    today: ymd(new Date(t.service_date)) === today(),
-    ahead: t.ticket_status === 'waiting' ? Number(t.ahead) : null,
+    today: isToday,
+    ahead,
   };
 }
 

@@ -391,6 +391,11 @@ router.get('/t/:token', async (req, res, next) => {
       const q = await db.getQueue(t.department, { date: t.serviceDate });
       ahead = q.filter(x => x.ticketStatus === 'waiting' && x.queueCategory === t.queueCategory &&
                             aheadOf(x, t)).length;
+      // today: the real call order, as the /pulse check reports it
+      if (t.serviceDate === db.today()) {
+        const real = await engine.callOrderAhead(t.department, t.id);
+        if (real != null) ahead = real;
+      }
     }
     res.render('pages/queue/ticket', {
       title: 'Ticket ' + t.ticketNo, t, ahead,
