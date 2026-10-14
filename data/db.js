@@ -1525,6 +1525,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     const plan = await engine.slotPlan(department, sched.serviceDate, forecast.service, s);
     slot = plan.slots.find(x => x.start === b.slot);
     if (!slot) return { error: 'Please choose a time for your visit.' };
+    if (slot.past) return { error: `The ${slot.label} time is too soon to book (book at least 30 minutes ahead). To be served now, choose "Join the line now".` };
     if (!slot.available) return { error: `The ${slot.label} slot is full. Please choose another time.` };
     queueAt = new Date(`${sched.serviceDate}T${slot.start}:00`);
   } else {

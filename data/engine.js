@@ -37,6 +37,7 @@ const q = async (sql, p = []) => (await pool.execute(sql, p))[0];
 
 const SLOT_MINUTES   = 30;     // length of a booking slot
 const BOOK_SHARE     = 0.5;    // share of a slot that can be booked ahead
+const BOOK_LEAD_MIN  = 30;     // a same-day booking starts at least this far ahead
 const LEAVE_NOW_MIN  = 15;     // "leave now" alert, minutes before the turn
 const SLOW_DEFAULT   = 1.25;   // slow-case factor until there is history
 
@@ -166,7 +167,10 @@ async function slotPlan(department, dateStr, serviceMin, settings) {
     const f = profile.pattern ? profile.pattern.factor(dow, Number(sl.start.slice(0, 2))) : 1;
     const u = used[sl.start] || { n: 0, m: 0 };
     const leftMin = Math.max(0, bookableMin - u.m * f);
-    const past = isToday && at(dateStr, sl.end) <= now;
+    // today: only times that start BOOK_LEAD_MIN or more from now. A booking is
+    // for planning a visit; someone who wants to be served now takes a walk-in
+    // number (booking the running slot would skip the walk-in line, as CB)
+    const past = isToday && at(dateStr, sl.start).getTime() < now.getTime() + BOOK_LEAD_MIN * 60000;
     return {
       ...sl, booked: u.n, pace: Math.round(f * 100) / 100,
       capacity: Math.floor(capacityMin / (profile.median * f)),

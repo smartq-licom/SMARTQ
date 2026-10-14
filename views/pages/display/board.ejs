@@ -178,7 +178,7 @@ tailwind.config = { theme: { extend: {
               <% } else { %>
               <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-1.5 text-[16px] font-bold text-white/90"><span class="w-2 h-2 rounded-full bg-emerald-300"></span>Being served</span>
               <% } %>
-              <span class="rounded-full px-3.5 py-1 text-[13px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : 'bg-white/15 text-white/80' %>"><%= s.queueCategory %></span>
+              <span class="rounded-full px-3.5 py-1 text-[13px] font-extrabold uppercase tracking-wide <%= s.queueCategory === 'priority' ? 'bg-violet-500' : s.slotStart ? 'bg-amber-400 text-amber-950' : 'bg-white/15 text-white/80' %>"><%= s.queueCategory === 'priority' ? 'Priority' : s.slotStart ? 'Booked' : 'Regular' %></span>
             </div>
           </div>
           <% } else if (w.status === 'open' && !openNow) { %>
