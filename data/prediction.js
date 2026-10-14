@@ -396,12 +396,14 @@ async function ticketEta(t) {
   // Prefer the decision engine's day simulation (data/engine.js): it plays the
   // rest of the day forward window by window, with each ticket's own documents.
   let fits = true, slowEndClock = null, closeClock = null, expectedAhead = 0, claimsAhead = 0, patternUsed = false, window = null, doneClock = null;
+  let aheadPriority = null, aheadBooked = null;
   try {
     const f = await require('./engine').ticketForecast(t);
     if (f) {
       minutes = f.minutes; fits = f.fits; slowEndClock = f.slowEndClock; closeClock = f.closeClock;
       expectedAhead = f.expectedAhead; claimsAhead = f.claimsAhead || 0; patternUsed = f.patternUsed; window = f.window;
       doneClock = f.endClock;
+      aheadPriority = f.aheadPriority; aheadBooked = f.aheadBooked;
       basis = 'simulated';
     }
   } catch (e) { /* fall back to the position estimate */ }
@@ -449,6 +451,7 @@ async function ticketEta(t) {
     minutes,
     seconds: minutes * 60,
     atClock: `${h}:${pad(at.getMinutes())} ${ampm}`,
+    atMs: at.getTime(), aheadPriority, aheadBooked,     // for "your turn moved later" on the ticket
     ahead, jumpers, inService,
     pace: Math.round(pace * 10) / 10,
     basis, basisLabel, openWindows,

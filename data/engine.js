@@ -228,9 +228,9 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   });
   const c = slots.length;
 
-  const lane = { priority: [], regular: [] };
+  const lane = { priority: [], booked: [], regular: [] };   // booked: CB-/RB-, its own turn (dispatch)
   rows.filter(r => r.ticket_status === 'waiting')
-      .forEach(r => lane[r.queue_category === 'priority' ? 'priority' : 'regular'].push(r));
+      .forEach(r => lane[r.queue_category === 'priority' ? 'priority' : r.slot_start ? 'booked' : 'regular'].push(r));
   if (extra) {
     lane[extra.lane === 'priority' ? 'priority' : 'regular'].push(
       { id: 'extra', queue_at: now, predicted_service: extra.service || null });
@@ -275,24 +275,26 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   let expectedServed = 0, claimsServed = 0;
 
   const last = await q(
-    `SELECT queue_category FROM transactions
+    `SELECT queue_category, slot_start, called_at FROM transactions
      WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL
      ORDER BY called_at DESC, id DESC LIMIT 1`, [department]);
-  let lastCat = last.length ? last[0].queue_category : 'regular';
+  let lastCat = !last.length ? 'regular' : last[0].queue_category === 'priority' ? 'priority' : last[0].slot_start ? 'booked' : 'regular';
+  // whoever was first at the last call has been told "you are next" (dispatch.rankLane)
+  let since = last.length && last[0].called_at ? new Date(last[0].called_at).getTime() : null;
 
   // Each client gets the same fields Call Next uses (expected minutes, times passed over).
-  [...lane.priority, ...lane.regular].forEach(x => {
+  [...lane.priority, ...lane.booked, ...lane.regular].forEach(x => {
     x.svc = Number(x.predicted_service) || pr.median;
     x.skip = Number(x.skip_count) || 0;
     // the Smart Priority Score's inputs, as Call Next sees them
     x.ticketNo = x.ticket_no;
     x.queuedAt = new Date(x.queue_at).getTime();
     x.slotStart = x.slot_start ? at(today, String(x.slot_start).slice(0, 5)).getTime() : null;
+    x.holdUntil = x.hold_until ? new Date(x.hold_until).getTime() : 0;
   });
   // "If you join now" without knowing the request (the board, the QR page): a
-  // request like the ones already waiting, never the shortest case. Otherwise
-  // the short-task bonus at busy times would place an imagined quick visitor
-  // ahead of people who are already in line.
+  // request like the ones already waiting, never the shortest case, so its
+  // "done around" is honest too.
   if (extra && !extra.service) {
     const mine = lane[extra.lane === 'priority' ? 'priority' : 'regular'];
     const real = mine.filter(x => x.id !== 'extra' && !x.expected);
@@ -302,7 +304,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
   const peakSet = await dispatch.peakHours(department);
 
   let guard = 0;
-  const realLeft = () => lane.regular.some(x => !x.expected) || lane.priority.some(x => !x.expected);
+  const realLeft = () => lane.regular.some(x => !x.expected) || lane.priority.some(x => !x.expected) || lane.booked.length > 0;
   const readyAt = x => Math.max(new Date(x.queue_at).getTime(), x.hold_until ? new Date(x.hold_until).getTime() : 0);
   while (realLeft() && guard++ < 5000) {
     // the window that frees up first; when several are free together, the
@@ -317,13 +319,14 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     // Who is ready by t0 (a booking waits for its slot start; "available from"
     // is skipped until then), then the window picks exactly as Call Next does.
     const ready = { priority: lane.priority.filter(x => readyAt(x) <= t0.getTime()),
+                    booked:   lane.booked.filter(x => readyAt(x) <= t0.getTime()),
                     regular:  lane.regular.filter(x => readyAt(x) <= t0.getTime()) };
     const others = slots.filter(o => o !== win).map(o => ({ label: o.label, speed: o.speed, free: o.free <= t0, workToday: o.work }));
     const peak = dispatch.isPeak(peakSet, t0.getHours(), ready.priority.length + ready.regular.length, slots.length);
     const d = dispatch.decide({ label: win.label, speed: win.speed, workToday: win.work }, ready, lastCat, others,
-                              { reserve: false, now: t0.getTime(), peak });
+                              { reserve: false, now: t0.getTime(), peak, since });
     if (!d) {                                        // nobody ready yet: jump to the next one who is
-      win.free = new Date(Math.min(...lane.priority.concat(lane.regular).map(readyAt)));
+      win.free = new Date(Math.min(...lane.priority.concat(lane.booked, lane.regular).map(readyAt)));
       continue;
     }
     d.skipped.forEach(x => { x.skip++; });
@@ -332,10 +335,12 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     const mins = serviceOf(tk, pr, t0) * win.speed * factor;
     const start = t0, end = addMin(start, mins);
     if (tk.expected) { if (tk.claimExpected) claimsServed++; else expectedServed++; }
-    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed, claimsAhead: claimsServed, window: win.label };
+    else result[tk.id] = { start, end, fits: end <= close, expectedAhead: expectedServed, claimsAhead: claimsServed, window: win.label,
+                          lane: d.lane, booked: !!tk.slotStart };   // who is ahead of whom (ticketForecast)
     win.free = end;
     win.work += mins;
     lastCat = d.lane;
+    since = t0.getTime();                            // the next client is now "next"
   }
   return { result, close, windows: c, assumed: !open.length, profile: pr, factor, expectedCount, expectedClaims };
 }
@@ -427,6 +432,9 @@ async function ticketForecast(t) {
     expectedAhead: a.expectedAhead || 0, claimsAhead: a.claimsAhead || 0,
     patternUsed: !!(profile.pattern && profile.pattern.samples >= 20),
     window: a.window || null,
+    // who goes ahead of this ticket: when the turn moves later, the ticket can say why
+    aheadPriority: Object.values(typ.result).filter(x => !x.atWindow && x.start < a.start && x.lane === 'priority').length,
+    aheadBooked: Object.values(typ.result).filter(x => !x.atWindow && x.start < a.start && x.lane !== 'priority' && x.booked).length,
   };
 }
 

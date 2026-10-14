@@ -32,8 +32,7 @@
  * figure as provisional instead of presenting thin data as fact.
  *
  * Everything here is READ-ONLY. Peak hours inform the staff and the student,
- * and Smart Call Next (data/dispatch.js) reads them: at a busy or peak hour a
- * short task gets a small boost in the Smart Priority Score.
+ * and the window rules and day simulation read them (data/dispatch.js isPeak).
  */
 const pool = require('../database/connection');
 const q = async (sql, p = []) => (await pool.execute(sql, p))[0];

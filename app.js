@@ -30,6 +30,11 @@ app.use(morgan('dev', { skip: req => req.path.endsWith('/pulse') }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Real time: open pages hear "something changed" at once (data/live-events.js)
+const live = require('./data/live-events');
+app.get('/live/events', live.stream);
+app.use(live.afterChanges);
 app.use(session({
   name: 'smartq.sid',
   // Kept in MySQL so logins survive restarts, deploys and Render's idle sleep.
@@ -230,7 +235,10 @@ app.use('/display', require('./routes/display'));
 
 // ── Auto-cancel job (never touches a paid transaction) ───────────────────────
 setInterval(async () => {
-  try { await db.processAutoCancel(); }
+  try {
+    const r = await db.processAutoCancel();
+    if (r && (r.warned || r.noShow || r.cancelled || r.expired || r.stale)) live.changed();
+  }
   catch (e) { console.error('[AUTO-CANCEL]', e.message); }
 }, 15 * 1000);
 

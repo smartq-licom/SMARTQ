@@ -77,6 +77,7 @@ tailwind.config = { theme: { extend: {
   html.night .border-edge{border-color:#1f3652}
   html.night .bg-amber-50{background-color:#3a2d12}
   html.night .text-amber-800{color:#fcd38a}
+  html.night .text-amber-700{color:#f7c66b}
   @media (prefers-reduced-motion:reduce){ body::before, html.night-anim .card, html.night-anim [class*="text-"], html.night-anim [class*="bg-"]{transition:none} }
 </style>
 </head>
@@ -205,27 +206,36 @@ tailwind.config = { theme: { extend: {
         <% } %>
       </section>
 
-      <section class="order-3 lg:order-none min-w-0 min-h-0 grid md:grid-cols-2 gap-5" data-live="lanes" data-live-soft>
+      <section class="order-3 lg:order-none min-w-0 min-h-0 grid md:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-5" data-live="lanes" data-live-soft>
         <%# A calm lane: the first few numbers, light and small, so the eye goes to
             "Now serving" and "Next up"; the rest is a count ("+16 more"). %>
         <% var SHOW = 6, counts = typeof waitingCount !== 'undefined' ? waitingCount : {};
            // each number appears once on screen: the ones in Next up are not listed again here
            var inNext = {}; (predict.nextUp || []).forEach(function (n) { inNext[n.ticketNo] = 1; }); %>
-        <% [['Priority', priority, 'bg-violet-500', counts.priority], ['Regular', regular, 'bg-brand', counts.regular]].forEach(function (g) {
+        <% var bookedList = typeof booked !== 'undefined' ? booked : [];
+           var groups = [['Priority', priority, 'bg-violet-500', counts.priority], ['Regular', regular, 'bg-brand', counts.regular]];
+           // bookings (CB-/RB-) get their own card, with their time, only when there are some today
+           if (counts.booked) groups.push(['Booked', bookedList, 'bg-amber-500', counts.booked]); %>
+        <% groups.forEach(function (g) {
              var total = g[3] != null ? g[3] : g[1].length,
                  upNext = g[1].filter(function (t) { return inNext[t.ticketNo]; }).length,
                  shown = g[1].filter(function (t) { return !inNext[t.ticketNo]; }).slice(0, SHOW),
                  more = total - upNext - shown.length; %>
         <div style="view-transition-name:lane-<%= g[0].toLowerCase() %>" class="card px-6 py-5 min-h-0 overflow-hidden">
-          <div class="flex items-center gap-3 mb-4">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4">
             <span class="w-2.5 h-2.5 rounded-full <%= g[2] %>"></span>
             <span class="label !text-slateSoft"><%= g[0] %></span>
-            <span class="ml-auto text-[14px] font-bold text-slateSoft"><span class="font-mono text-[18px] font-extrabold text-ink"><%= total %></span> waiting</span>
+            <span class="ml-auto whitespace-nowrap text-[14px] font-bold text-slateSoft"><span class="font-mono text-[18px] font-extrabold text-ink"><%= total %></span> waiting</span>
           </div>
           <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
             <% shown.forEach(function(t){ %>
             <%# all alike: who is next is shown once, in Next up %>
+            <% if (t.slotStart) { var sh = +t.slotStart.slice(0, 2); %>
+            <div class="leading-none"><div class="lane-no font-mono text-[26px] font-bold"><%= t.ticketNo %></div>
+              <div class="text-[12.5px] font-bold text-amber-700 mt-1"><%= ((sh % 12) || 12) + t.slotStart.slice(2) + (sh < 12 ? ' AM' : ' PM') %></div></div>
+            <% } else { %>
             <div class="lane-no font-mono text-[26px] font-bold leading-none"><%= t.ticketNo %></div>
+            <% } %>
             <% }) %>
             <% if (more > 0) { %>
             <div class="text-[15px] font-bold text-slateSoft/60">+<%= more %> more</div>

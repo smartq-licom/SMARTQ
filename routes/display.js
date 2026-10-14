@@ -49,11 +49,15 @@ async function board(dept, req, res, next) {
       title: dept + ' Queue', dept, settings, windows,
       serving:  queue.filter(t => ['called','serving'].includes(t.ticketStatus)),
       priority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority').slice(0, 8),
-      regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular').slice(0, 8),
+      // walk-ins (C-/R-) and booked times (CB-/RB-, with their time) shown apart
+      regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular' && !t.slotStart).slice(0, 8),
+      booked:   queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular' && t.slotStart)
+                     .sort((a, b) => a.slotStart.localeCompare(b.slotStart)).slice(0, 8),
       // the lanes show only the first few; the badges count everyone waiting
       waitingCount: {
         priority: queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'priority').length,
-        regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular').length,
+        regular:  queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular' && !t.slotStart).length,
+        booked:   queue.filter(t => t.ticketStatus === 'waiting' && t.queueCategory === 'regular' && t.slotStart).length,
       },
       recent:   queue.filter(t => t.ticketStatus === 'completed')
                      .sort((a,b) => new Date(b.completedAt) - new Date(a.completedAt)).slice(0, 6),

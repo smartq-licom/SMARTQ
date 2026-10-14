@@ -1213,24 +1213,26 @@ async function deleteWindow(id) {
   return { ok: true, label: win[0].label };
 }
 
-// ── TICKET NUMBERING (daily reset, per office and lane) ──────────────────────
-// Four counters, each starting at 1 every day: Cashier regular (C-001),
-// Cashier priority (CP-001), Registrar regular (R-001), Registrar priority
-// (RP-001). A counter created mid-day starts after the highest number that
-// office and lane already issued that day, so it never repeats a ticket.
-async function nextTicketNo(conn, department, serviceDate, category) {
-  const lane = category === 'priority' ? 'priority' : 'regular';
-  const key  = `ticket-${department === 'Cashier' ? 'cashier' : 'registrar'}-${lane}`;
+// ── TICKET NUMBERING (daily reset, per office and series) ────────────────────
+// Six counters, each starting at 1 every day: walk-ins C-001 / R-001,
+// priority CP-001 / RP-001, and booked times CB-001 / RB-001. A booking has
+// its own series so walk-in numbers are called in order and a booked number
+// explains itself ("B" = called at the booked time). Priority wins over
+// booked (a booked PWD is CP). A counter created mid-day starts after the
+// highest number of that series already issued that day, so none repeats.
+async function nextTicketNo(conn, department, serviceDate, category, booked = false) {
+  const series = category === 'priority' ? 'priority' : booked ? 'booked' : 'regular';
+  const key  = `ticket-${department === 'Cashier' ? 'cashier' : 'registrar'}-${series}`;
+  const prefix = (department === 'Cashier' ? 'C' : 'R') + ({ priority: 'P', booked: 'B', regular: '' })[series];
   const [used] = await conn.execute(
     `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ticket_no,'-',-1) AS UNSIGNED)),0) AS n
-     FROM transactions WHERE department=? AND queue_category=? AND service_date=?`,
-    [department, lane, serviceDate]);
+     FROM transactions WHERE department=? AND ticket_no LIKE ? AND service_date=?`,
+    [department, prefix + '-%', serviceDate]);
   await conn.execute(
     `INSERT INTO counters (name,ref_date,value) VALUES (?,?,?)
      ON DUPLICATE KEY UPDATE value = value + 1`, [key, serviceDate, Number(used[0].n) + 1]);
   const [r] = await conn.execute(
     'SELECT value FROM counters WHERE name=? AND ref_date=?', [key, serviceDate]);
-  const prefix = (department === 'Cashier' ? 'C' : 'R') + (lane === 'priority' ? 'P' : '');
   return `${prefix}-${String(r[0].value).padStart(3, '0')}`;
 }
 
@@ -1553,7 +1555,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
       return await getTransaction(dupe[0].id);      // same ticket, not a new one
     }
 
-    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate, category);
+    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate, category, !!slot);
 
     const [ins] = await conn.execute(
       `INSERT INTO transactions
@@ -1824,7 +1826,7 @@ async function moveToRegular(staff, txId) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const newNo = await nextTicketNo(conn, dept, t.serviceDate, 'regular');
+    const newNo = await nextTicketNo(conn, dept, t.serviceDate, 'regular', !!t.slotStart);
     await conn.execute(
       `UPDATE transactions SET ticket_no=?, queue_category='regular', priority_type='none',
          ticket_status='waiting', staff_id=NULL, staff_name=NULL, window_id=NULL, window_label=NULL,
@@ -2574,8 +2576,9 @@ async function readyLanes(department, settings) {
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
        AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
      ORDER BY queue_at ASC, id ASC`, [department]);
-  const lanes = { priority: [], regular: [] };
-  rows.forEach(r => lanes[r.queue_category === 'priority' ? 'priority' : 'regular'].push({
+  // a booking whose time has come is its own lane (CB-/RB-), taking turns with the others
+  const lanes = { priority: [], booked: [], regular: [] };
+  rows.forEach(r => lanes[r.queue_category === 'priority' ? 'priority' : r.slot_start ? 'booked' : 'regular'].push({
     id: r.id, ticketNo: r.ticket_no, skip: Number(r.skip_count) || 0,
     svc: Number(r.predicted_service) || settings.avgServiceMinutes,
     readyAt: Math.max(new Date(r.queue_at).getTime(), r.hold_until ? new Date(r.hold_until).getTime() : 0),
@@ -2587,13 +2590,21 @@ async function readyLanes(department, settings) {
   return lanes;
 }
 
+/** When the last number was called today: whoever was first then has been told "you are next". */
+async function lastCallAt(department) {
+  const r = await q(
+    `SELECT MAX(called_at) AS at FROM transactions WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL`, [department]);
+  return r.length && r[0].at ? new Date(r[0].at).getTime() : null;
+}
+
 /** The lane called last today (ties by id: called_at is whole seconds). */
 async function lastCalledLane(department) {
   const last = await q(
-    `SELECT queue_category FROM transactions
+    `SELECT queue_category, slot_start FROM transactions
      WHERE department=? AND service_date=CURDATE() AND called_at IS NOT NULL
      ORDER BY called_at DESC, id DESC LIMIT 1`, [department]);
-  return last.length ? last[0].queue_category : 'regular';
+  if (!last.length) return 'regular';
+  return last[0].queue_category === 'priority' ? 'priority' : last[0].slot_start ? 'booked' : 'regular';
 }
 
 /**
@@ -2606,9 +2617,10 @@ async function officePlan(department, { acting = null } = {}) {
   const lanes = await readyLanes(department, settings);
   const wins = await dispatch.officeWindows(department);
   const open = wins.filter(w => w.status === 'open' && w.staffId);
-  const ready = lanes.priority.length + lanes.regular.length;
+  const ready = lanes.priority.length + lanes.booked.length + lanes.regular.length;
   const peak = dispatch.isPeak(await dispatch.peakHours(department), new Date().getHours(), ready, open.length);
-  const plan = dispatch.planOffice(open.filter(w => w.free), open, lanes, await lastCalledLane(department), { peak, acting });
+  const plan = dispatch.planOffice(open.filter(w => w.free), open, lanes, await lastCalledLane(department),
+                                  { peak, acting, since: await lastCallAt(department) });
   return { plan, wins, open, lanes, peak };
 }
 
@@ -2662,7 +2674,7 @@ async function pickNextTicket(department, staff = null, { acting = false } = {})
   let d;
   if (!mine) {
     d = dispatch.decide({ id: null, label: 'this window', speed: 1, workToday: 0 }, lanes,
-                        await lastCalledLane(department), [], { peak, reserve: false });
+                        await lastCalledLane(department), [], { peak, reserve: false, since: await lastCallAt(department) });
   } else if (plan.has(mine.id)) {
     d = plan.get(mine.id);
   } else if (plan.size) {
@@ -2997,7 +3009,7 @@ async function rebookTicket(txId, { after = null, keepTime = false, reason = nul
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      const newNo = await nextTicketNo(conn, t.department, date, t.queueCategory);
+      const newNo = await nextTicketNo(conn, t.department, date, t.queueCategory, true);   // a rebooking always has a time
       const [u] = await conn.execute(
         `UPDATE transactions SET ticket_no=?, service_date=?, scheduled_date=?, is_scheduled=1,
            slot_start=?, slot_end=?, queue_at=?, risk_at=NULL, alerts_sent=''

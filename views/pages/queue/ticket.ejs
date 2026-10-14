@@ -94,6 +94,51 @@
     </div>
     <% } %>
   </div>
+  <%# "Your turn moved later": when the estimate grows by 3+ minutes, who went
+      ahead (a priority client, a booking whose time came, or slower service).
+      Kept outside the live part so a refresh does not wipe it. %>
+  <div id="movedNote" hidden role="status"
+       class="mt-3 flex items-start gap-2.5 rounded-2xl bg-amber-50 ring-1 ring-inset ring-amber-200 px-4 py-3 text-[13px] text-amber-950 no-print">
+    <span aria-hidden="true" class="text-[16px] leading-none mt-0.5">&#9201;</span>
+    <span><b data-moved-title></b> <span data-moved-why></span></span>
+  </div>
+  <script>
+  (function () {
+    var KEY = 'smartq.turn.' + location.pathname, NOTE = KEY + '.note', BIG = 180000;   // 3 minutes
+    var box = document.getElementById('movedNote');
+    function clock(ms) { var d = new Date(ms), h = d.getHours(); return ((h % 12) || 12) + ':' + String(d.getMinutes()).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); }
+    function read() {
+      var el = document.querySelector('[data-turn]');
+      return el ? { at: +el.dataset.at, ap: el.dataset.ap === '' ? null : +el.dataset.ap, ab: el.dataset.ab === '' ? null : +el.dataset.ab } : null;
+    }
+    function show(n) {
+      if (!n || Date.now() > n.until) { box.hidden = true; return; }
+      box.querySelector('[data-moved-title]').textContent = 'Your turn moved to ' + clock(n.at) + '.';
+      box.querySelector('[data-moved-why]').textContent = n.why;
+      box.hidden = false;
+    }
+    function check() {
+      var now = read(), base = null, note = null;
+      try { base = JSON.parse(sessionStorage.getItem(KEY) || 'null'); note = JSON.parse(sessionStorage.getItem(NOTE) || 'null'); } catch (e) {}
+      if (!now) { box.hidden = true; return; }                     // at the window, done, or no estimate
+      if (!base || now.at < base.at) base = now;                   // first look, or good news
+      else if (now.at - base.at >= BIG) {
+        var why = now.ap != null && base.ap != null && now.ap > base.ap
+            ? 'A priority client was added ahead of you (PWD, Senior Citizen and pregnant clients are called 1 to 1 with the regular line).'
+          : now.ab != null && base.ab != null && now.ab > base.ab
+            ? 'A booked client’s time has come (CB numbers are called at the time they booked).'
+            : 'The clients ahead of you are taking longer than expected.';
+        note = { at: now.at, why: why, until: Date.now() + 10 * 60000 };
+        base = now;
+      }
+      if (note && now.at < note.at - 60000) note = null;           // moved back earlier: nothing to explain
+      try { sessionStorage.setItem(KEY, JSON.stringify(base)); sessionStorage.setItem(NOTE, JSON.stringify(note)); } catch (e) {}
+      show(note);
+    }
+    check();
+    window.addEventListener('smartq:updated', function (e) { if (e.detail && e.detail.root && e.detail.root.getAttribute('data-live') === 'details') check(); });
+  })();
+  </script>
 
   <%# Priority proof sent with this ticket: where its review stands. %>
   <div data-live="priority">
@@ -594,13 +639,13 @@
         body: 'Counts down by itself. It shows <b>your turn</b>, when you will be <b>done</b>, and the window you will most likely go to. Near the end it says <b>any moment now</b>.' },
       { sel: '#pushBox', title: 'Turn on alerts',
         body: 'Allow notifications: SmartQ tells you to <b>leave now</b> 15 minutes before your turn, and again when you are <b>called</b>, even with this page closed.' },
-      { sel: '[data-tour-hold]', title: 'Busy right now?',
+      { sel: '[data-tour-hold]', extra: true, title: 'Busy right now?',
         body: 'In class or an exam? Choose when you will be free: you keep your place, and others are called meanwhile.' },
-      { sel: 'section.stub', title: 'At the window',
+      { sel: 'section.stub', extra: true, title: 'At the window',
         body: 'When called, go to the window shown. Pay the amount (Cashier) and you get an <b>official receipt</b> on this page. Not there in time? You move back 5 places; a second miss cancels the ticket.' },
       { sel: '.trk', title: 'Follow each document',
         body: '<b>Queued \u2192 Processing \u2192 Ready to claim \u2192 Claimed.</b> After paying, you get an alert when each document is ready. The OTR is ready 14 days after payment; most others on the same day.' },
-      { sel: '.trk', title: 'Claiming at the Registrar', end: true,
+      { sel: '.trk', extra: true, title: 'Claiming at the Registrar', end: true,
         body: 'When it is ready, scan the QR again, tap <b>Registrar</b>, choose <b>Claim Released Document</b>, enter your student number and last name, and tick what to collect. Bring your receipt and a valid ID. That is the whole process!' },
     ] }) %>
 <% } %>

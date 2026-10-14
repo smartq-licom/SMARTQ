@@ -5,6 +5,8 @@
 %>
 <% if (e && e.state === 'waiting') { var aheadAll = e.ahead + (e.jumpers || 0); %>
 <div class="bg-white rounded-2xl border border-hair/80 shadow-card px-5 py-4">
+  <%# read by the ticket page: when the turn moves later, say who went ahead %>
+  <% if (e.atMs) { %><i hidden data-turn data-at="<%= e.atMs %>" data-ap="<%= e.aheadPriority == null ? '' : e.aheadPriority %>" data-ab="<%= e.aheadBooked == null ? '' : e.aheadBooked %>"></i><% } %>
   <div class="flex items-center justify-between gap-3">
     <span class="text-[11px] font-semibold uppercase tracking-wider text-slateSoft/65">Estimated wait</span>
     <% if (!e.doneClock) { %><span class="rounded-full bg-brand-wash px-2.5 py-0.5 text-[12px] font-semibold text-brand-night">your turn ~<%= e.atClock %></span><% } %>

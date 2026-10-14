@@ -18,7 +18,7 @@
   if (!parts.length) return;
   // what the server sent, before scripts changed it (countdowns...)
   parts.forEach(function (el) { el._src = el.innerHTML; });
-  var busy = false;
+  var busy = false, again = false;
   var SOFT_OFF = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function inUse(el) {
@@ -27,7 +27,8 @@
   }
 
   function update(force) {
-    if (busy || (document.hidden && !force)) return;
+    if (busy) { again = true; return; }                 // one more right after this one
+    if (document.hidden && !force) return;
     busy = true;
     fetch(location.href, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Live': '1' } })
       .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
@@ -67,10 +68,23 @@
         }
       })
       .catch(function () {})
-      .then(function () { busy = false; });
+      .then(function () { busy = false; if (again) { again = false; update(); } });
   }
 
   if (EVERY > 0) setInterval(update, EVERY);
+  // Real time: the server pings the moment the line changes (data/live-events.js),
+  // so a call, a new ticket or a cut-in shows within a second, not at the next
+  // check. A small random delay spreads the phones' requests out.
+  if (window.EventSource && EVERY > 0) {
+    var soon = null;
+    try {
+      var es = new EventSource('/live/events');
+      es.onmessage = function () {
+        clearTimeout(soon);
+        soon = setTimeout(function () { update(); }, 150 + Math.random() * 450);
+      };
+    } catch (e) { /* the regular check still runs */ }
+  }
   // back to the app: catch up at once
   document.addEventListener('visibilitychange', function () { if (!document.hidden) update(); });
   // the ticket's fast /pulse check saw a change (someone called, fewer ahead)
