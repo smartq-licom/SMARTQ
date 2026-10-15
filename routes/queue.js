@@ -291,7 +291,7 @@ router.post('/new', proofToMemory, async (req, res, next) => {
     }
     // claiming a processed document (the OTR) before its release date: allowed, with a warning
     if (r.notReady && r.notReady.length) {
-      req.session.error = 'Heads up: ' + r.notReady.map(n => `your ${n.name} will be ready on ${n.readyText}`).join('; ') +
+      req.session.error = 'Heads up: ' + r.notReady.map(n => `your ${n.name} can be claimed from ${n.readyText}`).join('; ') +
         '. It may not be released yet. You can keep this number, or cancel and book a time on or after that date.';
     }
     res.redirect('/queue/t/' + r.accessToken + '?new=1');   // the ticket "prints" once

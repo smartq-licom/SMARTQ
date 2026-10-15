@@ -868,7 +868,7 @@ function loadSlots(){
               ' data-name="' + esc(l.name + (l.copies > 1 ? ' x' + l.copies : '')) + '" data-ready="' + (l.ready ? 1 : 0) + '" data-ready-text="' + esc(l.readyText) + '">' +
               '<span class="min-w-0 flex-1"><span class="block text-[13.5px] font-semibold text-ink leading-snug">' + esc(l.name) + (l.copies > 1 ? ' &times;' + l.copies : '') + '</span>' +
               '<span class="block text-[11.5px] text-slateSoft/70 mt-0.5">Paid ' + esc(l.paidText) + ' &middot; <span class="font-mono whitespace-nowrap">' + esc(l.receiptNo || l.paidTicket) + '</span></span>' +
-              (l.ready ? '<span class="claim-tag ok">Ready now</span>' : '<span class="claim-tag wait">Ready ' + esc(l.readyText) + '</span>') + '</span></label>';
+              (l.ready ? '<span class="claim-tag ok">Paid, claim now</span>' : '<span class="claim-tag wait">Claim from ' + esc(l.readyText) + '</span>') + '</span></label>';
           }).join('') +
           (res.lines.some(function (l) { return !l.ready; })
             ? '<p class="text-[11.5px] text-slateSoft/70">Not ready yet? Leave it unticked and collect it on its date, or tick it anyway; staff will check if it is done.</p>' : '');
