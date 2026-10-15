@@ -164,7 +164,7 @@ router.get('/new', async (req, res, next) => {
     // is theirs): the claim form with that ticket's details filled in, and the
     // ready documents looked up at once
     const from = await db.getTransactionByToken(req.query.claim);
-    if (from && from.department === 'Cashier' && from.paymentStatus === 'paid') {
+    if (from && from.department === 'Cashier' && (from.paymentStatus === 'paid' || from.ticketStatus === 'completed')) {
       const guest = from.clientType === 'guest';
       Object.assign(form, {
         office: 'Registrar', clientType: guest ? 'guest' : 'student',

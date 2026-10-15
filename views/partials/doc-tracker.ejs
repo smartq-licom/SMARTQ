@@ -1,6 +1,6 @@
 <%
   // `lines` from db.documentTracker(): each document's steps,
-  // Queued -> Processing -> Ready to claim -> Claimed (fees: -> Paid -> Done).
+  // Queued -> Processing -> Go to Registrar -> Claimed (fees: -> Paid -> Done).
   // `showTicket`: also name the Cashier ticket (on "Track my documents").
 %>
 <% if (lines && lines.length) { %>
@@ -15,7 +15,7 @@
         <a class="trk-ticket" href="/queue/t/<%= l.accessToken %>">Ticket <%= l.ticketNo %> &rarr;</a>
         <% } %>
       </div>
-      <span class="trk-chip trk-<%= l.cancelled ? 'off' : l.done ? 'done' : l.status === 'Ready to claim' ? 'ready' : 'on' %>"><%= l.status %></span>
+      <span class="trk-chip trk-<%= l.cancelled ? 'off' : l.done ? 'done' : l.status === 'Go to Registrar' ? 'ready' : 'on' %>"><%= l.status %></span>
     </div>
     <% if (l.steps.length) { %>
     <ol class="trk-steps" style="--n:<%= l.steps.length %>">

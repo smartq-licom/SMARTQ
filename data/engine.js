@@ -482,38 +482,15 @@ async function releaseAlerts(db, settings) {
        AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
                        WHERE ci.line_id = td.id AND c.ticket_status = 'completed')
      LIMIT 50`);
-  // same-day documents: once their LEARNED preparation time has passed
-  // (db.prepTimes); with nothing learned yet they count as ready on payment
+  // same-day documents get no alert of their own: they can be claimed as soon
+  // as they are paid (the Registrar prepares nothing before the student comes),
   // and the payment alert already said so
-  const prep = await db.prepTimes();
-  const sameDay = await q(
-    `SELECT td.id, td.document_name, p.paid_at, t.id AS tx_id, t.access_token
-     FROM transaction_documents td
-     JOIN transactions t ON t.id = td.transaction_id
-     JOIN documents d ON d.id = td.document_id
-     JOIN payments p ON p.transaction_id = t.id AND p.status = 'paid'
-     WHERE d.processing_days = 0 AND d.requires_claim = 1 AND td.ready_notified_at IS NULL
-       AND t.department = 'Cashier' AND p.paid_at >= NOW() - INTERVAL 3 DAY
-       AND NOT EXISTS (SELECT 1 FROM claim_items ci JOIN transactions c ON c.id = ci.claim_tx_id
-                       WHERE ci.line_id = td.id AND c.ticket_status IN ('completed','called','serving'))
-     LIMIT 50`);
-  for (const r of sameDay) {
-    const pt = prep[r.document_name];
-    if (!pt || !pt.minutes) continue;
-    if (await db.readyMoment(r.paid_at, pt.minutes) > now) continue;
-    await q('UPDATE transaction_documents SET ready_notified_at=NOW() WHERE id=?', [r.id]);
-    await push.sendToTicket(r.tx_id, {
-      title: `Your ${r.document_name} should be ready`,
-      body: 'It is usually prepared by now. Claim it at the Registrar with your receipt and a valid ID.',
-      url: r.access_token ? '/queue/t/' + r.access_token : '/queue',
-    });
-  }
   for (const r of rows) {
     const readyOn = await db.releaseDate(db.ymd ? db.ymd(new Date(r.paid_at)) : new Date(r.paid_at).toISOString().slice(0, 10), Number(r.processing_days));
     if (readyOn > db.today()) continue;               // moved past a closed day: not yet
     await q('UPDATE transaction_documents SET ready_notified_at=NOW() WHERE id=?', [r.id]);
     await push.sendToTicket(r.tx_id, {
-      title: `Your ${r.document_name} is ready`,
+      title: `You can now claim your ${r.document_name}`,
       body: 'It can now be released at the Registrar. Bring your receipt and a valid ID.',
       url: r.access_token ? '/queue/t/' + r.access_token : '/queue',
     });

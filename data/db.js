@@ -2033,13 +2033,11 @@ async function getClaimableLines(userId, { txIds = null } = {}) {
          WHERE ci.line_id = td.id AND c.ticket_status NOT IN ('cancelled','no-show'))
      ORDER BY p.paid_at DESC, td.id`, ids ? ids : [userId]);
   const out = [];
-  const prep = await prepTimes();
   for (const r of rows) {
     const paidAt = r.paid_at ? ymd(new Date(r.paid_at)) : null;
     const days = Number(r.processing_days) || 0;
-    // same-day documents: the learned preparation time (db.prepTimes)
-    const pt = !days ? prep[r.document_name] : null;
-    const readyAt = pt && pt.minutes && r.paid_at ? await readyMoment(r.paid_at, pt.minutes) : null;
+    // same-day documents can be claimed as soon as they are paid (documentTracker)
+    const readyAt = null;
     out.push({
       id: r.id, name: r.document_name, copies: Number(r.copies) || 1,
       paidTicket: r.ticket_no, receiptNo: r.receipt_no || '', paidAt,
@@ -2164,7 +2162,7 @@ async function readyMoment(paidAt, minutes) {
 // ── DOCUMENT TRACKER ─────────────────────────────────────────────────────────
 /**
  * Where each requested document stands, step by step:
- *   Queued -> Processing -> Ready to claim -> Claimed
+ *   Queued -> Processing -> Go to Registrar -> Claimed
  * (a fee with nothing to collect: Queued -> Paid -> Done). Each step is
  * done / current / todo with a short note (a time, a date, what to do).
  * By Cashier ticket(s), by person (student record), or by paid line ids
@@ -2191,7 +2189,6 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
      WHERE ${who} AND t.department = 'Cashier' AND t.service_date >= CURDATE() - INTERVAL ? DAY
      ORDER BY t.service_date DESC, t.id DESC, td.id`, [...params, sinceDays]);
   const now = today(), out = [];
-  const prep = await prepTimes();
   // a ticket still in line today: its likely window and turn (the same
   // forecast as the ticket page), worked out once per ticket
   const eta = {};
@@ -2218,9 +2215,10 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
     }
     const days = Number(r.processing_days) || 0;
     const paidYmd = r.paid_at ? ymd(new Date(r.paid_at)) : (paid ? ymd(new Date(r.service_date)) : null);
-    // same-day documents: ready after the LEARNED preparation time, not the moment it is paid
-    const pt = !days && r.requires_claim ? (prep[r.document_name] || { minutes: 0, samples: 0, learned: false }) : null;
-    const readyAt = pt && r.paid_at ? await readyMoment(r.paid_at, pt.minutes) : null;
+    // same-day documents: claimable the moment they are paid. The Registrar
+    // does not know what was paid for until the student comes, so nothing is
+    // "prepared" in between and there is no ready time to wait for.
+    const pt = null, readyAt = null;
     const readyOn = paidYmd ? (days ? await releaseDate(paidYmd, days) : (readyAt ? ymd(readyAt) : paidYmd)) : null;
     const ready = readyAt ? readyAt <= new Date() : (!!readyOn && readyOn <= now);
     const readyClock = readyAt ? (ymd(readyAt) === now ? '' : shortDate(ymd(readyAt)) + ', ') + clock12(readyAt.toTimeString().slice(0, 5)) : null;
@@ -2238,22 +2236,21 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
     if (!paid) steps.push({ label: 'Processing', state: atWindow ? 'current' : 'todo',
                             note: atWindow ? 'At ' + (r.window_label || 'the Cashier window') : 'Pay at the Cashier' });
     else if (days && !ready) steps.push({ label: 'Processing', state: 'current', note: 'Paid ' + (paidYmd === now ? 'today' : shortDate(paidYmd)) + ' · ' + days + ' days' });
-    else if (readyAt && !ready) steps.push({ label: 'Processing', state: 'current', note: 'Being prepared \u00b7 usually ~' + readyClock });
     else steps.push({ label: r.requires_claim ? 'Processing' : 'Paid', state: 'done', note: stamp(r.paid_at) || shortDate(paidYmd) });
 
     let claim = null;
     if (r.requires_claim) {
       claim = paid ? await claimFor(r.id) : null;
-      // 3. ready to claim: and, once they take a Registrar number, that line too
-      if (claim && (claim.done || claim.atWindow)) steps.push({ label: 'Ready to claim', state: 'done', note: shortDate(readyOn) });
+      // 3. go to the Registrar: and, once they take a Registrar number, that line too
+      if (claim && (claim.done || claim.atWindow)) steps.push({ label: 'Go to Registrar', state: 'done', note: shortDate(readyOn) });
       else if (ready && claim && claim.date === now)
-        steps.push({ label: 'Ready to claim', state: 'current', note: claim.ticketNo + ' · ' + await lineInfo({ tx_id: claim.id }) });
-      else if (ready && claim) steps.push({ label: 'Ready to claim', state: 'current',
+        steps.push({ label: 'Go to Registrar', state: 'current', note: claim.ticketNo + ' · ' + await lineInfo({ tx_id: claim.id }) });
+      else if (ready && claim) steps.push({ label: 'Go to Registrar', state: 'current',
           note: 'Claim booked ' + claim.dateText + (claim.slotLabel ? ', ' + claim.slotLabel.split(' – ')[0] : '') });
       // ready and not claimed yet: the Registrar does not prepare it until the
       // student comes, so the step says what to do
       else if (ready) steps.push({ label: 'Go to Registrar', state: 'current', note: 'Get a number to claim' });
-      else steps.push({ label: 'Ready to claim', state: 'todo',
+      else steps.push({ label: 'Go to Registrar', state: 'todo',
           note: readyClock ? '~' + readyClock : readyOn ? shortDate(readyOn) : (days ? days + ' days after paying' : 'Right after paying') });
       // 4. claimed: being released at a Registrar window, or done
       steps.push(claim && claim.done ? { label: 'Claimed', state: 'done', note: stamp(claim.completedAt) }
@@ -2264,7 +2261,7 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
     }
     const cur = steps.find(s => s.state === 'current');
     out.push({ ...base, steps, readyOn, ready, claim, fee: !r.requires_claim, readyAt, readyClock, prep: pt,
-               done: !cur, status: cur ? (cur.label === 'Ready to claim' || cur.label === 'Go to Registrar' ? 'Ready to claim' : cur.label === 'Claimed' ? 'Claiming now' : cur.label === 'Queued' ? 'Queued' : 'Processing')
+               done: !cur, status: cur ? (cur.label === 'Go to Registrar' ? 'Go to Registrar' : cur.label === 'Claimed' ? 'Claiming now' : cur.label === 'Queued' ? 'Queued' : 'Processing')
                                        : (r.requires_claim ? 'Claimed' : 'Done') });
   }
   return out;
@@ -2302,8 +2299,8 @@ async function notifyPaid(t) {
       .map(l => l.readyClock ? `${l.name} around ${l.readyClock}` : `${l.name} on ${shortDate(l.readyOn)}`);
     const fees = lines.filter(l => l.fee).map(l => l.name);
     const parts = [];
-    if (now.length) parts.push(`Ready to claim at the Registrar: ${now.join(', ')}.`);
-    if (later.length) parts.push(`Usually ready: ${later.join('; ')}. We'll notify you.`);
+    if (now.length) parts.push(`Go to the Registrar to claim: ${now.join(', ')}.`);
+    if (later.length) parts.push(`Claim at the Registrar from: ${later.join('; ')}. We'll notify you.`);
     if (fees.length && !now.length && !later.length) parts.push(`${fees.join(', ')} paid. You're all done.`);
     push.sendToTicket(t.id, { title: `Paid \u2713 ${t.ticketNo}`, body: parts.join(' '), url: '/queue/t/' + t.accessToken });
   } catch (e) { /* an alert must never block the payment */ }
@@ -2898,7 +2895,7 @@ async function payAndComplete(staff, txId) {
   }
   const c = await completeCashier(staff, txId);
   if (c.error) return c;
-  notifyPaid(t);                 // fire and forget: "Paid ✓, ready to claim / ready on ..."
+  notifyPaid(t);                 // fire and forget: "Paid ✓, go to the Registrar / claim from ..."
   return { ok: true, ticketNo: t.ticketNo, receiptNo, amount: t.amountDue };
 }
 
