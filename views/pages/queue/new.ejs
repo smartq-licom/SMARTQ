@@ -360,7 +360,8 @@
           </select>
           <div id="otherBox" class="hidden mt-3 fade-in">
             <label for="otherPurpose" class="<%= UI.lbl %>">Please specify purpose *</label>
-            <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %>" value="<%= form.otherPurpose || '' %>">
+            <input id="otherPurpose" name="otherPurpose" class="<%= UI.input %>" value="<%= form.otherPurpose || '' %>"
+                   minlength="2" maxlength="100">
           </div>
       </div>
 
@@ -564,7 +565,7 @@
             <div>
             <label for="studentNo" class="<%= UI.lbl %>">Student number *</label>
             <input id="studentNo" name="studentNo" class="<%= UI.input %> font-mono" value="<%= form.studentNo || '' %>"
-                   inputmode="numeric" pattern="\d{9}" maxlength="9" autocomplete="off" placeholder="9 digits"
+                   inputmode="numeric" pattern="\d{9}" maxlength="9" autocomplete="off" placeholder="9 digits" data-digits
                    title="Your 9-digit student number, numbers only">
             <span class="<%= UI.hint %>">Used to find your records and the documents you paid for.</span>
             </div>
@@ -620,17 +621,21 @@
             <div class="grid sm:grid-cols-3 gap-3">
               <div>
                 <label for="repName" class="<%= UI.lbl %>">Representative's full name *</label>
-                <input id="repName" name="repName" class="<%= UI.input %>" value="<%= form.repName || '' %>">
+                <input id="repName" name="repName" class="<%= UI.input %>" value="<%= form.repName || '' %>"
+                       minlength="2" maxlength="50" autocapitalize="words" autocomplete="off" data-name-only>
               </div>
               <div>
                 <label for="repRelationship" class="<%= UI.lbl %>">Relationship to you *</label>
                 <input id="repRelationship" name="repRelationship" class="<%= UI.input %>"
-                       value="<%= form.repRelationship || '' %>" placeholder="Mother, sibling, friend">
+                       value="<%= form.repRelationship || '' %>" placeholder="Mother, sibling, friend"
+                       minlength="2" maxlength="30" autocapitalize="words" autocomplete="off" data-name-only>
               </div>
               <div>
                 <label for="repContact" class="<%= UI.lbl %>">Contact number</label>
                 <input id="repContact" name="repContact" class="<%= UI.input %>"
-                       value="<%= form.repContact || '' %>" placeholder="09XXXXXXXXX">
+                       value="<%= form.repContact || '' %>" placeholder="09XXXXXXXXX"
+                       type="tel" inputmode="numeric" maxlength="11" pattern="09\d{9}" autocomplete="off" data-digits
+                       title="11 digits starting with 09, like 09171234567">
               </div>
             </div>
             <p class="rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-[12.5px] text-amber-900">

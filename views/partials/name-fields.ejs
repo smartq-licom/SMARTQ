@@ -12,12 +12,14 @@
   <div>
     <label for="<%= id('firstName') %>" class="<%= v.lblClass %>">First name *</label>
     <input id="<%= id('firstName') %>" name="<%= nm('firstName') %>" class="<%= v.inputClass %>"
-           required value="<%= v.firstName || '' %>" autocomplete="given-name">
+           required value="<%= v.firstName || '' %>" autocomplete="given-name"
+           minlength="2" maxlength="50" autocapitalize="words" data-name-only>
   </div>
   <div>
     <label for="<%= id('middleName') %>" class="<%= v.lblClass %>">Middle name *</label>
     <input id="<%= id('middleName') %>" name="<%= nm('middleName') %>" class="<%= v.inputClass %>"
            value="<%= mid %>" autocomplete="additional-name"
+           maxlength="50" autocapitalize="words" data-name-only
            <%= none ? 'readonly' : '' %> data-middle>
     <label class="flex items-center gap-2 mt-1.5 text-[12px] <%= v.noneClass || 'text-slateSoft/80' %>">
       <input type="checkbox" data-middle-none <%= none ? 'checked' : '' %>
@@ -28,7 +30,8 @@
   <div>
     <label for="<%= id('lastName') %>" class="<%= v.lblClass %>">Last name *</label>
     <input id="<%= id('lastName') %>" name="<%= nm('lastName') %>" class="<%= v.inputClass %>"
-           required value="<%= v.lastName || '' %>" autocomplete="family-name">
+           required value="<%= v.lastName || '' %>" autocomplete="family-name"
+           minlength="2" maxlength="50" autocapitalize="words" data-name-only>
   </div>
 </div>
 <script>
@@ -37,6 +40,26 @@ function middleNone(box){
   var field = box.closest('div').parentElement.querySelector('[data-middle]');
   if (box.checked) { field.value = 'N/A'; field.readOnly = true; }
   else { if (field.value === 'N/A') field.value = ''; field.readOnly = false; field.focus(); }
+}
+// Input limits, as you type: names keep letters (ñ and accents too), spaces
+// and . ' - (as in "Ma. Dela Cruz-O'Neil"); [data-digits] fields keep digits
+// only, up to their maxlength. The server checks the same (db.detailsError).
+if (!window.smartqInputLimits) {
+  window.smartqInputLimits = true;
+  document.addEventListener('input', function (e) {
+    var f = e.target;
+    if (!f || !f.matches) return;
+    var v = f.value, out = v;
+    if (f.matches('[data-name-only]') && v !== 'N/A')
+      out = v.replace(/[^\p{L}\p{M} .'\-]/gu, '').replace(/ {2,}/g, ' ').replace(/^[ .'\-]+/, '');
+    else if (f.matches('[data-digits]'))
+      out = v.replace(/\D/g, '').slice(0, f.maxLength > 0 ? f.maxLength : 20);
+    if (out !== v) {
+      var at = f.selectionStart - (v.length - out.length);
+      f.value = out;
+      try { f.setSelectionRange(Math.max(0, at), Math.max(0, at)); } catch (err) {}
+    }
+  });
 }
 document.querySelectorAll('[data-middle]').forEach(function(f){
   f.form && f.form.addEventListener('submit', function(){

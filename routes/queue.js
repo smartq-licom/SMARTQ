@@ -264,7 +264,8 @@ router.post('/new', proofToMemory, async (req, res, next) => {
     const r = await db.createRequest(who.user, b, { walkIn: true });
     if (r.error) {
       // refused requests are kept, so the admin can see the limits working
-      await engine.logDecision(r.blockedBy ? r.blockedBy.id : null, r.blockedBy ? r.blockedBy.department : null,
+      // (a mistyped detail is only a form error, not a decision)
+      if (!r.invalid) await engine.logDecision(r.blockedBy ? r.blockedBy.id : null, r.blockedBy ? r.blockedBy.department : null,
         'refused', `${who.user.fullName || 'Client'}: ${r.error}`);
       // the open ticket may be from another phone: say how to get it back
       const msg = r.blockedBy

@@ -309,6 +309,29 @@ function needsProfile(u) {
 
 // LCC student numbers are exactly 9 digits, and one number belongs to one account.
 const STUDENT_NO_RE = /^\d{9}$/;
+// What the join form accepts (the form filters as you type; this is the
+// server's own check). Names: letters (ñ and accents too), spaces, and the
+// . ' - in names like "Ma. Dela Cruz-O'Neil", 2 to 50 characters. A middle
+// name may be N/A. Phone: a PH mobile number, 09 + 9 digits.
+const NAME_RE  = /^[\p{L}][\p{L}\p{M} .'\-]{1,49}$/u;
+const PHONE_RE = /^09\d{9}$/;
+const TEXT_RE  = /^[^<>{}[\]\\]{2,100}$/;      // free text ("Others" purpose)
+function detailsError(b) {
+  const nm = v => String(v || '').trim().replace(/\s+/g, ' ');
+  if (!NAME_RE.test(nm(b.firstName))) return "First name: letters only (spaces, . ' - allowed), 2 to 50 characters.";
+  const mid = nm(b.middleName);
+  if (mid && mid.toUpperCase() !== 'N/A' && !NAME_RE.test(mid)) return 'Middle name: letters only, or tick "I have no middle name".';
+  if (!NAME_RE.test(nm(b.lastName))) return "Last name: letters only (spaces, . ' - allowed), 2 to 50 characters.";
+  if (b.claimant === 'representative') {
+    if (!NAME_RE.test(nm(b.repName))) return "Representative's name: letters only, 2 to 50 characters.";
+    if (!/^[\p{L} .'\-]{2,30}$/u.test(nm(b.repRelationship))) return 'Relationship: a word like Mother, Sibling or Friend (letters only).';
+    if (String(b.repContact || '').trim() && !PHONE_RE.test(String(b.repContact).replace(/[\s-]/g, '')))
+      return 'Contact number: 11 digits starting with 09, like 09171234567.';
+  }
+  if (b.purpose === 'Others' && String(b.otherPurpose || '').trim() && !TEXT_RE.test(String(b.otherPurpose).trim()))
+    return 'Purpose: 2 to 100 characters, no special symbols.';
+  return null;
+}
 async function checkStudentNo(raw, userId) {
   const no = String(raw || '').replace(/\s+/g, '');
   if (!no)                     return { error: 'Student number is required.' };
@@ -1372,6 +1395,8 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   // ---- validate student info ------------------------------------------------
   if (!String(b.firstName || '').trim() || !String(b.lastName || '').trim())
     return { error: 'First name and last name are required.' };
+  const badDetail = detailsError(b);
+  if (badDetail) return { error: badDetail, invalid: true };     // a typo, not a limit: kept out of the decision log
   if (user.role === 'student' && (!b.course || !b.yearLevel))
     return { error: 'Course and year level are required.' };
   if (user.role === 'student' && !isCourse(b.course))
@@ -1426,7 +1451,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     rep.claimant     = 'representative';
     rep.name         = String(b.repName).trim();
     rep.relationship = String(b.repRelationship).trim();
-    rep.contact      = String(b.repContact || '').trim() || null;
+    rep.contact      = String(b.repContact || '').replace(/[\s-]/g, '') || null;
     rep.authFile     = b.repAuthFile || null;
   }
 
