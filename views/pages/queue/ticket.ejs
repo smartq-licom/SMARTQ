@@ -198,6 +198,48 @@
     <div class="text-[14px] font-bold text-amber-900" data-near-title></div>
     <div class="text-[12.5px] text-amber-900/85 mt-0.5" data-near-body></div>
   </div>
+  <%# iPhone plays no sound until the page is tapped once: ask for that tap,
+      so the beep at "5 ahead" and "You are next" works. iPhone only, and
+      gone after the tap (the tap itself is what turns the sound on). %>
+  <button type="button" id="soundTap" hidden
+          class="mt-3 w-full flex items-center gap-3 rounded-2xl bg-brand-wash ring-1 ring-inset ring-brand-line px-4 py-3 text-left text-brand-night no-print">
+    <span class="grid place-items-center w-9 h-9 rounded-xl bg-white text-brand shrink-0" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+    </span>
+    <span class="flex-1 min-w-0">
+      <span class="block text-[13.5px] font-bold" data-sound-title>Tap here to turn on the sound</span>
+      <span class="block text-[12px] text-brand-night/75 leading-snug" data-sound-body>So this page can beep when your turn is near. Keep it open, with silent mode off.</span>
+    </span>
+  </button>
+  <script>
+  (function () {
+    var btn = document.getElementById('soundTap');
+    var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!btn || !iOS) return;
+    function on() { return window.smartqSoundOn && window.smartqSoundOn(); }
+    // a short soft tone on the tap: proof the sound works
+    function confirm() {
+      var a = window.smartqAudio && window.smartqAudio();
+      if (!a) return;
+      try {
+        var o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+        o.frequency.value = 880; o.connect(g); g.connect(a.destination);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25); o.start(t); o.stop(t + 0.27);
+      } catch (e) {}
+    }
+    function done() {
+      if (btn.hidden) return;
+      confirm();
+      btn.querySelector('[data-sound-title]').textContent = 'Sound is on';
+      btn.querySelector('[data-sound-body]').textContent = 'Keep this page open. It beeps when your turn is near.';
+      setTimeout(function () { btn.hidden = true; }, 2500);
+    }
+    window.addEventListener('load', function () { if (!on()) btn.hidden = false; });
+    window.addEventListener('smartq:sound-on', done);
+  })();
+  </script>
   <% } %>
 
   <div data-live="notices">
@@ -514,8 +556,9 @@
 
   function beep() {
     try {
-      var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      var a = new AC(); if (a.state === 'suspended') a.resume();
+      // the page's shared sound (partials/chime.ejs), unlocked by the first tap
+      var a = window.smartqAudio ? window.smartqAudio() : null; if (!a) return;
+      if (a.state === 'suspended') a.resume();
       [0, 0.22].forEach(function (at, i) {
         var o = a.createOscillator(), g = a.createGain();
         o.type = 'sine'; o.frequency.value = i ? 1046 : 784;

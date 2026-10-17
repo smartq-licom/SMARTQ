@@ -105,17 +105,35 @@
   // expose it so other scripts can sound the alert too
   window.smartqAlert = function () { flash(); alertSound(); };
 
+  // One shared sound for the page (the "almost your turn" beep uses it too).
+  window.smartqAudio = audio;
+  window.smartqSoundOn = function () { return !!ctx && ctx.state === 'running'; };
+
+  // Browsers allow sound only after the person taps the page once. iPhone is
+  // the strictest: the unlock must happen inside a tap or click (not a swipe,
+  // not touchstart), and only counts once a sound has actually started, so
+  // the tap plays one silent sample. Until then nothing is marked unlocked.
+  var EVENTS = ['pointerup', 'touchend', 'click', 'keydown'];
   function unlock() {
     if (unlocked) return;
     var a = audio();
     if (!a) return;
-    if (a.state === 'suspended') a.resume();
-    unlocked = true;
-    if (pending) { pending = false; alertSound(); }
+    try {
+      var s = a.createBufferSource();
+      s.buffer = a.createBuffer(1, 1, 22050);
+      s.connect(a.destination); s.start(0);
+    } catch (e) {}
+    var done = function () {
+      if (unlocked || a.state !== 'running') return;
+      unlocked = true;
+      EVENTS.forEach(function (ev) { window.removeEventListener(ev, unlock); });
+      window.dispatchEvent(new CustomEvent('smartq:sound-on'));
+      if (pending) { pending = false; alertSound(); }
+    };
+    if (a.state === 'suspended') { var p = a.resume(); if (p && p.then) p.then(done, function () {}); }
+    done();
   }
-  ['pointerdown', 'keydown', 'touchstart', 'mousemove'].forEach(function (ev) {
-    window.addEventListener(ev, unlock, { passive: true });
-  });
+  EVENTS.forEach(function (ev) { window.addEventListener(ev, unlock, { passive: true }); });
 
   // On a kiosk browser started with autoplay allowed this needs no touch at all.
   var a0 = audio();
