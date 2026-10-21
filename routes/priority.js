@@ -47,7 +47,7 @@ module.exports = function priorityRoutes(base, { canRevoke = false } = {}) {
   router.post('/:id/decide', async (req, res, next) => {
     try {
       const approve = req.body.decision === 'approve';
-      const r = await db.decidePriorityRequest(req.session.user, req.params.id, approve, req.body.reason, req.body.reasonCode);
+      const r = await db.decidePriorityRequest(req.session.user, req.params.id, approve, req.body.reason, req.body.reasonCode, req.body.weeksPregnant);
       if (r.error) { req.session.error = r.error; return res.redirect(base); }
       const pr = r.request;
       if (pr.email) {

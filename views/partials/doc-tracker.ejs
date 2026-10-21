@@ -10,7 +10,8 @@
   <div class="trk-doc">
     <div class="trk-head">
       <div class="min-w-0">
-        <div class="trk-name"><%= l.name %><%= l.copies > 1 ? ' \u00d7' + l.copies : '' %></div>
+        <div class="trk-name"><%= l.name %><%= l.copies > 1 && !l.detail ? ' \u00d7' + l.copies : '' %></div>
+        <% if (l.detail) { %><div class="text-[11.5px] text-slateSoft/75 leading-snug"><%= l.detail %></div><% } %>
         <% if (typeof showTicket !== 'undefined' && showTicket) { %>
         <a class="trk-ticket" href="/queue/t/<%= l.accessToken %>">Ticket <%= l.ticketNo %> &rarr;</a>
         <% } %>

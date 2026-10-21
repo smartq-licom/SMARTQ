@@ -151,6 +151,8 @@ async function renderForm(req, res, form, formError) {
     today: db.today(), maxDate: db.addDays(db.today(), settings.scheduleMaxDays),
     firstBookable: db.addDays(db.today(), 1), sameDay: sameDayStatus(settings),
     peakAdvice: await peakAdvice(settings),
+    // per-semester documents (Certificate of Grades): the semesters to choose from
+    semOptions: require('../data/semesters').semesterOptions({ academicYear: settings.academicYear }),
     submitToken: form.submitToken || crypto.randomUUID(),
     form, formError,
   });
@@ -214,6 +216,21 @@ router.get('/slots', async (req, res, next) => {
     const items = (await Promise.all(ids.map(id => db.getDocument(id)))).filter(Boolean);
     const svc = items.length ? (await predict.estimateService(items, office, settings)).minutes : null;
     res.json(await engine.slotPlan(office, date, svc, settings));
+  } catch (e) { next(e); }
+});
+
+// The booking calendar: every bookable day's colour (open, few left, full,
+// closed) for THESE documents, and the least busy time this week.
+router.get('/days', async (req, res, next) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const office = ['Cashier', 'Registrar'].includes(req.query.office) ? req.query.office : null;
+    if (!office) return res.status(400).json({ error: 'Choose an office.' });
+    const settings = await db.getSettings();
+    const ids = String(req.query.docs || '').split(',').map(Number).filter(Boolean).slice(0, 10);
+    const items = (await Promise.all(ids.map(id => db.getDocument(id)))).filter(Boolean);
+    const svc = items.length ? (await predict.estimateService(items, office, settings)).minutes : null;
+    res.json(await engine.dayPlans(office, svc, settings));
   } catch (e) { next(e); }
 });
 

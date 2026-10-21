@@ -85,6 +85,16 @@
               data-confirm-note="<%= r.ticketNo && r.ticketStatus === 'waiting' ? 'Ticket ' + r.ticketNo + ' moves to the priority lane with a priority number.' : 'Their ticket is no longer waiting, so only the approval is recorded.' %>"
               data-confirm-ok="Approve">
           <input type="hidden" name="decision" value="approve">
+          <% if (r.category === 'pregnant') { %>
+          <%# read from the prenatal record: priority lasts until 2 weeks after the due date %>
+          <label class="block mb-2">
+            <span class="<%= UI.lbl %>">Weeks pregnant (from the prenatal record) *</span>
+            <span class="flex items-center gap-2">
+              <input name="weeksPregnant" type="number" min="1" max="42" required inputmode="numeric" class="<%= UI.input %> w-24">
+              <span class="text-[11.5px] text-slateSoft/80">Priority lasts until 2 weeks after the due date (40 weeks).</span>
+            </span>
+          </label>
+          <% } %>
           <button type="submit" class="<%= UI.btn %> <%= UI.btnOk %> w-full">Approve</button>
         </form>
         <details>

@@ -128,6 +128,15 @@ router.post('/move-regular/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// The purpose is not really urgent: the ticket keeps its place, without the +15.
+router.post('/not-urgent/:id', async (req, res, next) => {
+  try {
+    const r = await db.clearUrgent(req.session.user, Number(req.params.id));
+    if (r.error) return back(req, res, null, r.error);
+    back(req, res, `${r.ticketNo} is no longer marked urgent.`);
+  } catch (e) { next(e); }
+});
+
 // Called but not at the window: back 5 places with a notice; cancelled on a
 // second miss (db.missedTurn).
 router.post('/missed/:id', async (req, res, next) => {

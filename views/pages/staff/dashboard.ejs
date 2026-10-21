@@ -289,6 +289,14 @@
               <% if (t.clientType === 'guest') { %><span class="<%= pill %> <%= tone('guest') %> ml-1">guest</span><% } %>
             </div>
             <div class="text-[12px] text-slateSoft/70 truncate"><%= t.items.map(function(i){return i.name}).join(', ') %><%= t.purposeText ? ' · ' + t.purposeText : '' %></div>
+            <% if (t.isUrgent) { %>
+            <%# purpose the admin marks urgent (+15): staff can take the tag off %>
+            <form method="POST" action="/staff/not-urgent/<%= t.id %>" class="mt-1 flex items-center gap-1.5"
+                  data-confirm data-confirm-title="Not urgent?" data-confirm-body="<%= t.ticketNo %> keeps its place but loses the +15 for an urgent purpose (<%= t.purposeText %>)." data-confirm-ok="Remove tag">
+              <span class="rounded-full bg-red-50 ring-1 ring-inset ring-red-200 px-2 py-0.5 text-[10.5px] font-extrabold uppercase tracking-wide text-red-700">Urgent</span>
+              <button type="submit" class="text-[11px] font-semibold text-slateSoft underline underline-offset-2">not urgent</button>
+            </form>
+            <% } %>
           </div>
           <div class="text-right shrink-0">
             <% if (dept === 'Cashier') { %><div class="font-mono text-[13px] font-semibold"><%= peso(t.amountDue) %></div>

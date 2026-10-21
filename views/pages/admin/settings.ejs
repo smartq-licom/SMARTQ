@@ -178,6 +178,15 @@
               <b>Decline</b><span>Say no and offer the earliest free time.</span></label>
           </div>
         </div>
+        <div class="<%= wide %>">
+          <div><span class="<%= name %>">Urgent purposes</span>
+            <p class="<%= help %>">A request for one of these purposes gets +15 in its line (the same as 15 minutes of waiting). It keeps its normal number with an "Urgent" tag, never passes whoever was told "You are next", and nobody is passed over more than twice. Staff can remove the tag.</p></div>
+          <div class="flex flex-wrap gap-2 max-w-[39rem]">
+            <% purposes.forEach(function (p) { %>
+            <label class="day relative"><input type="checkbox" name="urgentPurposes" value="<%= p %>" <%= settings.urgentPurposes.includes(p) ? 'checked' : '' %>><span><%= p %></span></label>
+            <% }) %>
+          </div>
+        </div>
         <div class="<%= row %>">
           <div><label for="fCap" class="<%= name %>">Daily limit per office</label>
             <p class="<%= help %>">Tickets per office per day. 0 = no limit.</p></div>

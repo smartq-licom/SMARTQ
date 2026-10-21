@@ -135,21 +135,52 @@ function daySlots(settings) {
 }
 
 /**
+ * How busy each hour of a weekday usually is (data/peak.js: crowding from
+ * past days, 0 = quiet, 1 = the busiest hour). Cached 10 minutes: it only
+ * changes as history grows.
+ */
+const busyCache = new Map();
+async function busyByHour(department, dow, settings) {
+  const key = department + dow, hit = busyCache.get(key);
+  if (hit && Date.now() - hit.at < 600000) return hit.value;
+  const value = {};
+  try {
+    const peak = require('./peak');
+    const p = await peak.hourlyProfile(department, { ...peak.optsFromSettings(settings), weekday: dow });
+    (p.hours || []).forEach(h => { if (h.share != null) value[h.hour] = h.share / 100; });
+  } catch (e) { /* no history: every hour counts the same */ }
+  busyCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+// "few left": a third or less of a slot's booking places (at least 1) still free
+const fewLeft = (left, places) => left <= Math.max(1, Math.floor(places / 3));
+
+/**
  * Every slot on a date with how much is left for booking. `serviceMin` is how
  * long the student's own documents usually take, so a slot is only offered
  * when that much bookable time is still free.
+ *
+ * Each slot has a status for the colours on the form: open (grey), few (a
+ * third or less of its places left, yellow), full (red, cannot be picked) and closed (already
+ * started or too soon to book). One open slot is `recommended`: the one with
+ * the most room left in the hour that is usually quietest
+ *   score = share already booked (0..1) + how busy that hour usually is (0..1)
+ * lowest first, earliest on a tie.
+ *
+ * `pre` lets dayPlans() pass what is the same for every date (one query each).
  */
-async function slotPlan(department, dateStr, serviceMin, settings) {
+async function slotPlan(department, dateStr, serviceMin, settings, pre = {}) {
   const s = settings || await require('./db').getSettings();
-  const profile = await serviceProfile(department, s);
-  const win = await q(`SELECT COUNT(*) AS c FROM windows WHERE department=?`, [department]);
-  const windows = Math.max(1, Number(win[0].c) || 1);
+  const profile = pre.profile || await serviceProfile(department, s);
+  const windows = pre.windows ||
+    Math.max(1, Number((await q(`SELECT COUNT(*) AS c FROM windows WHERE department=?`, [department]))[0].c) || 1);
 
   const capacityMin = windows * SLOT_MINUTES;                // minutes of work per slot
   const bookableMin = capacityMin * BOOK_SHARE;
   const capacity    = Math.floor(capacityMin / profile.median);   // clients per slot
 
-  const rows = await q(
+  const rows = pre.used ? (pre.used[dateStr] || []) : await q(
     `SELECT TIME_FORMAT(slot_start,'%H:%i') AS s, COUNT(*) AS n,
             SUM(COALESCE(predicted_service, ?)) AS m
      FROM transactions
@@ -162,27 +193,92 @@ async function slotPlan(department, dateStr, serviceMin, settings) {
   const now = new Date(), isToday = dateStr === ymd(now);
   const need = Math.max(1, Number(serviceMin) || profile.median);
   const dow = new Date(dateStr + 'T00:00:00').getDay();
+  const busy = pre.busy ? (pre.busy[dow] || {}) : await busyByHour(department, dow, s);
   const slots = daySlots(s).map(sl => {
     // that weekday and hour's usual speed (history): a slow hour fits fewer
-    const f = profile.pattern ? profile.pattern.factor(dow, Number(sl.start.slice(0, 2))) : 1;
+    const hour = Number(sl.start.slice(0, 2));
+    const f = profile.pattern ? profile.pattern.factor(dow, hour) : 1;
     const u = used[sl.start] || { n: 0, m: 0 };
     const leftMin = Math.max(0, bookableMin - u.m * f);
     // today: only times that start BOOK_LEAD_MIN or more from now. A booking is
     // for planning a visit; someone who wants to be served now takes a walk-in
     // number (booking the running slot would skip the walk-in line, as CB)
     const past = isToday && at(dateStr, sl.start).getTime() < now.getTime() + BOOK_LEAD_MIN * 60000;
+    const placesLeft = Math.floor(leftMin / (profile.median * f));
+    const available = !past && leftMin >= need * f;
     return {
       ...sl, booked: u.n, pace: Math.round(f * 100) / 100,
       capacity: Math.floor(capacityMin / (profile.median * f)),
-      placesLeft: Math.floor(leftMin / (profile.median * f)),
-      available: !past && leftMin >= need * f,
-      past,
+      placesLeft, available, past,
+      status: past ? 'closed' : !available ? 'full' : fewLeft(placesLeft, Math.floor(bookableMin / (profile.median * f))) ? 'few' : 'open',
+      score: Math.round((Math.min(1, (u.m * f) / bookableMin) + (busy[hour] != null ? busy[hour] : 0.5)) * 100) / 100,
+      recommended: false,
     };
   });
+  const best = slots.filter(x => x.available).reduce((a, x) => (!a || x.score < a.score ? x : a), null);
+  if (best) best.recommended = true;
   return {
     date: dateStr, windows, capacity, bookable: Math.floor(bookableMin / profile.median),
     serviceMin: Math.round(need), avgService: Math.round(profile.median * 10) / 10, slots,
+    recommended: best ? { start: best.start, label: best.label } : null,
   };
+}
+
+/**
+ * Every bookable day with its colour for the calendar, and the best time:
+ *   closed  the office is closed (not an open day, or closed by staff)
+ *   full    no slot left for these documents (or the day's ticket limit is reached)
+ *   few     2 or fewer times left, or only "few left" times
+ *   open    room to book
+ * `best` is the least busy time over the next 7 open days (lowest slot score).
+ */
+async function dayPlans(department, serviceMin, settings) {
+  const db = require('./db');
+  const s = settings || await db.getSettings();
+  const first = s.allowSameDay && !db.isPastClosing(s) ? db.today() : db.addDays(db.today(), 1);
+  const last = db.addDays(db.today(), s.scheduleMaxDays);
+  const profile = await serviceProfile(department, s);
+  const windows = Math.max(1, Number((await q(`SELECT COUNT(*) AS c FROM windows WHERE department=?`, [department]))[0].c) || 1);
+  const rows = await q(
+    `SELECT DATE_FORMAT(service_date,'%Y-%m-%d') AS d, TIME_FORMAT(slot_start,'%H:%i') AS s, COUNT(*) AS n,
+            SUM(COALESCE(predicted_service, ?)) AS m
+     FROM transactions
+     WHERE department=? AND service_date BETWEEN ? AND ? AND slot_start IS NOT NULL AND overall_status <> 'cancelled'
+     GROUP BY service_date, slot_start`, [profile.median, department, first, last]);
+  const used = {};
+  rows.forEach(r => { (used[r.d] = used[r.d] || []).push(r); });
+  const counts = await q(
+    `SELECT DATE_FORMAT(service_date,'%Y-%m-%d') AS d, COUNT(*) AS c FROM transactions
+     WHERE department=? AND service_date BETWEEN ? AND ? AND overall_status <> 'cancelled' GROUP BY service_date`,
+    [department, first, last]);
+  const taken = {};
+  counts.forEach(r => { taken[r.d] = Number(r.c); });
+  const overrides = await db.getDayOverrides(department, first, last);
+  const busy = {};
+  for (let d = 0; d < 7; d++) busy[d] = await busyByHour(department, d, s);
+
+  const days = [];
+  let best = null, openSeen = 0;
+  for (let date = first; date <= last; date = db.addDays(date, 1)) {
+    const dow = new Date(date + 'T00:00:00').getDay();
+    const ov = overrides[date] || {};
+    if (!s.openDays.includes(dow || 7) || ov.isClosed) {
+      days.push({ date, status: 'closed', note: ov.isClosed ? (ov.note || 'Closed by the office') : 'Office closed' });
+      continue;
+    }
+    const cap = ov.slotLimit != null ? ov.slotLimit : s.dailySlotLimit;
+    const plan = await slotPlan(department, date, serviceMin, s, { profile, windows, used, busy });
+    const avail = plan.slots.filter(x => x.available);
+    const status = !avail.length || (cap > 0 && (taken[date] || 0) >= cap) ? 'full'
+                 : avail.length <= 2 || avail.filter(x => x.status === 'open').length === 0 ? 'few' : 'open';
+    days.push({ date, status, recommended: status !== 'full' ? plan.recommended : null });
+    if (status !== 'full' && openSeen < 7) {
+      const r = avail.find(x => x.recommended);
+      if (r && (!best || r.score < best.score)) best = { date, start: r.start, label: r.label, score: r.score };
+    }
+    openSeen++;
+  }
+  return { first, last, days, best };
 }
 
 // ── 2. day simulation ────────────────────────────────────────────────────────
@@ -215,7 +311,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
 
   const rows = await q(
     `SELECT id, ticket_no, queue_category, ticket_status, queue_at, hold_until, called_at, started_at,
-            predicted_service, skip_count, window_id, slot_start, risk_at
+            predicted_service, skip_count, window_id, slot_start, risk_at, is_urgent
      FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status IN ('waiting','called','serving')
      ORDER BY queue_at, id`, [department]);
@@ -295,6 +391,7 @@ async function simulateDay(department, { extra = null, slow = false, settings = 
     x.queuedAt = new Date(x.queue_at).getTime();
     x.slotStart = x.slot_start ? at(today, String(x.slot_start).slice(0, 5)).getTime() : null;
     x.holdUntil = x.hold_until ? new Date(x.hold_until).getTime() : 0;
+    x.urgent = !!x.is_urgent;
   });
   // "If you join now" without knowing the request (the board, the QR page): a
   // request like the ones already waiting, never the shortest case, so its
@@ -552,6 +649,6 @@ async function watch() {
 
 module.exports = {
   SLOT_MINUTES, BOOK_SHARE, LEAVE_NOW_MIN,
-  daySlots, slotPlan, serviceProfile, simulateDay,
+  daySlots, slotPlan, dayPlans, serviceProfile, simulateDay,
   evaluateJoin, evaluateJoinCached, simulateDayCached, ticketForecast, callOrderAhead, logDecision, watch, clock,
 };

@@ -194,6 +194,43 @@ const STEPS = [
     ) ENGINE=InnoDB`,
   },
   {
+    name: 'documents asked per semester (Certificate of Grades: one per semester, 14 days)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'documents' AND column_name = 'per_semester'`,
+    add:   'ALTER TABLE documents ADD COLUMN per_semester TINYINT(1) NOT NULL DEFAULT 0',
+    after: "UPDATE documents SET per_semester = 1, processing_days = 14 WHERE name = 'Certificate of Grades'",
+  },
+  {
+    name: 'which semesters a requested document is for (transaction_documents.detail)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transaction_documents' AND column_name = 'detail'`,
+    add:   'ALTER TABLE transaction_documents ADD COLUMN detail VARCHAR(255) NULL',
+  },
+  {
+    name: 'urgent purposes chosen by the admin (settings.urgent_purposes)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'settings' AND column_name = 'urgent_purposes'`,
+    add:   'ALTER TABLE settings ADD COLUMN urgent_purposes VARCHAR(600) NULL',
+  },
+  {
+    name: 'a ticket whose purpose is urgent (transactions.is_urgent)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'is_urgent'`,
+    add:   'ALTER TABLE transactions ADD COLUMN is_urgent TINYINT(1) NOT NULL DEFAULT 0',
+  },
+  {
+    name: 'how long an approved priority lasts (users.priority_until: pregnancy, 2 weeks after the due date)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'priority_until'`,
+    add:   'ALTER TABLE users ADD COLUMN priority_until DATE NULL',
+  },
+  {
+    name: 'weeks of pregnancy read from the prenatal proof (priority_requests.weeks_pregnant)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'priority_requests' AND column_name = 'weeks_pregnant'`,
+    add:   'ALTER TABLE priority_requests ADD COLUMN weeks_pregnant TINYINT NULL',
+  },
+  {
     name: 'phone notifications (Web Push) subscribed per ticket',
     sql: `CREATE TABLE IF NOT EXISTS push_subscriptions (
       id             INT AUTO_INCREMENT PRIMARY KEY,

@@ -6,6 +6,7 @@ const predict = require('./prediction');
 const peak    = require('./peak');
 const paging  = require('./paging');
 const engine  = require('./engine');
+const semesters = require('./semesters');
 const dispatch = require('./dispatch');
 const push    = require('./push');
 
@@ -91,6 +92,8 @@ async function getSettings() {
     announcement: s.announcement || '',
     learnFrom: s.learn_from || null,
     fullDayMode: s.full_day_mode === 'decline' ? 'decline' : 'warn',
+    // purposes the admin marks urgent: such a request gets +15 in its lane (data/dispatch.js)
+    urgentPurposes: String(s.urgent_purposes || '').split('|').filter(p => PURPOSES.includes(p) && p !== 'Others'),
     timeBaseline: require('./timesaved').readBaseline(s.time_baseline),
   };
 }
@@ -116,7 +119,7 @@ async function saveSettings(b) {
       cashier_capacity=?,registrar_capacity=?,capacity_mode=?,avg_service_minutes=?,
       min_samples=?,cancel_after_minutes=?,warn_before_minutes=?,no_show_after_minutes=?,
       expire_waiting_minutes=?,schedule_max_days=?,allow_same_day=?,daily_slot_limit=?,
-      max_copies=?,max_batch_documents=?,refresh_rate=?,announcement=?,full_day_mode=?,time_baseline=? WHERE id=1`,
+      max_copies=?,max_batch_documents=?,refresh_rate=?,announcement=?,full_day_mode=?,time_baseline=?,urgent_purposes=? WHERE id=1`,
     [ b.institutionName || 'Libon Community College', b.systemName || 'SmartQ',
       b.academicYear || '2025-2026',
       b.openTime || '08:00', b.closeTime || '17:00',
@@ -134,7 +137,8 @@ async function saveSettings(b) {
       +b.refreshRate || 8, b.announcement || '', b.fullDayMode === 'decline' ? 'decline' : 'warn',
       JSON.stringify((({ isSet, ...minutes }) => minutes)(require('./timesaved').readBaseline({
         formTrip: b.baseFormTrip, cashierLine: b.baseCashierLine, registrarLine: b.baseRegistrarLine,
-        returnTrip: b.baseReturnTrip, returnRate: b.baseReturnRate }))) ]
+        returnTrip: b.baseReturnTrip, returnRate: b.baseReturnRate }))),
+      [].concat(b.urgentPurposes || []).filter(p => PURPOSES.includes(p) && p !== 'Others').join('|') || null ]
   );
   return getSettings();
 }
@@ -812,10 +816,16 @@ async function getUserPriorityRequests(userId) {
  * record and, for a walk-in ticket still waiting in the regular lane, moves it
  * to the priority lane with a priority number, keeping its original time.
  */
-async function decidePriorityRequest(reviewer, id, approve, reason, reasonCode = null) {
+async function decidePriorityRequest(reviewer, id, approve, reason, reasonCode = null, weeksPregnant = null) {
   const pr = await getPriorityRequest(id);
   if (!pr)                       return { error: 'Request not found.' };
   if (pr.status !== 'pending')   return { error: 'This request has already been reviewed.' };
+  // pregnancy: the weeks on the prenatal record set how long priority lasts,
+  // until 2 weeks after the due date (40 weeks), counted from the approval
+  const weeks = parseInt(weeksPregnant, 10);
+  if (approve && pr.category === 'pregnant' && !(weeks >= 1 && weeks <= 42))
+    return { error: 'Enter the weeks of pregnancy shown on the prenatal record (1 to 42).' };
+  const until = approve && pr.category === 'pregnant' ? pregnancyUntil(weeks) : null;
   // a quick reason fills the text; "other" needs the reviewer's own words
   const quick = PRIORITY_REJECT[reasonCode];
   if (!approve && quick) reason = quick.text + (String(reason || '').trim() ? ' ' + String(reason).trim() : '');
@@ -824,17 +834,18 @@ async function decidePriorityRequest(reviewer, id, approve, reason, reasonCode =
     return { error: 'Choose a reason, or write one, so the student knows what was wrong.' };
 
   await run(
-    `UPDATE priority_requests SET status=?, reason=?, reason_code=?, reviewed_by=?, reviewer_name=?, reviewed_at=NOW()
+    `UPDATE priority_requests SET status=?, reason=?, reason_code=?, reviewed_by=?, reviewer_name=?, reviewed_at=NOW(),
+       weeks_pregnant=?
      WHERE id=?`,
     [approve ? 'approved' : 'rejected', approve ? null : String(reason).trim().slice(0, 255),
-     approve ? null : reasonCode, reviewer.id, reviewer.fullName, id]);
+     approve ? null : reasonCode, reviewer.id, reviewer.fullName, until ? weeks : null, id]);
 
   let moved = null;
   if (approve) {
     // a representative's ID says nothing about the student: only the ticket moves
     if (!pr.forRep && pr.role === 'student')
-      await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW() WHERE id=?`,
-                [pr.category, pr.userId]);
+      await run(`UPDATE users SET priority_status=?, priority_approved_at=NOW(), priority_until=? WHERE id=?`,
+                [pr.category, until, pr.userId]);
     if (pr.transactionId) moved = await moveToPriority(reviewer, pr.transactionId, pr.category);
   }
   if (pr.transactionId) {
@@ -882,7 +893,7 @@ async function moveToPriority(reviewer, txId, category) {
 
 /** Remove an approved status (e.g. an ID expired). */
 async function revokePriority(userId) {
-  await run(`UPDATE users SET priority_status='none', priority_approved_at=NULL WHERE id=?`, [userId]);
+  await run(`UPDATE users SET priority_status='none', priority_approved_at=NULL, priority_until=NULL WHERE id=?`, [userId]);
   return { ok: true };
 }
 
@@ -968,6 +979,7 @@ function mapDocument(s) {
     guestAllowed: !!s.guest_allowed,
     baselineMinutes: s.baseline_minutes,
     processingDays: Number(s.processing_days) || 0,
+    perSemester: !!s.per_semester,              // one copy per semester (Certificate of Grades)
     // a deleted document can never be requested again, whatever is_active says
     isActive: !!s.is_active && !s.deleted_at, deleted: !!s.deleted_at,
   };
@@ -1237,16 +1249,21 @@ async function deleteWindow(id) {
 }
 
 // ── TICKET NUMBERING (daily reset, per office and series) ────────────────────
-// Six counters, each starting at 1 every day: walk-ins C-001 / R-001,
-// priority CP-001 / RP-001, and booked times CB-001 / RB-001. A booking has
-// its own series so walk-in numbers are called in order and a booked number
-// explains itself ("B" = called at the booked time). Priority wins over
-// booked (a booked PWD is CP). A counter created mid-day starts after the
-// highest number of that series already issued that day, so none repeats.
-async function nextTicketNo(conn, department, serviceDate, category, booked = false) {
-  const series = category === 'priority' ? 'priority' : booked ? 'booked' : 'regular';
+// Counters start at 1 every day: walk-ins C-001 / R-001, priority CP-001 /
+// RP-001, and bookings numbered BY THE HOUR they booked: CB14-1 is the first
+// booking for 2 PM, CB11-2 the second for 11 AM. A booking is called at its
+// time, so a plain CB-001 / CB-002 would be called out of order (a 2 PM
+// booking made first, an 11 AM one made later); with the hour in the number
+// the order is plain to read. Priority wins over booked (a booked PWD is CP).
+// A counter created mid-day starts after the highest number of that series
+// already issued that day, so none repeats.
+//   slotStart: the booked time ('14:00' or '14:00:00') for a booking, else falsy
+async function nextTicketNo(conn, department, serviceDate, category, slotStart = null) {
+  const office = department === 'Cashier' ? 'C' : 'R';
+  const hour = category !== 'priority' && slotStart ? parseInt(String(slotStart).slice(0, 2), 10) : null;
+  const series = category === 'priority' ? 'priority' : hour != null ? 'booked-' + hour : 'regular';
   const key  = `ticket-${department === 'Cashier' ? 'cashier' : 'registrar'}-${series}`;
-  const prefix = (department === 'Cashier' ? 'C' : 'R') + ({ priority: 'P', booked: 'B', regular: '' })[series];
+  const prefix = office + (category === 'priority' ? 'P' : hour != null ? 'B' + hour : '');
   const [used] = await conn.execute(
     `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ticket_no,'-',-1) AS UNSIGNED)),0) AS n
      FROM transactions WHERE department=? AND ticket_no LIKE ? AND service_date=?`,
@@ -1256,7 +1273,7 @@ async function nextTicketNo(conn, department, serviceDate, category, booked = fa
      ON DUPLICATE KEY UPDATE value = value + 1`, [key, serviceDate, Number(used[0].n) + 1]);
   const [r] = await conn.execute(
     'SELECT value FROM counters WHERE name=? AND ref_date=?', [key, serviceDate]);
-  return `${prefix}-${String(r[0].value).padStart(3, '0')}`;
+  return hour != null ? `${prefix}-${r[0].value}` : `${prefix}-${String(r[0].value).padStart(3, '0')}`;
 }
 
 /** Receipt numbers never reset — OR-YYYYMMDD-#### */
@@ -1367,6 +1384,10 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     // copies only for a document that is printed and released; a fee (Late
     // Enrollment) or the Registrar claim itself is always one
     if (!sv.requiresClaim || isClaimDocument(sv)) copies = 1;
+    // per semester (Certificate of Grades): semesters x copies of each, counted below
+    if (sv.perSemester && user.role === 'guest')
+      return { error: `"${sv.name}" is only available to enrolled students.` };
+    if (sv.perSemester) copies = 1;
     if (copies > s.maxCopies)
       return { error: `You may request up to ${s.maxCopies} copies of each document.` };
 
@@ -1415,6 +1436,23 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   const accountStudentNo = approved.length ? approved[0].student_no : null;
   if (user.role === 'student' && !STUDENT_NO_RE.test(accountStudentNo || ''))
     return { error: 'Add your 9-digit student number to your account before requesting a ticket.' };
+
+  // ---- per semester: one certificate per semester, priced each ------------------
+  // Any of the last 6 school years (data/semesters.js): when a student
+  // enrolled cannot be told, so the list is the same for everyone.
+  for (const it of items.filter(i => i.perSemester)) {
+    const opts = semesters.semesterOptions({ academicYear: s.academicYear });
+    const want = new Set([].concat(b['sem_' + it.id] || []).map(String));
+    const picked = opts.filter(o => want.has(o.value));
+    if (!picked.length) return { error: `Choose the semester(s) for your ${it.name}.` };
+    // the same number of copies of every chosen semester, within the Settings limit
+    const each = parseInt(b['semCopies_' + it.id], 10) || 1;
+    if (each < 1 || each > s.maxCopies)
+      return { error: `You may request up to ${s.maxCopies} copies of each semester.` };
+    it.copies = picked.length * each;
+    it.lineTotal = it.price * it.copies;
+    it.detail = picked.map(o => o.label).join(', ') + (each > 1 ? ` · ${each} copies each` : '');
+  }
 
   let category = 'regular';
   let pType    = 'none';
@@ -1581,7 +1619,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
       return await getTransaction(dupe[0].id);      // same ticket, not a new one
     }
 
-    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate, category, !!slot);
+    const ticketNo = await nextTicketNo(conn, department, sched.serviceDate, category, slot ? slot.start : null);
 
     const [ins] = await conn.execute(
       `INSERT INTO transactions
@@ -1591,8 +1629,8 @@ async function createRequest(user, b, { walkIn = false } = {}) {
          purpose,other_purpose,amount_due,ticket_status,payment_status,overall_status,
          is_scheduled,scheduled_date,service_date,submit_token,requires_claim,
          predicted_wait,predicted_service,prediction_source,
-         access_token,booking_code,queue_at,slot_start,slot_end)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         access_token,booking_code,queue_at,slot_start,slot_end,is_urgent)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [ ticketNo, department, category, pType, user.id,
         user.role === 'guest' ? 'guest' : 'student',
         String(b.firstName).trim(), String(b.middleName || '').trim() || null,
@@ -1608,15 +1646,16 @@ async function createRequest(user, b, { walkIn = false } = {}) {
         sched.serviceDate, token, items.some(i => i.requiresClaim) ? 1 : 0,
         forecast.wait, forecast.service, forecast.source,
         crypto.randomBytes(16).toString('hex'), bookingCode(),
-        queueAt, slot ? slot.start : null, slot ? slot.end : null ]
+        queueAt, slot ? slot.start : null, slot ? slot.end : null,
+        purpose && s.urgentPurposes.includes(purpose) ? 1 : 0 ]
     );
     const txId = ins.insertId;
 
     for (const it of items) {
       await conn.execute(
-        `INSERT INTO transaction_documents (transaction_id,document_id,document_name,unit_price,copies,price)
-         VALUES (?,?,?,?,?,?)`,
-        [txId, it.id, it.name, it.price, it.copies, it.lineTotal]);
+        `INSERT INTO transaction_documents (transaction_id,document_id,document_name,unit_price,copies,price,detail)
+         VALUES (?,?,?,?,?,?,?)`,
+        [txId, it.id, it.name, it.price, it.copies, it.lineTotal, it.detail || null]);
     }
     for (const lineId of claimLineIds) {
       await conn.execute('INSERT INTO claim_items (claim_tx_id,line_id) VALUES (?,?)', [txId, lineId]);
@@ -1730,12 +1769,20 @@ async function rememberedPriority(b) {
   const no = String(b.studentNo || '').trim();
   if (!STUDENT_NO_RE.test(no)) return null;
   const u = (await q(
-    `SELECT last_name, priority_status, priority_approved_at FROM users
+    `SELECT last_name, priority_status, priority_approved_at, priority_until FROM users
      WHERE student_no=? AND role='student' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
   if (!u || u.priority_status !== b.priorityType || !u.priority_approved_at) return null;
   if (normName(u.last_name) !== normName(b.lastName)) return null;
-  const until = new Date(new Date(u.priority_approved_at).getTime() + PRIORITY_REMEMBER_DAYS[b.priorityType] * 86400000);
+  // pregnancy: until 2 weeks after the due date (from the weeks on the proof);
+  // older approvals without weeks: PRIORITY_REMEMBER_DAYS
+  const until = u.priority_until ? new Date(ymd(new Date(u.priority_until)) + 'T23:59:59')
+    : new Date(new Date(u.priority_approved_at).getTime() + PRIORITY_REMEMBER_DAYS[b.priorityType] * 86400000);
   return until > new Date() ? { type: b.priorityType, approvedAt: u.priority_approved_at, until } : null;
+}
+/** Pregnancy priority lasts until 2 weeks after the due date: approval + (40 - weeks) + 2 weeks. */
+function pregnancyUntil(weeks, from = new Date()) {
+  const left = Math.max(0, 40 - weeks) + 2;
+  return ymd(new Date(from.getTime() + left * 7 * 86400000));
 }
 async function noteRememberedPriority(t, type) {
   await run(
@@ -1840,6 +1887,20 @@ async function findTicketByCode(code, who) {
  * goes to the END of the regular line with a new regular number. One click
  * for staff at the window.
  */
+/** Staff take the "Urgent" tag off a waiting ticket whose purpose is not really urgent. */
+async function clearUrgent(staff, txId) {
+  const t = await getTransaction(txId);
+  const dept = staff.role === 'cashier' ? 'Cashier' : 'Registrar';
+  if (!t || t.department !== dept) return { error: 'Ticket not found.' };
+  if (!t.isUrgent)                 return { error: `${t.ticketNo} is not marked urgent.` };
+  await run('UPDATE transactions SET is_urgent=0 WHERE id=?', [t.id]);
+  await run(
+    `INSERT INTO queue_history (transaction_id,ticket_no,action,staff_id,staff_name,department,note)
+     VALUES (?,?,'not_urgent',?,?,?,?)`,
+    [t.id, t.ticketNo, staff.id, staff.fullName, dept, `Urgent tag removed (purpose: ${t.purposeText || 'none'})`]);
+  return { ok: true, ticketNo: t.ticketNo };
+}
+
 async function moveToRegular(staff, txId) {
   const t = await getTransaction(txId);
   const dept = staff.role === 'cashier' ? 'Cashier' : 'Registrar';
@@ -1852,7 +1913,7 @@ async function moveToRegular(staff, txId) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const newNo = await nextTicketNo(conn, dept, t.serviceDate, 'regular', !!t.slotStart);
+    const newNo = await nextTicketNo(conn, dept, t.serviceDate, 'regular', t.slotStart);
     await conn.execute(
       `UPDATE transactions SET ticket_no=?, queue_category='regular', priority_type='none',
          ticket_status='waiting', staff_id=NULL, staff_name=NULL, window_id=NULL, window_label=NULL,
@@ -1901,6 +1962,7 @@ function mapTx(t) {
     // blank for documents that do not ask for a purpose
     purposeText: !t.purpose ? ''
       : (t.purpose === 'Others' ? (t.other_purpose || 'Others') : t.purpose),
+    isUrgent: !!t.is_urgent,                     // its purpose is one the admin marks urgent
     amountDue: Number(t.amount_due),
     ticketStatus: t.ticket_status, paymentStatus: t.payment_status,
     overallStatus: t.overall_status,
@@ -1986,7 +2048,7 @@ async function attachDocuments(list) {
   if (!list.length) return list;
   const ids = list.map(t => t.id);
   const rows = await q(
-    `SELECT transaction_id, document_name, unit_price, copies, price FROM transaction_documents
+    `SELECT transaction_id, document_name, unit_price, copies, price, detail FROM transaction_documents
      WHERE transaction_id IN (${ids.map(() => '?').join(',')})`, ids);
   const by = {};
   rows.forEach(r => {
@@ -1995,8 +2057,10 @@ async function attachDocuments(list) {
       unitPrice: Number(r.unit_price),
       copies: Number(r.copies) || 1,
       price: Number(r.price),
-      label: (Number(r.copies) || 1) > 1
-        ? `${r.document_name} x${r.copies}` : r.document_name,
+      detail: r.detail || '',
+      // per semester: "Certificate of Grades (1st Sem 2023–2024, 2nd Sem 2023–2024)"
+      label: r.detail ? `${r.document_name} (${r.detail})`
+        : (Number(r.copies) || 1) > 1 ? `${r.document_name} x${r.copies}` : r.document_name,
     });
   });
   list.forEach(t => { t.documents = by[t.id] || []; t.items = t.documents; });
@@ -2204,7 +2268,7 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
   else if (txIds) { if (!txIds.length) return []; who = `t.id IN (${txIds.map(() => '?').join(',')})`; params = txIds; }
   else { who = 't.user_id = ?'; params = [userId]; }
   const rows = await q(
-    `SELECT td.id, td.document_name, td.copies, d.processing_days, d.requires_claim,
+    `SELECT td.id, td.document_name, td.copies, td.detail, d.processing_days, d.requires_claim,
             t.id AS tx_id, t.ticket_no, t.access_token, t.ticket_status, t.payment_status, t.service_date,
             t.queue_at, t.called_at, t.slot_start, t.window_label, p.paid_at
      FROM transaction_documents td
@@ -2232,7 +2296,7 @@ async function documentTracker({ txIds = null, userId = null, lineIds = null, si
   };
   for (const r of rows) {
     const paid = !!r.paid_at || r.payment_status === 'paid';
-    const base = { lineId: r.id, name: r.document_name, copies: Number(r.copies) || 1,
+    const base = { lineId: r.id, name: r.document_name, copies: Number(r.copies) || 1, detail: r.detail || '',
                    ticketNo: r.ticket_no, accessToken: r.access_token };
     if (!paid && ['cancelled', 'no-show'].includes(r.ticket_status)) {
       out.push({ ...base, status: 'Cancelled', cancelled: true, steps: [] });
@@ -2595,7 +2659,7 @@ async function getQueue(department, { date = null } = {}) {
 /** Clients ready to be called, per lane, first come first served (for data/dispatch.js). */
 async function readyLanes(department, settings) {
   const rows = await q(
-    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until, slot_start FROM transactions
+    `SELECT id, ticket_no, queue_category, predicted_service, skip_count, queue_at, hold_until, slot_start, is_urgent FROM transactions
      WHERE department=? AND service_date=CURDATE() AND ticket_status='waiting' AND queue_at <= NOW()
        AND (hold_until IS NULL OR hold_until <= NOW())   -- "available from": skipped, place kept
      ORDER BY queue_at ASC, id ASC`, [department]);
@@ -2609,6 +2673,7 @@ async function readyLanes(department, settings) {
     // and a booked time
     queuedAt: new Date(r.queue_at).getTime(),
     slotStart: r.slot_start ? new Date(`${today()}T${String(r.slot_start).slice(0, 8)}`).getTime() : null,
+    urgent: !!r.is_urgent,
   }));
   return lanes;
 }
@@ -3032,7 +3097,7 @@ async function rebookTicket(txId, { after = null, keepTime = false, reason = nul
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      const newNo = await nextTicketNo(conn, t.department, date, t.queueCategory, true);   // a rebooking always has a time
+      const newNo = await nextTicketNo(conn, t.department, date, t.queueCategory, slot.start);   // a rebooking always has a time
       const [u] = await conn.execute(
         `UPDATE transactions SET ticket_no=?, service_date=?, scheduled_date=?, is_scheduled=1,
            slot_start=?, slot_end=?, queue_at=?, risk_at=NULL, alerts_sent=''
@@ -4001,7 +4066,7 @@ module.exports = {
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
   getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, officeAssignments, windowLines,
-  documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
+  clearUrgent, documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,

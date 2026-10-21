@@ -55,6 +55,7 @@
       <div class="font-mono text-[68px] sm:text-[76px] font-extrabold leading-none tracking-tight mt-1"><%= t.ticketNo %></div>
       <div class="flex flex-wrap justify-center gap-1.5 mt-4 text-[11.5px] font-semibold">
         <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= t.queueCategory === 'priority' ? 'priority' : t.slotStart ? 'booked' : 'regular' %></span>
+        <% if (t.isUrgent && t.ticketStatus === 'waiting') { %><span class="rounded-full bg-white text-red-700 px-2.5 py-1 font-extrabold" title="Urgent purpose: <%= t.purposeText %>">Urgent</span><% } %>
         <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= label(t.ticketStatus) %></span>
         <span class="rounded-full bg-white/15 px-2.5 py-1 capitalize"><%= label(t.paymentStatus) %></span>
       </div>

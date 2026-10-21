@@ -307,7 +307,7 @@ router.get('/settings', async (req, res, next) => {
   try {
     const [settings, load, learning] = await Promise.all([db.getSettings(), db.getLoad(), db.learningStatus()]);
     res.render('pages/admin/settings', { title: 'System Settings', settings, load, learning,
-      baselineFields: require('../data/timesaved').FIELDS });
+      baselineFields: require('../data/timesaved').FIELDS, purposes: db.PURPOSES.filter(p => p !== 'Others') });
   } catch (e) { next(e); }
 });
 

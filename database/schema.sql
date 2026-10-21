@@ -38,6 +38,7 @@ CREATE TABLE users (
   window_id     INT          DEFAULT NULL,
   priority_status ENUM('none','pwd','senior','pregnant') NOT NULL DEFAULT 'none',
   priority_approved_at TIMESTAMP NULL DEFAULT NULL,
+  priority_until DATE NULL DEFAULT NULL,           -- pregnancy: 2 weeks after the due date (from the proof's weeks)
   failed_logins INT          NOT NULL DEFAULT 0,
   locked_until  TIMESTAMP    NULL DEFAULT NULL,
   password_changed_at TIMESTAMP NULL DEFAULT NULL,
@@ -93,6 +94,7 @@ CREATE TABLE documents (
   guest_allowed    TINYINT(1)    NOT NULL DEFAULT 0,
   baseline_minutes INT           NOT NULL DEFAULT 8,
   processing_days  SMALLINT      NOT NULL DEFAULT 0,  -- days after payment before it can be released (OTR: 14)
+  per_semester     TINYINT(1)    NOT NULL DEFAULT 0,  -- asked per semester (Certificate of Grades): one copy each
   is_active        TINYINT(1)    NOT NULL DEFAULT 1,
   deleted_at       TIMESTAMP     NULL DEFAULT NULL,   -- deleted but kept for old tickets
   INDEX idx_active (is_active)
@@ -174,6 +176,7 @@ CREATE TABLE transactions (
   hold_used       TINYINT(1) NOT NULL DEFAULT 0,     -- the hold can be used once per ticket
   missed_count    TINYINT NOT NULL DEFAULT 0,        -- called but not there: 1 = moved back, 2 = cancelled
   skip_count      TINYINT NOT NULL DEFAULT 0,        -- passed over by smart Call Next (never more than 2)
+  is_urgent       TINYINT(1) NOT NULL DEFAULT 0,     -- its purpose is one the admin marked urgent
 
   requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   called_at       TIMESTAMP NULL DEFAULT NULL,
@@ -205,6 +208,7 @@ CREATE TABLE transaction_documents (
   unit_price     DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   copies         INT           NOT NULL DEFAULT 1,
   price          DECIMAL(10,2) NOT NULL,   -- unit_price * copies
+  detail         VARCHAR(255)  DEFAULT NULL,  -- which semesters (per-semester documents)
   INDEX idx_tx (transaction_id),
   CONSTRAINT fk_td_tx  FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
   CONSTRAINT fk_td_doc FOREIGN KEY (document_id)    REFERENCES documents(id)
@@ -296,6 +300,7 @@ CREATE TABLE settings (
   announcement          VARCHAR(255) DEFAULT 'Please watch the screen for your number.',
   learn_from            DATETIME NULL DEFAULT NULL,  -- services before this are not learned from
   full_day_mode         ENUM('warn','decline') NOT NULL DEFAULT 'warn',  -- today's line cannot take more
+  urgent_purposes       VARCHAR(600) DEFAULT NULL,   -- purposes that make a request urgent (comma list)
   time_baseline         TEXT NULL,                    -- the current process, minutes per step (Time saved report)
   updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -397,6 +402,7 @@ CREATE TABLE priority_requests (
   status       ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
   reason       VARCHAR(255) DEFAULT NULL,      -- why it was rejected
   reason_code  VARCHAR(16)  DEFAULT NULL,      -- blurred / expired (may retry), mismatch / invalid / other
+  weeks_pregnant TINYINT    DEFAULT NULL,        -- read from the prenatal proof by the reviewer
   reviewed_by  INT DEFAULT NULL,
   reviewer_name VARCHAR(120) DEFAULT NULL,
   reviewed_at  TIMESTAMP NULL DEFAULT NULL,

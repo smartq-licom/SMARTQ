@@ -8,6 +8,14 @@
  *   score = minutes already waited              (aging: first come stays the base)
  *         + 8 per time passed over              (aging speeds up for anyone skipped)
  *         + 15 if their booked time has come    (an appointment is honoured)
+ *         + 15 if the purpose is urgent         (purposes the admin marks urgent in Settings)
+ *
+ * Each lane is a priority queue kept as a binary heap (data/heap.js): the
+ * client with the highest score sits at the top and Call Next takes it.
+ * Every waiting client gains the same 1 point per minute, so the order inside
+ * a lane never changes just because time passes: it is fixed by
+ *   key = time joined - 15 (booked due) - 15 (urgent) - 8 x times passed over
+ * (in minutes, smallest first), which is why a heap can hold it.
  *
  * and the highest score is called, except that whoever was first when the
  * last number was called ("you are next" on their ticket) is never passed:
@@ -58,6 +66,7 @@
  */
 const pool    = require('../database/connection');
 const predict = require('./prediction');
+const { BinaryHeap } = require('./heap');
 
 const q = async (sql, p = []) => (await pool.query(sql, p))[0];
 
@@ -65,7 +74,7 @@ const LOOK_AHEAD  = 3;      // how deep into the lane a window may look
 const MAX_SKIPS   = 2;      // nobody is passed over more than this
 const SLOWER_BY   = 1.15;   // "clearly slower": 15% or more than the fastest open window
 const MIN_SAVING  = 2;      // minutes a shorter task must save to be worth a skip
-const SCORE = { WAIT: 1, PASSED: 8, BOOKED_DUE: 15 };
+const SCORE = { WAIT: 1, PASSED: 8, BOOKED_DUE: 15, URGENT: 15 };
 const PEAK_PER_WINDOW = 3;  // this many ready clients per open window = a rush right now
 const PRIOR_N     = 10;     // blend weight while a staff member has few services
 const RESERVE_SECONDS = 120; // how long a client is saved for the best free window
@@ -155,6 +164,7 @@ function scoreOf(x, { now, peak, avgSvc }) {
   parts.push(`waited ${Math.round(waited)} min`);
   if (x.skip) { s += x.skip * SCORE.PASSED; parts.push(`passed over ${x.skip}x +${x.skip * SCORE.PASSED}`); }
   if (x.slotStart && now >= x.slotStart) { s += SCORE.BOOKED_DUE; parts.push(`booked time has come +${SCORE.BOOKED_DUE}`); }
+  if (x.urgent) { s += SCORE.URGENT; parts.push(`urgent purpose +${SCORE.URGENT}`); }
   return { score: Math.round(s), parts };
 }
 
@@ -171,9 +181,19 @@ const readyTime = x => (x.readyAt != null ? x.readyAt : Math.max(x.queuedAt || 0
 function rankLane(list, ctx) {
   list.forEach((x, i) => { x._fcfs = i; x._score = scoreOf(x, ctx); });
   const forced = x => x.skip >= MAX_SKIPS;
-  return list.slice().sort((a, b) =>
-    (forced(b) - forced(a)) ||
-    (forced(a) && forced(b) ? a._fcfs - b._fcfs : (b._score.score - a._score.score) || (a._fcfs - b._fcfs)));
+  // a must be called before b: passed over twice first (in arrival order),
+  // then the higher score, ties by arrival
+  const before = (a, b) => {
+    if (forced(a) !== forced(b)) return forced(a);
+    if (forced(a)) return a._fcfs < b._fcfs;
+    if (a._score.score !== b._score.score) return a._score.score > b._score.score;
+    return a._fcfs < b._fcfs;
+  };
+  // the lane as a binary heap (built in O(n)); popping it gives the calling
+  // order, the top first (each pop O(log n))
+  const heap = BinaryHeap.from(list, before), order = [];
+  while (heap.size) order.push(heap.pop());
+  return order;
 }
 
 /**
