@@ -3304,16 +3304,26 @@ async function recallTicket(staff, txId) {
 }
 
 // ── AUTO-CANCEL (never touches a paid transaction) ───────────────────────────
+// How long a client may stay at the window before "Auto-cancelled: inactive":
+// the Settings limit, or 1.5 x that ticket's expected service time when it is
+// longer (many documents), so a long transaction is never cut off mid-way.
+// One placeholder: the Settings limit in minutes.
+const SERVING_LIMIT_SQL = 'GREATEST(?, CEIL(COALESCE(predicted_service, 0) * 1.5))';
+const servingLimit = (s, predicted) => Math.max(s.cancelAfterMinutes, Math.ceil((Number(predicted) || 0) * 1.5));
+
 async function processAutoCancel() {
   const s = await getSettings();
 
   // 1. Warn a client who has been called but has not finished at the window.
+  //    At the window, the limit is that ticket's own (SERVING_LIMIT_SQL): a
+  //    claim of 8 documents expected to take 26 minutes is not "inactive" at 15.
   const warned = await run(
     `UPDATE transactions SET warned_at=NOW()
      WHERE ticket_status IN ('called','serving') AND payment_status <> 'paid'
        AND warned_at IS NULL AND called_at IS NOT NULL
-       AND TIMESTAMPDIFF(MINUTE, called_at, NOW()) >= ?`,
-    [Math.max(0, s.cancelAfterMinutes - s.warnBeforeMinutes)]);
+       AND TIMESTAMPDIFF(MINUTE, COALESCE(started_at, called_at), NOW()) >=
+           (CASE WHEN ticket_status='serving' THEN ${SERVING_LIMIT_SQL} ELSE ? END) - ?`,
+    [s.cancelAfterMinutes, s.cancelAfterMinutes, s.warnBeforeMinutes]);
 
   // 2. Called but never showed up at the window.
   const noShow = await run(
@@ -3330,7 +3340,7 @@ async function processAutoCancel() {
        cancel_reason='Auto-cancelled: inactive', completed_at=NOW()
      WHERE ticket_status='serving' AND payment_status <> 'paid'
        AND started_at IS NOT NULL
-       AND TIMESTAMPDIFF(MINUTE, started_at, NOW()) >= ?`,
+       AND TIMESTAMPDIFF(MINUTE, started_at, NOW()) >= ${SERVING_LIMIT_SQL}`,
     [s.cancelAfterMinutes]);
 
   // 4. (Removed) Waiting tickets are no longer cancelled after a fixed time.
@@ -3368,10 +3378,12 @@ async function processAutoCancel() {
 async function getTimeLeft(txId) {
   const s = await getSettings();
   const r = await q(
-    `SELECT TIMESTAMPDIFF(SECOND, COALESCE(started_at, called_at), NOW()) AS elapsed
+    `SELECT TIMESTAMPDIFF(SECOND, COALESCE(started_at, called_at), NOW()) AS elapsed,
+            ticket_status, predicted_service
      FROM transactions WHERE id=? AND ticket_status IN ('called','serving')`, [txId]);
   if (!r.length || r[0].elapsed == null) return null;
-  return Math.max(0, s.cancelAfterMinutes * 60 - r[0].elapsed);
+  const limit = r[0].ticket_status === 'serving' ? servingLimit(s, r[0].predicted_service) : s.cancelAfterMinutes;
+  return Math.max(0, limit * 60 - r[0].elapsed);
 }
 
 // ── LIVE QUEUE LOAD ──────────────────────────────────────────────────────────

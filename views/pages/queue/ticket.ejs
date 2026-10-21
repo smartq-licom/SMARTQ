@@ -62,7 +62,14 @@
       <div class="mt-5 rounded-2xl bg-white/15 px-4 py-3">
         <div class="text-[20px] font-extrabold">&#128075; It is your turn</div>
         <div class="text-[13px] text-white/85">Proceed to <strong><%= t.windowLabel || t.department %></strong>.</div>
-        <% if (timeLeft != null && t.paymentStatus !== 'paid') { %>
+        <%# Called: the minutes left to reach the window. Being served: when it is
+            usually done (a countdown there read like a deadline for the student). %>
+        <% var doneBy = t.ticketStatus === 'serving' && t.startedAt && t.predictedService
+             ? new Date(new Date(t.startedAt).getTime() + Math.round(t.predictedService) * 60000) : null; %>
+        <% if (doneBy) { var dh = doneBy.getHours(); %>
+        <div class="text-[13px] text-white/85 mt-2">Being served · usually done by</div>
+        <div class="font-mono text-3xl font-extrabold"><%= ((dh % 12) || 12) + ':' + String(doneBy.getMinutes()).padStart(2, '0') + (dh < 12 ? ' AM' : ' PM') %></div>
+        <% } else if (timeLeft != null && t.paymentStatus !== 'paid') { %>
         <div class="font-mono text-3xl font-extrabold mt-1" data-countdown data-seconds="<%= timeLeft %>">--:--</div>
         <% } %>
       </div>
