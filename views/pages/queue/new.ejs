@@ -589,12 +589,13 @@
               if (!rows.length) { box.classList.add('hidden'); return; }
               box.classList.remove('hidden');
 
-              dayEl.textContent = isFuture ? 'on ' + days[dow] : 'today (' + days[dow] + ')';
+              // too few of this weekday on record: the guide is from all days,
+              // so the heading does not name the day
+              var provisional = rows.some(function (r) { return r.a.provisional; });
+              dayEl.textContent = provisional ? '(any day)' : isFuture ? 'on ' + days[dow] : 'today (' + days[dow] + ')';
 
               listEl.innerHTML = '';
-              var provisional = false;
               rows.forEach(function (r) {
-                if (r.a.provisional) provisional = true;
                 var li = document.createElement('li');
                 li.className = 'text-[12.5px] text-slateSoft';
                 var quiet = r.a.quietest

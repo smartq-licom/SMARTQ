@@ -405,10 +405,13 @@ async function advice(department, opts = {}) {
   const p = await hourlyProfile(department, opts);
   if (!p.busiest || p.basis === 'none' || p.basis === 'insufficient') return null;
 
-  // Only recommend a quiet hour if it is meaningfully quieter than the peak.
+  // The quietest open hour by the same measure as the booking calendar's
+  // "Recommended" time (share of the busiest hour's crowding), empty hours
+  // included: an hour nobody came is the quietest, not one to skip. Only when
+  // it is meaningfully quieter than the peak; earliest on a tie.
   const quiet = p.hours
-    .filter(h => !h.isBreak && h.arrivals > 0 && h.share <= 45)
-    .sort((a, b) => a.arrivals - b.arrivals)[0] || null;
+    .filter(h => !h.isBreak && h.share != null && h.share <= 45)
+    .sort((a, b) => a.share - b.share || a.hour - b.hour)[0] || null;
 
   return {
     department: p.department,
