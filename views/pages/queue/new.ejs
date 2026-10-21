@@ -981,7 +981,7 @@ function pickDay(iso, slot) {
 })();
 
 // Booking times: asks the server which 30-minute slots on that date still have
-// room for the chosen documents, and lists them with the places left.
+// room for the chosen documents, and lists them with the slots left.
 var slotAsk = 0;
 function loadSlots(){
   var box = document.getElementById('slotBox');
@@ -1019,7 +1019,7 @@ function loadSlots(){
         lab.querySelectorAll('span')[0].textContent = x.label;
         lab.querySelectorAll('span')[1].textContent = st === 'closed' ? 'Closed'
           : st === 'full' ? 'Fully booked'
-          : x.placesLeft > 1 ? 'about ' + x.placesLeft + ' places left' : x.placesLeft === 1 ? '1 place left' : 'last place';
+          : x.placesLeft > 1 ? 'about ' + x.placesLeft + ' slots left' : x.placesLeft === 1 ? '1 slot left' : 'last slot';
         list.appendChild(lab);
       });
     })
