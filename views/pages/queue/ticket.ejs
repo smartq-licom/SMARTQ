@@ -390,10 +390,10 @@
       <div class="text-[13.5px] font-bold text-emerald-900"><%= rl.name %> released</div>
       <div class="text-[12px] text-emerald-800/80">Collected with <%= rl.claim.ticketNo %>.</div>
       <% } else if (rl.ready) { %>
-      <div class="text-[13.5px] font-bold text-emerald-900">Your <%= rl.name %> is ready for release</div>
+      <div class="text-[13.5px] font-bold text-emerald-900">Your <%= rl.name %> can now be claimed</div>
       <div class="text-[12px] text-emerald-800/80"><%= rl.claim ? 'Your claim is booked below.' : 'Book your claim below, or get a Registrar number and choose "Claim Released Document".' %> Bring your receipt and a valid ID.</div>
       <% } else { %>
-      <div class="text-[13.5px] font-bold text-ink">Ready for release on <%= rl.readyText %></div>
+      <div class="text-[13.5px] font-bold text-ink">Claim from <%= rl.readyText %></div>
       <div class="text-[12px] text-slateSoft/75"><%= rl.name %> &middot; in <%= rl.daysLeft %> day<%= rl.daysLeft === 1 ? '' : 's' %> (it takes <%= rl.days %> days to process).</div>
       <% } %>
     </div>
