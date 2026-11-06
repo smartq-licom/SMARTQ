@@ -69,7 +69,7 @@ const otpLimiter = rateLimit({
 app.use('/login', (req, res, next) => (req.method === 'POST' ? authLimiter(req, res, next) : next()));
 app.use('/forgot-password', authLimiter);
 app.use('/verify',          otpLimiter);
-// Students queue without an account. Booking codes are short, so guessing is
+// Students queue without an account. Queue codes are short, so guessing is
 // slowed down; getting a number allows more, because a whole campus can share
 // one Wi-Fi address.
 const findLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
@@ -78,6 +78,10 @@ app.use('/queue/find', (req, res, next) => (req.method === 'POST' ? findLimiter(
 app.use('/queue/claimables', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/track', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/priority-known', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
+// "Email me my queue code": a few sends per network, so it cannot be used to spam
+const emailLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: 'Too many emails from this network. Please wait a few minutes.' });
+app.use('/queue/t', (req, res, next) => (req.method === 'POST' && /\/email$/.test(req.path) ? emailLimiter(req, res, next) : next()));
 const newTicketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false,
   message: 'Too many requests from this network. Please wait a few minutes and try again.' });
 app.use('/queue/new', (req, res, next) => (req.method === 'POST' ? newTicketLimiter(req, res, next) : next()));

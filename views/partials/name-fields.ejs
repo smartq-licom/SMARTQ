@@ -5,8 +5,8 @@
   const pre = v.prefix || '';
   const id  = function (n) { return pre ? pre + n.charAt(0).toUpperCase() + n.slice(1) : n; };
   const nm  = function (n) { return pre ? pre + n.charAt(0).toUpperCase() + n.slice(1) : n; };
-  const mid = v.middleName || '';
-  const none = mid.trim().toUpperCase() === 'N/A';
+  // optional; an old "N/A" (from the former "no middle name" box) shows as empty
+  const mid = String(v.middleName || '').trim().toUpperCase() === 'N/A' ? '' : (v.middleName || '');
 %>
 <div class="<%= v.gridClass || 'grid sm:grid-cols-3 gap-3' %>">
   <div>
@@ -16,16 +16,10 @@
            minlength="2" maxlength="50" autocapitalize="words" data-name-only>
   </div>
   <div>
-    <label for="<%= id('middleName') %>" class="<%= v.lblClass %>">Middle name *</label>
+    <label for="<%= id('middleName') %>" class="<%= v.lblClass %>">Middle name <span class="font-normal text-slateSoft/70">(optional)</span></label>
     <input id="<%= id('middleName') %>" name="<%= nm('middleName') %>" class="<%= v.inputClass %>"
            value="<%= mid %>" autocomplete="additional-name"
-           maxlength="50" autocapitalize="words" data-name-only
-           <%= none ? 'readonly' : '' %> data-middle>
-    <label class="flex items-center gap-2 mt-1.5 text-[12px] <%= v.noneClass || 'text-slateSoft/80' %>">
-      <input type="checkbox" data-middle-none <%= none ? 'checked' : '' %>
-             onchange="middleNone(this)" class="rounded">
-      I have no middle name
-    </label>
+           maxlength="50" autocapitalize="words" data-name-only data-middle>
   </div>
   <div>
     <label for="<%= id('lastName') %>" class="<%= v.lblClass %>">Last name *</label>
@@ -35,12 +29,6 @@
   </div>
 </div>
 <script>
-// Ticking "no middle name" writes N/A so the record is never ambiguous.
-function middleNone(box){
-  var field = box.closest('div').parentElement.querySelector('[data-middle]');
-  if (box.checked) { field.value = 'N/A'; field.readOnly = true; }
-  else { if (field.value === 'N/A') field.value = ''; field.readOnly = false; field.focus(); }
-}
 // Input limits, as you type: names keep letters (ñ and accents too), spaces
 // and . ' - (as in "Ma. Dela Cruz-O'Neil"); [data-digits] fields keep digits
 // only, up to their maxlength. The server checks the same (db.detailsError).
@@ -50,8 +38,10 @@ if (!window.smartqInputLimits) {
     var f = e.target;
     if (!f || !f.matches) return;
     var v = f.value, out = v;
+    // names: the first letter of every word is a capital ("dela cruz" -> "Dela Cruz")
     if (f.matches('[data-name-only]') && v !== 'N/A')
-      out = v.replace(/[^\p{L}\p{M} .'\-]/gu, '').replace(/ {2,}/g, ' ').replace(/^[ .'\-]+/, '');
+      out = v.replace(/[^\p{L}\p{M} .'\-]/gu, '').replace(/ {2,}/g, ' ').replace(/^[ .'\-]+/, '')
+             .replace(/(^|[ \-])(\p{Ll})/gu, function (m, a, c) { return a + c.toUpperCase(); });
     else if (f.matches('[data-digits]'))
       out = v.replace(/\D/g, '').slice(0, f.maxLength > 0 ? f.maxLength : 20);
     if (out !== v) {
@@ -61,9 +51,4 @@ if (!window.smartqInputLimits) {
     }
   });
 }
-document.querySelectorAll('[data-middle]').forEach(function(f){
-  f.form && f.form.addEventListener('submit', function(){
-    if (!f.value.trim()) f.value = 'N/A';
-  });
-});
 </script>

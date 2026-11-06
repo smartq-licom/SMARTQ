@@ -369,14 +369,14 @@
                   <div class="claim-step" data-claim-find>
                     <div class="text-[13px] font-bold text-ink">Find what you paid for at the Cashier</div>
                     <p class="text-[12px] text-slateSoft/75 mt-0.5">Enter your details exactly as on your Cashier ticket.</p>
-                    <div class="claim-who mt-3" role="tablist" aria-label="Who is claiming">
+                    <div class="claim-who mt-3" role="tablist" aria-label="Who is claiming" hidden>
                       <button type="button" role="tab" data-claim-as="student" aria-selected="true">I'm a student</button>
                       <button type="button" role="tab" data-claim-as="visitor" aria-selected="false">I'm a visitor</button>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3">
                       <div data-as="student"><label for="lkNo" class="<%= UI.lbl %>">Student number</label>
                         <input id="lkNo" class="<%= UI.input %> font-mono" inputmode="numeric" maxlength="9" placeholder="9 digits" autocomplete="off"></div>
-                      <div data-as="visitor" hidden><label for="lkCode" class="<%= UI.lbl %>">Booking code of your Cashier ticket</label>
+                      <div data-as="visitor" hidden><label for="lkCode" class="<%= UI.lbl %>">Queue code of your Cashier ticket</label>
                         <input id="lkCode" class="<%= UI.input %> font-mono uppercase tracking-[.2em]" maxlength="6" placeholder="e.g. K7MX2Q" autocomplete="off" autocapitalize="characters"></div>
                       <div><label for="lkLast" class="<%= UI.lbl %>">Last name</label><input id="lkLast" class="<%= UI.input %>" autocomplete="off"></div>
                     </div>
@@ -397,7 +397,7 @@
                 </div>
                 <% } %>
                 <% if (!sv.guestAllowed) { %>
-                <p class="mt-1 ml-10 text-[11px] text-slateSoft/60">For enrolled students only</p>
+                
                 <% } %>
                 <% if (sv.needsRequirements && (requirements[sv.id] || []).length) { %>
                 <details class="mt-2 ml-10">
@@ -657,23 +657,10 @@
             <span class="flex-1">Filled in from last time on this phone.</span>
             <button type="button" data-me-clear class="font-bold underline underline-offset-2">Not you? Clear</button>
           </div>
-          <fieldset class="mb-4">
-            <legend class="sr-only">Are you a student?</legend>
-            <div class="grid grid-cols-2 gap-2.5">
-              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
-                <input type="radio" name="clientType" value="student" class="sr-only"
-                       <%= form.clientType !== 'guest' ? 'checked' : '' %> onchange="toggleClient()">
-                <div class="text-[14px] font-bold">I am a student</div>
-                <div class="text-[12px] text-slateSoft/80 mt-0.5">Enrolled or former LICOM student</div>
-              </label>
-              <label class="rounded-2xl border-2 transition has-[:checked]:shadow-card px-4 py-3 cursor-pointer border-hair has-[:checked]:border-brand has-[:checked]:bg-brand-wash has-[:checked]:ring-4 has-[:checked]:ring-brand/10">
-                <input type="radio" name="clientType" value="guest" class="sr-only"
-                       <%= form.clientType === 'guest' ? 'checked' : '' %> onchange="toggleClient()">
-                <div class="text-[14px] font-bold">I am a visitor</div>
-                <div class="text-[12px] text-slateSoft/80 mt-0.5">Parent, applicant or other client</div>
-              </label>
-            </div>
-          </fieldset>
+          <%# Students only (panel revision): no visitor option. The radios stay,
+              hidden, so the form's scripts keep their student/visitor logic. %>
+          <input type="radio" name="clientType" value="student" class="sr-only" checked hidden onchange="toggleClient()">
+          <input type="radio" name="clientType" value="guest" class="sr-only" disabled hidden>
           <%- include('../../partials/name-fields', { nf: {
                 firstName: form.firstName || '', middleName: form.middleName || '',
                 lastName: form.lastName || '',
@@ -705,6 +692,13 @@
                 <% }) %>
               </select>
             </div>
+          </div>
+          <%# optional: the queue code and a link to the ticket are emailed %>
+          <div class="mt-3">
+            <label for="email" class="<%= UI.lbl %>">Email <span class="font-normal text-slateSoft/70">(optional)</span></label>
+            <input id="email" name="email" type="email" inputmode="email" maxlength="120" autocomplete="email" autocapitalize="none"
+                   value="<%= form.email || '' %>" placeholder="juan@gmail.com" class="<%= UI.input %>">
+            <span class="<%= UI.hint %>">We will email your queue code and a link to your ticket.</span>
           </div>
           <label class="mt-4 flex items-start gap-2.5 text-[12.5px] text-slateSoft cursor-pointer">
             <input type="checkbox" data-me-keep checked class="mt-0.5 rounded border-hair text-brand focus:ring-brand/30">
@@ -1052,7 +1046,7 @@ function loadSlots(){
     var d = visitor ? { code: $('#lkCode').value.trim().toUpperCase(), lastName: $('#lkLast').value.trim() }
                     : { studentNo: $('#lkNo').value.trim(), lastName: $('#lkLast').value.trim() };
     if (visitor && (!/^[A-Z0-9]{6}$/.test(d.code) || !d.lastName))
-      return msg('Enter the 6-character booking code from your Cashier ticket and your last name.');
+      return msg('Enter the 6-character queue code from your Cashier ticket and your last name.');
     if (!visitor && (!/^\d{9}$/.test(d.studentNo) || !d.lastName))
       return msg('Enter your 9-digit student number and your last name.');
     var btn = $('[data-claim-go]'); btn.disabled = true; msg('');
@@ -1080,7 +1074,7 @@ function loadSlots(){
           (res.lines.some(function (l) { return !l.ready; })
             ? '<p class="text-[11.5px] text-slateSoft/70">Before its date? Leave it unselected and collect it on its date, or choose it anyway; staff will check if it is done.</p>' : '');
         }
-        $('[data-claim-who]').textContent = d.lastName + ' · ' + (visitor ? 'booking code ' + d.code : d.studentNo);
+        $('[data-claim-who]').textContent = d.lastName + ' · ' + (visitor ? 'queue code ' + d.code : d.studentNo);
         $('[data-claim-find]').hidden = true; $('[data-claim-list]').hidden = false;
         // the same person is the one claiming: fill "Your details" for them
         var type = document.querySelector('input[name=clientType][value=' + (visitor ? 'guest' : 'student') + ']');
@@ -1162,22 +1156,21 @@ function toggleClient(){
 // Remember me on this phone: the details from the last ticket fill the form
 // next time (never on a form the server sent back, which already has them).
 (function () {
-  var KEY = 'smartq.me', FIELDS = ['firstName', 'middleName', 'lastName', 'studentNo', 'course', 'yearLevel'];
+  var KEY = 'smartq.me', FIELDS = ['firstName', 'middleName', 'lastName', 'studentNo', 'course', 'yearLevel', 'email'];
   var form = document.querySelector('form[action="/queue/new"]');
   var note = document.querySelector('[data-me-note]'), keep = document.querySelector('[data-me-keep]');
   if (!form || !keep) return;
   function el(id) { return document.getElementById(id); }
-  // "I have no middle name" follows a saved N/A
+  // middle name is optional: an old saved "N/A" is shown as empty
   function noMiddle(on) {
-    var m = el('middleName'), box = m && m.closest('div').querySelector('[data-middle-none]');
-    if (!m || !box) return;
-    box.checked = on; m.readOnly = on;
+    var m = el('middleName');
+    if (m && on) m.value = '';
   }
   var me = null;
   try { me = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
   var empty = FIELDS.every(function (id) { return !el(id) || !String(el(id).value || '').trim(); });
   if (me && empty && !<%- JSON.stringify(!!formError) %>) {
-    var who = document.querySelector('input[name=clientType][value="' + (me.clientType === 'guest' ? 'guest' : 'student') + '"]');
+    var who = document.querySelector('input[name=clientType][value="student"]');
     if (who) who.checked = true;
     FIELDS.forEach(function (id) { if (el(id) && me[id] != null) el(id).value = me[id]; });
     noMiddle(String(me.middleName || '').toUpperCase() === 'N/A');
@@ -1682,7 +1675,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
         body: 'Pick <b>Join now</b> or <b>Book a time</b>, then tap <b>Next</b>.' },
       // step 3: your details
       { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(1)', title: 'Your information',
-        body: 'Student or visitor, then your name. Students add the <b>9-digit student number</b>, course and year: it keeps one ticket per office per day, and lets you track and claim your documents later.' },
+        body: 'Your name, then your <b>9-digit student number</b>, course and year: it keeps one ticket per office per day, and lets you track and claim your documents later.' },
       { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(2)', extra: true, title: 'Who will claim it',
         body: 'You, or someone for you. A representative brings a signed authorisation letter, their own ID and a copy of yours.' },
       { pane: 3, sel: '.wiz-pane[data-pane="3"] > section:nth-of-type(3)', extra: true, title: 'Priority lane',

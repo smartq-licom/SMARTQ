@@ -9,7 +9,7 @@
   <div class="mb-4">
     <h2 class="text-xl font-extrabold">Find my ticket</h2>
     <p class="text-[13px] text-slateSoft/80 mt-0.5">
-      Lost the page or using another phone? Enter the booking code shown on your ticket.
+      Lost the page or using another phone? Enter the queue code shown on your ticket.
     </p>
   </div>
 
@@ -19,7 +19,7 @@
 
   <form method="POST" action="/queue/find" class="<%= UI.card %> p-5 space-y-4" data-once>
     <div>
-      <label for="code" class="<%= UI.lbl %>">Booking code</label>
+      <label for="code" class="<%= UI.lbl %>">Queue code</label>
       <%# One real input (typing, paste and autofill all work as usual) under six
           boxes that show one character each. %>
       <div class="code-boxes" data-code-boxes>
@@ -31,7 +31,7 @@
       <span id="codeHint" class="<%= UI.hint %>">6 letters or numbers, e.g. K7MX2Q</span>
     </div>
     <div>
-      <label for="who" class="<%= UI.lbl %>">Student number <span class="font-normal text-slateSoft/70">(visitors: last name)</span></label>
+      <label for="who" class="<%= UI.lbl %>">Student number</label>
       <input id="who" name="who" required maxlength="60" autocomplete="off" value="<%= form.who || '' %>" class="<%= UI.input %>">
     </div>
     <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> w-full py-3">Open my ticket</button>

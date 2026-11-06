@@ -6,7 +6,7 @@
  * each office and the expected wait, then asks what the student needs today.
  * The ticket lives behind a secret link (/queue/t/<token>) that is remembered
  * in a cookie on the phone, so reopening /queue shows it again. A six-letter
- * booking code plus the student number finds it again on any other phone.
+ * queue code plus the student number finds it again on any other phone.
  */
 const crypto  = require('crypto');
 const express = require('express');
@@ -237,6 +237,8 @@ router.get('/days', async (req, res, next) => {
 router.post('/new', proofToMemory, async (req, res, next) => {
   try {
     const b = req.body;
+    // students only (panel revision): no new visitor tickets
+    if (b.clientType === 'guest') return renderForm(req, res, { ...b, clientType: 'student' }, 'SmartQ is for LICOM students. Enter your student number to get a queue number.');
     b.queueCategory = b.priorityType ? 'priority' : 'regular';
 
     // Priority needs proof. The ticket starts in the regular lane and moves up
@@ -286,7 +288,7 @@ router.post('/new', proofToMemory, async (req, res, next) => {
         'refused', `${who.user.fullName || 'Client'}: ${r.error}`);
       // the open ticket may be from another phone: say how to get it back
       const msg = r.blockedBy
-        ? `${r.error} If it is not on this phone, use "Find my ticket" with its booking code.`
+        ? `${r.error} If it is not on this phone, use "Find my ticket" with its queue code.`
         : r.error;
       // today is full: the earliest free time is filled in, ready to book
       if (r.dayFull && r.suggest)
@@ -312,6 +314,8 @@ router.post('/new', proofToMemory, async (req, res, next) => {
       req.session.error = 'Heads up: ' + r.notReady.map(n => `your ${n.name} can be claimed from ${n.readyText}`).join('; ') +
         '. It may not be released yet. You can keep this number, or cancel and book a time on or after that date.';
     }
+    // optional email: the queue code and a link to the ticket (never blocks the ticket)
+    if (r.email) emailQueueCode(req, r).catch(e => console.error('[MAIL]', e.message));
     res.redirect('/queue/t/' + r.accessToken + '?new=1');   // the ticket "prints" once
   } catch (e) { next(e); }
 });
@@ -321,7 +325,7 @@ router.get('/find', (req, res) =>
   res.render('pages/queue/find', { title: 'Find My Ticket', form: {}, formError: null }));
 
 // "Track my documents": every document of a student (number + last name) or of a
-// visitor's Cashier ticket (booking code + last name), step by step. Rate-limited.
+// visitor's Cashier ticket (queue code + last name), step by step. Rate-limited.
 router.get('/track', (req, res) =>
   res.render('pages/queue/track', { title: 'Track My Documents', form: { as: 'student' }, lines: null, formError: null }));
 router.post('/track', async (req, res, next) => {
@@ -331,7 +335,7 @@ router.post('/track', async (req, res, next) => {
     const lines = await db.trackDocuments(visitor ? { code: b.code, lastName: b.lastName } : { studentNo: b.studentNo, lastName: b.lastName });
     res.render('pages/queue/track', {
       title: 'Track My Documents', form: { ...b, as: visitor ? 'visitor' : 'student' }, lines,
-      formError: lines ? null : (visitor ? 'No match. Check the booking code on your Cashier ticket and your last name.'
+      formError: lines ? null : (visitor ? 'No match. Check the queue code on your Cashier ticket and your last name.'
                                          : 'No match. Check your student number and last name, exactly as on your ticket.'),
     });
   } catch (e) { next(e); }
@@ -345,7 +349,7 @@ router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next
     const visitor = b.code != null;
     const lines = visitor ? await db.findClaimablesByCode(b) : await db.findClaimables(b);
     if (!lines) return res.json({ ok: false, error: visitor
-      ? 'No match. Check the booking code on your Cashier ticket and your last name.'
+      ? 'No match. Check the queue code on your Cashier ticket and your last name.'
       : 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
     res.json({ ok: true, lines, fees: lines.fees || [] });
   } catch (e) { next(e); }
@@ -379,7 +383,7 @@ router.post('/find', async (req, res, next) => {
     if (!token) {
       return res.status(400).render('pages/queue/find', {
         title: 'Find My Ticket', form: req.body,
-        formError: 'No ticket matches that booking code and student number (or last name).',
+        formError: 'No ticket matches that queue code and student number (or last name).',
       });
     }
     remember(req, res, token);
@@ -434,6 +438,26 @@ router.get('/t/:token', async (req, res, next) => {
       holdChoices: holdChoices(await db.getSettings()),
       base: '/queue/t/' + t.accessToken,
     });
+  } catch (e) { next(e); }
+});
+
+/** Email a ticket's queue code and link (the address on the ticket). */
+async function emailQueueCode(req, t) {
+  const base = (req.get('x-forwarded-proto') || req.protocol) + '://' + req.get('host');
+  return require('../data/mailer').sendQueueCode(t.email, t.firstName || 'there', t, base + '/queue/t/' + t.accessToken);
+}
+
+// "Email me my queue code" from the ticket page (rate-limited in app.js)
+router.post('/t/:token/email', async (req, res, next) => {
+  try {
+    const t = await ticketOr404(req, res);
+    if (!t) return;
+    const err = await db.setTicketEmail(t.id, req.body.email);
+    if (err) { req.session.error = err; return res.redirect('/queue/t/' + t.accessToken); }
+    const fresh = await db.getTransaction(t.id);
+    await emailQueueCode(req, fresh);
+    req.session.flash = `Sent: your queue code ${fresh.bookingCode} is on its way to ${fresh.email}.`;
+    res.redirect('/queue/t/' + t.accessToken);
   } catch (e) { next(e); }
 });
 
@@ -536,7 +560,7 @@ router.post('/t/:token/rebook', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Take a ticket off this phone's list (it stays valid for its booking code).
+// Take a ticket off this phone's list (it stays valid for its queue code).
 router.post('/t/:token/forget', (req, res) => {
   writeTokens(res, savedTokens(req).filter(t => t !== req.params.token));
   res.redirect('/queue');

@@ -177,6 +177,7 @@ CREATE TABLE transactions (
   missed_count    TINYINT NOT NULL DEFAULT 0,        -- called but not there: 1 = moved back, 2 = cancelled
   skip_count      TINYINT NOT NULL DEFAULT 0,        -- passed over by smart Call Next (never more than 2)
   is_urgent       TINYINT(1) NOT NULL DEFAULT 0,     -- its purpose is one the admin marked urgent
+  email           VARCHAR(120) DEFAULT NULL,         -- optional: where the queue code was emailed
 
   requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   called_at       TIMESTAMP NULL DEFAULT NULL,

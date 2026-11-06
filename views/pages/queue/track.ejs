@@ -16,7 +16,7 @@
 
   <form method="POST" action="/queue/track" class="<%= UI.card %> p-5 space-y-4" data-once data-track>
     <input type="hidden" name="as" value="<%= form.as %>">
-    <div class="trk-who" role="tablist" aria-label="Who is checking">
+    <div class="trk-who" role="tablist" aria-label="Who is checking" hidden>
       <button type="button" role="tab" data-as="student" aria-selected="<%= form.as !== 'visitor' %>">I'm a student</button>
       <button type="button" role="tab" data-as="visitor" aria-selected="<%= form.as === 'visitor' %>">I'm a visitor</button>
     </div>
@@ -26,7 +26,7 @@
              value="<%= form.studentNo || '' %>" class="<%= UI.input %> font-mono">
     </div>
     <div data-for="visitor" <%= form.as === 'visitor' ? '' : 'hidden' %>>
-      <label for="code" class="<%= UI.lbl %>">Booking code of your Cashier ticket</label>
+      <label for="code" class="<%= UI.lbl %>">Queue code of your Cashier ticket</label>
       <input id="code" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="e.g. K7MX2Q"
              value="<%= form.code || '' %>" class="<%= UI.input %> font-mono uppercase tracking-[.2em]">
     </div>

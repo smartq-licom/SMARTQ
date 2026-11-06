@@ -231,6 +231,12 @@ const STEPS = [
     add:   'ALTER TABLE priority_requests ADD COLUMN weeks_pregnant TINYINT NULL',
   },
   {
+    name: 'email a queue code is sent to (transactions.email, optional)',
+    check: `SELECT COUNT(*) AS has FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'email'`,
+    add:   'ALTER TABLE transactions ADD COLUMN email VARCHAR(120) NULL',
+  },
+  {
     name: 'phone notifications (Web Push) subscribed per ticket',
     sql: `CREATE TABLE IF NOT EXISTS push_subscriptions (
       id             INT AUTO_INCREMENT PRIMARY KEY,

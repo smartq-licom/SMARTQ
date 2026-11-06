@@ -319,12 +319,13 @@ const STUDENT_NO_RE = /^\d{9}$/;
 // name may be N/A. Phone: a PH mobile number, 09 + 9 digits.
 const NAME_RE  = /^[\p{L}][\p{L}\p{M} .'\-]{1,49}$/u;
 const PHONE_RE = /^09\d{9}$/;
+const EMAIL_RE = /^[^\s@<>]{1,64}@[^\s@<>]+\.[^\s@<>]{2,}$/;   // optional email for the queue code
 const TEXT_RE  = /^[^<>{}[\]\\]{2,100}$/;      // free text ("Others" purpose)
 function detailsError(b) {
   const nm = v => String(v || '').trim().replace(/\s+/g, ' ');
   if (!NAME_RE.test(nm(b.firstName))) return "First name: letters only (spaces, . ' - allowed), 2 to 50 characters.";
   const mid = nm(b.middleName);
-  if (mid && mid.toUpperCase() !== 'N/A' && !NAME_RE.test(mid)) return 'Middle name: letters only, or tick "I have no middle name".';
+  if (mid && mid.toUpperCase() !== 'N/A' && !NAME_RE.test(mid)) return 'Middle name: letters only, or leave it empty.';
   if (!NAME_RE.test(nm(b.lastName))) return "Last name: letters only (spaces, . ' - allowed), 2 to 50 characters.";
   if (b.claimant === 'representative') {
     if (!NAME_RE.test(nm(b.repName))) return "Representative's name: letters only, 2 to 50 characters.";
@@ -332,6 +333,8 @@ function detailsError(b) {
     if (String(b.repContact || '').trim() && !PHONE_RE.test(String(b.repContact).replace(/[\s-]/g, '')))
       return 'Contact number: 11 digits starting with 09, like 09171234567.';
   }
+  const email = String(b.email || '').trim();
+  if (email && (email.length > 120 || !EMAIL_RE.test(email))) return 'Email: check the address, like juan@gmail.com (or leave it empty).';
   if (b.purpose === 'Others' && String(b.otherPurpose || '').trim() && !TEXT_RE.test(String(b.otherPurpose).trim()))
     return 'Purpose: 2 to 100 characters, no special symbols.';
   return null;
@@ -1487,7 +1490,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     if (!String(b.repRelationship || '').trim())
       return { error: 'State how the representative is related to you.' };
     rep.claimant     = 'representative';
-    rep.name         = String(b.repName).trim();
+    rep.name         = cleanName(b.repName);
     rep.relationship = String(b.repRelationship).trim();
     rep.contact      = String(b.repContact || '').replace(/[\s-]/g, '') || null;
     rep.authFile     = b.repAuthFile || null;
@@ -1529,7 +1532,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
       ? await guestClaimableLines(ticked, b.lastName)
       : await getClaimableLines(user.id);
     if (!available.length && user.role === 'guest')
-      return { error: 'Find what you paid for with the booking code of your Cashier ticket, then tick what to collect.' };
+      return { error: 'Find what you paid for with the queue code of your Cashier ticket, then tick what to collect.' };
     if (!available.length) {
       const cashierOpen = await getBlockingTransaction(user.id, 'Cashier');
       return { error: cashierOpen && cashierOpen.paymentStatus !== 'paid'
@@ -1629,12 +1632,12 @@ async function createRequest(user, b, { walkIn = false } = {}) {
          purpose,other_purpose,amount_due,ticket_status,payment_status,overall_status,
          is_scheduled,scheduled_date,service_date,submit_token,requires_claim,
          predicted_wait,predicted_service,prediction_source,
-         access_token,booking_code,queue_at,slot_start,slot_end,is_urgent)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         access_token,booking_code,queue_at,slot_start,slot_end,is_urgent,email)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'waiting',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [ ticketNo, department, category, pType, user.id,
         user.role === 'guest' ? 'guest' : 'student',
-        String(b.firstName).trim(), String(b.middleName || '').trim() || null,
-        String(b.lastName).trim(), user.role === 'student' ? accountStudentNo : null,
+        cleanName(b.firstName), cleanName(b.middleName) || null,
+        cleanName(b.lastName), user.role === 'student' ? accountStudentNo : null,
         b.course || null, b.yearLevel ? +b.yearLevel : null,
         b.academicYear || s.academicYear,
         rep.claimant, rep.name, rep.relationship, rep.contact, rep.authFile,
@@ -1647,7 +1650,8 @@ async function createRequest(user, b, { walkIn = false } = {}) {
         forecast.wait, forecast.service, forecast.source,
         crypto.randomBytes(16).toString('hex'), bookingCode(),
         queueAt, slot ? slot.start : null, slot ? slot.end : null,
-        purpose && s.urgentPurposes.includes(purpose) ? 1 : 0 ]
+        purpose && s.urgentPurposes.includes(purpose) ? 1 : 0,
+        String(b.email || '').trim().toLowerCase() || null ]
     );
     const txId = ins.insertId;
 
@@ -1756,7 +1760,10 @@ async function getBlockingTransaction(userId, department = null, serviceDate = n
 /** "Dela Cruz" == "dela cruz" == "Dela  Cruz" == "Déla Cruz" */
 const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().replace(/[^a-z]/g, '');
-const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim();
+// one space between words, and the first letter of every word a capital
+// ("dela cruz" -> "Dela Cruz"; the rest is kept as typed: "McDonald")
+const cleanName = s => String(s || '').replace(/\s+/g, ' ').trim()
+  .replace(/(^|[ \-])(\p{Ll})/gu, (m, a, c) => a + c.toUpperCase());
 
 /**
  * A student approved earlier skips the photo: the same student number and last
@@ -1866,7 +1873,7 @@ async function getTransactionByToken(token) {
 }
 
 /**
- * Find a ticket by booking code plus the student number (or, for visitors,
+ * Find a ticket by queue code plus the student number (or, for visitors,
  * the last name). Only tickets from the last 60 days are searched.
  */
 async function findTicketByCode(code, who) {
@@ -1888,6 +1895,14 @@ async function findTicketByCode(code, who) {
  * for staff at the window.
  */
 /** Staff take the "Urgent" tag off a waiting ticket whose purpose is not really urgent. */
+/** "Email me my queue code": keep the address on the ticket. Returns an error or null. */
+async function setTicketEmail(txId, email) {
+  email = String(email || '').trim().toLowerCase();
+  if (!email || email.length > 120 || !EMAIL_RE.test(email)) return 'Check the email address, like juan@gmail.com.';
+  await run('UPDATE transactions SET email=? WHERE id=?', [email, txId]);
+  return null;
+}
+
 async function clearUrgent(staff, txId) {
   const t = await getTransaction(txId);
   const dept = staff.role === 'cashier' ? 'Cashier' : 'Registrar';
@@ -1962,7 +1977,8 @@ function mapTx(t) {
     // blank for documents that do not ask for a purpose
     purposeText: !t.purpose ? ''
       : (t.purpose === 'Others' ? (t.other_purpose || 'Others') : t.purpose),
-    isUrgent: !!t.is_urgent,                     // its purpose is one the admin marks urgent
+    isUrgent: !!t.is_urgent,
+    email: t.email || '',                        // optional: where the queue code is emailed                     // its purpose is one the admin marks urgent
     amountDue: Number(t.amount_due),
     ticketStatus: t.ticket_status, paymentStatus: t.payment_status,
     overallStatus: t.overall_status,
@@ -2361,7 +2377,7 @@ async function claimLineIds(claimTxId) {
   return (await q('SELECT line_id FROM claim_items WHERE claim_tx_id=?', [claimTxId])).map(r => r.line_id);
 }
 
-/** "Track my documents": a student by number + last name, a visitor by booking code + last name. */
+/** "Track my documents": a student by number + last name, a visitor by queue code + last name. */
 async function trackDocuments({ studentNo, code, lastName } = {}) {
   if (code != null) {
     code = String(code || '').trim().toUpperCase();
@@ -2579,7 +2595,7 @@ async function recentFees(who, params) {
 
 /**
  * Visitors have no student number: they find what they paid for with the
- * booking code of their Cashier ticket and their last name.
+ * queue code of their Cashier ticket and their last name.
  */
 async function findClaimablesByCode({ code, lastName } = {}) {
   code = String(code || '').trim().toUpperCase();
@@ -3310,7 +3326,7 @@ async function announcementPulse(department) {
  */
 async function announcementPulseFor(txId, userId) {
   const r = await q(
-    `SELECT t.ticket_status, t.service_date,
+    `SELECT t.ticket_status, t.service_date, t.window_label, t.department,
             (SELECT MAX(a.id) FROM announcements a WHERE a.transaction_id = t.id) AS call_id,
             (SELECT COUNT(*) FROM transactions x
               WHERE x.department = t.department AND x.service_date = t.service_date
@@ -3334,6 +3350,8 @@ async function announcementPulseFor(txId, userId) {
     status: t.ticket_status,
     today: isToday,
     ahead,
+    // where to go when called (the ticket page's pop-up says it)
+    window: t.window_label || t.department,
   };
 }
 
@@ -4066,7 +4084,7 @@ module.exports = {
   addDocumentRequirement, deleteDocumentRequirement,
   getTransactionRequirements, setTransactionRequirements, getRequirementsForClaim,
   getServiceAverages, estimateMinutes, getEstimationTable, resetLearning, learningStatus, officeAssignments, windowLines,
-  clearUrgent, documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
+  clearUrgent, setTicketEmail, documentTracker, claimLineIds, trackDocuments, prepTimes, readyMoment, handledBy, earliestSlot, moveClosedDay, rememberedPriority, noteRememberedPriority, PRIORITY_REMEMBER_DAYS, CLAIM_EXTRA_SHARE, callReason,
   predict, peak,
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,

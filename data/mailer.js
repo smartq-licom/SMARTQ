@@ -131,6 +131,45 @@ This is an automated message. Please do not reply.`;
   return sendMail({ to, subject, text, html });
 }
 
+/** The queue code, the number and a link to the ticket, so it can be opened on any phone. */
+async function sendQueueCode(to, name, t, link) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const when = t.slotLabel ? `${t.visitDateText}, ${t.slotLabel}` : t.visitDateText;
+  const subject = `SmartQ: your queue code ${t.bookingCode} (${t.ticketNo})`;
+  const text =
+`SmartQ - Libon Community College
+
+Hi ${name},
+
+Your queue number: ${t.ticketNo} (${t.department})
+Your queue code:   ${t.bookingCode}
+Visit:             ${when}
+
+Open your ticket: ${link}
+Or tap Find my ticket in SmartQ and enter the queue code with your student number.
+
+This is an automated message. Please do not reply.`;
+  const html = `
+  <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#303841">
+    <h2 style="margin:0 0 4px">SmartQ</h2>
+    <p style="margin:0 0 20px;color:#3A4750;font-size:13px">Libon Community College</p>
+    <p style="font-size:14px">Hi ${esc(name)}, here is your ticket for the ${esc(t.department)}.</p>
+    <div style="background:#E7F1FA;border-radius:12px;padding:18px;text-align:center;margin:16px 0">
+      <div style="font-size:12px;letter-spacing:2px;color:#3A4750">QUEUE NUMBER</div>
+      <div style="font-size:36px;font-weight:800;color:#1A6CAE">${esc(t.ticketNo)}</div>
+      <div style="font-size:12px;letter-spacing:2px;color:#3A4750;margin-top:10px">QUEUE CODE</div>
+      <div style="font-size:28px;font-weight:800;letter-spacing:6px;color:#0F4C81">${esc(t.bookingCode)}</div>
+    </div>
+    <p style="font-size:14px;margin:0 0 16px"><strong>Visit:</strong> ${esc(when)}</p>
+    <p style="text-align:center;margin:0 0 18px"><a href="${esc(link)}" style="display:inline-block;background:#2185D5;color:#fff;
+       text-decoration:none;font-weight:700;padding:12px 22px;border-radius:12px">Open my ticket</a></p>
+    <p style="font-size:13px;color:#3A4750">On another phone: tap <strong>Find my ticket</strong> in SmartQ and enter
+       the queue code with your student number.</p>
+    <p style="font-size:11px;color:#78838C;border-top:1px solid #DFE2E6;padding-top:12px">Automated message - please do not reply.</p>
+  </div>`;
+  return sendMail({ to, subject, text, html });
+}
+
 /** Told the student their priority request was decided. */
 async function sendPriorityDecision(to, name, category, approved, reason) {
   const label = { pwd: 'PWD', senior: 'Senior Citizen', pregnant: 'Pregnant' }[category] || category;
@@ -143,4 +182,4 @@ async function sendPriorityDecision(to, name, category, approved, reason) {
   return sendMail({ to, subject, text, html: `<pre style="font-family:Inter,Arial,sans-serif">${text}</pre>` });
 }
 
-module.exports = { sendMail, sendOtp, sendCalled, sendPriorityDecision, HAS_SMTP };
+module.exports = { sendMail, sendOtp, sendCalled, sendQueueCode, sendPriorityDecision, HAS_SMTP };

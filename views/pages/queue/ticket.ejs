@@ -84,7 +84,7 @@
     <%# the code keeps its full width; on a narrow phone the note goes under it %>
     <div class="px-6 py-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
       <div class="shrink-0" data-tour-code>
-        <div class="text-[10.5px] uppercase tracking-[.2em] text-white/65 whitespace-nowrap">Booking code</div>
+        <div class="text-[10.5px] uppercase tracking-[.2em] text-white/65 whitespace-nowrap">Queue code</div>
         <div class="font-mono text-[26px] font-extrabold tracking-[.22em] leading-tight whitespace-nowrap"><%= t.bookingCode %></div>
       </div>
       <p class="flex-1 min-w-[10rem] text-[11px] text-white/75 leading-snug">
@@ -196,6 +196,129 @@
   </div>
   <% } %>
   </div>
+
+  <%# The queue code by email: on the form, or here any time later %>
+  <% if (t.bookingCode && !['completed', 'cancelled', 'no-show'].includes(t.ticketStatus)) { %>
+  <details class="mt-3 rounded-2xl bg-white border border-hair/80 shadow-card px-4 py-3 no-print" <%= t.email ? '' : '' %>>
+    <summary class="cursor-pointer flex items-center gap-2.5 text-[13.5px] font-semibold text-ink">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="text-brand shrink-0"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+      <span class="flex-1"><%= t.email ? 'Queue code emailed to ' + t.email : 'Email me my queue code' %></span>
+    </summary>
+    <form method="POST" action="/queue/t/<%= t.accessToken %>/email" class="mt-3 flex gap-2" data-once>
+      <input name="email" type="email" required maxlength="120" autocomplete="email" autocapitalize="none" value="<%= t.email %>"
+             placeholder="juan@gmail.com" class="<%= UI.input %> flex-1" aria-label="Email">
+      <button type="submit" class="<%= UI.btn %> <%= UI.btnMain %> shrink-0"><%= t.email ? 'Send again' : 'Send' %></button>
+    </form>
+  </details>
+  <% } %>
+
+  <%# Pop notification: a banner that drops from the top like a phone
+      notification ("Almost your turn", "You are next", "It's your turn, go to
+      Cashier Window 1", "called again"). It does not block the page, hides
+      itself after 10 seconds, and can be swiped up or closed. Each one shows
+      once per ticket (remembered on this phone). %>
+  <div id="popNote" hidden role="status" aria-live="assertive"
+       data-tx="<%= t.id %>" data-no="<%= t.ticketNo %>" data-status="<%= t.ticketStatus %>"
+       data-call="<%= announcement ? announcement.id : '' %>" data-window="<%= t.windowLabel || t.department %>"
+       class="pop-note no-print" data-pop-tone="next">
+    <span class="pop-ic" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    </span>
+    <span class="pop-txt">
+      <b class="pop-title"></b>
+      <span class="pop-body"></span>
+      <small>SmartQ · now</small>
+    </span>
+    <button type="button" class="pop-x" data-pop-x aria-label="Close">&times;</button>
+    <i class="pop-bar" aria-hidden="true"></i>
+  </div>
+  <style>
+    .pop-note{ position:fixed; z-index:80; top:max(10px, env(safe-area-inset-top)); left:50%; width:min(calc(100% - 20px), 26rem);
+               transform:translateX(-50%); display:flex; gap:12px; align-items:flex-start; padding:14px 14px 16px; border-radius:20px;
+               background:#0F172A; color:#fff; box-shadow:0 18px 40px -12px rgb(0 0 0 / .5); overflow:hidden; touch-action:pan-x;
+               animation:pop-drop .35s cubic-bezier(.2,1.2,.4,1) }
+    .pop-note[hidden]{ display:none }
+    .pop-note.is-out{ transition:transform .25s ease-in, opacity .25s ease-in; transform:translate(-50%, -140%); opacity:0 }
+    .pop-ic{ width:40px; height:40px; flex:none; border-radius:12px; display:grid; place-items:center; color:#fff }
+    .pop-note[data-pop-tone="near"] .pop-ic{ background:#F59E0B }
+    .pop-note[data-pop-tone="next"] .pop-ic{ background:#10B981 }
+    .pop-note[data-pop-tone="called"] .pop-ic{ background:#2185D5 }
+    .pop-txt{ flex:1; min-width:0 }
+    .pop-txt b{ display:block; font-size:15px; font-weight:800; line-height:1.25 }
+    .pop-txt .pop-body{ display:block; font-size:13px; line-height:1.4; color:#CBD5E1; margin-top:2px }
+    .pop-txt small{ display:block; font-size:11px; color:#94A3B8; margin-top:6px }
+    .pop-x{ flex:none; width:28px; height:28px; margin:-4px -4px 0 0; border-radius:50%; font-size:20px; line-height:1; color:#94A3B8 }
+    .pop-bar{ position:absolute; left:0; bottom:0; height:3px; width:100%; transform-origin:left; background:#10B981 }
+    .pop-note[data-pop-tone="near"] .pop-bar{ background:#F59E0B }
+    .pop-note[data-pop-tone="called"] .pop-bar{ background:#2185D5 }
+    .pop-note.is-timing .pop-bar{ animation:pop-time 10s linear forwards }
+    @keyframes pop-drop{ from{ transform:translate(-50%, -140%); opacity:0 } }
+    @keyframes pop-time{ to{ transform:scaleX(0) } }
+    @media (prefers-reduced-motion: reduce){ .pop-note{ animation:none } .pop-note.is-timing .pop-bar{ animation:none } }
+  </style>
+  <script>
+  (function () {
+    var box = document.getElementById('popNote');
+    if (!box) return;
+    var TX = box.dataset.tx, KEY = 'smartq.pop.' + TX, timer = null;
+    function seen() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+    // when each notice was shown (ms), so a reload right after it keeps it on screen
+    function mark(k) { try { var s = seen(); s[k] = Date.now(); localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+    function hide() {
+      clearTimeout(timer);
+      box.classList.add('is-out');
+      setTimeout(function () { box.hidden = true; box.classList.remove('is-out', 'is-timing'); }, 260);
+    }
+    function show(tone, title, body, left, quiet) {
+      clearTimeout(timer);
+      box.dataset.popTone = tone;
+      box.querySelector('.pop-title').textContent = title;
+      box.querySelector('.pop-body').textContent = body;
+      box.classList.remove('is-out', 'is-timing');
+      box.hidden = false;
+      void box.offsetWidth;                         // restart the drop and the timer bar
+      box.querySelector('.pop-bar').style.animationDuration = (left || 10000) + 'ms';
+      box.classList.add('is-timing');
+      if (!quiet && navigator.vibrate) navigator.vibrate([250, 120, 250]);
+      timer = setTimeout(hide, left || 10000);      // hides itself after 10 seconds
+    }
+    box.querySelector('[data-pop-x]').addEventListener('click', hide);
+    // swipe up to dismiss
+    var y0 = null;
+    box.addEventListener('touchstart', function (e) { y0 = e.touches[0].clientY; }, { passive: true });
+    box.addEventListener('touchend', function (e) {
+      if (y0 != null && y0 - e.changedTouches[0].clientY > 30) hide();
+      y0 = null;
+    }, { passive: true });
+    // once per ticket and step; a new call (staff pressed Call again) shows again
+    window.smartqPop = function (key, tone, title, body) {
+      var at = seen()[key], age = at > 1 ? Date.now() - at : Infinity;
+      // already shown: only put it back if the page reloaded within its 10 seconds
+      // (a call reloads the ticket page about 1.5 s later), without vibrating again
+      if (at) { if (age < 9500) show(tone, title, body, 10000 - age, true); return; }
+      mark(key);
+      show(tone, title, body);
+    };
+    function called(callId, win, again) {
+      if (!callId) return;
+      window.smartqPop('call-' + callId, 'called',
+        (again ? 'You are being called again, ' : 'It’s your turn, ') + box.dataset.no,
+        'Go to ' + win + ' now. Bring your ID.');
+    }
+    // opened after being called: say it at once
+    if (['called', 'serving'].indexOf(box.dataset.status) >= 0 && box.dataset.call) called(box.dataset.call, box.dataset.window, false);
+    // called while the page is open (the /pulse check every 1.5 s)
+    var lastCall = box.dataset.call || null;
+    window.addEventListener('smartq:pulse', function (e) {
+      var d = e.detail || {};
+      box.dataset.status = d.status || box.dataset.status;
+      if (d.id && String(d.id) !== String(lastCall) && ['called', 'serving'].indexOf(d.status) >= 0) {
+        called(d.id, d.window || box.dataset.window, !!lastCall);
+        lastCall = d.id;
+      }
+    });
+  })();
+  </script>
 
   <%# "Almost your turn" notices for today's waiting tickets: a banner, a beep,
       a vibration and (if allowed) a phone notification at 5 ahead and when
@@ -601,6 +724,12 @@
     beep();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     notify(text(ahead));
+    // the same notice as a pop-up over the page, until OK
+    if (window.smartqPop) {
+      var t = text(ahead);
+      window.smartqPop('near-' + level, ahead === 0 ? 'next' : 'near', (ahead === 0 ? 'You are next, ' : 'Almost your turn, ') + NO,
+        ahead === 0 ? 'Stay close to the ' + OFFICE + ' window. You will be called shortly.' : t.body);
+    }
   }
 
   window.addEventListener('smartq:pulse', function (e) {
@@ -686,8 +815,8 @@
 <%- include('../../partials/tour', { tourKey: 'ticket', tourSteps: [
       { sel: 'section.stub', title: 'This is your ticket',
         body: 'Your queue number is called on the TV screen in the office and on this phone. You do not need to stand in line: <b>wait anywhere</b>.' },
-      { sel: 'section.stub [data-tour-code]', title: 'Screenshot your booking code',
-        body: 'With this code and your student number (visitors: last name), <b>Find my ticket</b> opens this ticket on any phone.' },
+      { sel: 'section.stub [data-tour-code]', title: 'Screenshot your queue code',
+        body: 'With this code and your student number, <b>Find my ticket</b> opens this ticket on any phone.' },
       { sel: '[data-live="details"] > div', title: 'Your turn and when you\u2019ll be done',
         body: 'Counts down by itself. It shows <b>your turn</b>, when you will be <b>done</b>, and the window you will most likely go to. Near the end it says <b>any moment now</b>.' },
       { sel: '#pushBox', title: 'Turn on alerts',
