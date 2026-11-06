@@ -455,8 +455,13 @@ router.post('/t/:token/email', async (req, res, next) => {
     const err = await db.setTicketEmail(t.id, req.body.email);
     if (err) { req.session.error = err; return res.redirect('/queue/t/' + t.accessToken); }
     const fresh = await db.getTransaction(t.id);
-    await emailQueueCode(req, fresh);
-    req.session.flash = `Sent: your queue code ${fresh.bookingCode} is on its way to ${fresh.email}.`;
+    try {
+      await emailQueueCode(req, fresh);
+      req.session.flash = `Sent: your queue code ${fresh.bookingCode} is on its way to ${fresh.email}.`;
+    } catch (e) {
+      console.error('[MAIL]', e.message);
+      req.session.error = `We could not send the email right now. Your queue code is ${fresh.bookingCode}: take a screenshot of this ticket.`;
+    }
     res.redirect('/queue/t/' + t.accessToken);
   } catch (e) { next(e); }
 });

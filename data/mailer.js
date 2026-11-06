@@ -12,15 +12,21 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-const HAS_SMTP = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+// Brevo sends over HTTPS (port 443). Free Render blocks the SMTP ports
+// (25/465/587), so online the email goes through Brevo when BREVO_API_KEY is set.
+const BREVO_KEY = (process.env.BREVO_API_KEY || '').trim();
+const HAS_SMTP = !!(BREVO_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 
 let transporter = null;
-if (HAS_SMTP) {
+if (BREVO_KEY) {
+  console.log('  Mail ready -> Brevo (HTTPS)');
+} else if (HAS_SMTP) {
   transporter = nodemailer.createTransport({
     host:   process.env.SMTP_HOST,
     port:   parseInt(process.env.SMTP_PORT || '587', 10),
     secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true', // true for port 465
     auth:   { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000, // fail fast, never hang a page
   });
   transporter.verify()
     .then(() => console.log('  Mail ready -> ' + process.env.SMTP_HOST))
@@ -31,7 +37,24 @@ if (HAS_SMTP) {
 
 const FROM = process.env.MAIL_FROM || 'SmartQ <no-reply@smartq.local>';
 
+/** "SmartQ <a@b.com>" -> { name: 'SmartQ', email: 'a@b.com' } */
+function parseFrom(s) {
+  const m = String(s).match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  return m ? { name: m[1] || 'SmartQ', email: m[2].trim() } : { name: 'SmartQ', email: String(s).trim() };
+}
+
+async function sendBrevo({ to, subject, text, html }) {
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': BREVO_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: parseFrom(FROM), to: [{ email: to }], subject, textContent: text, htmlContent: html || undefined }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) throw new Error('Brevo ' + r.status + ': ' + (await r.text()).slice(0, 200));
+}
+
 async function sendMail({ to, subject, text, html }) {
+  if (BREVO_KEY) { await sendBrevo({ to, subject, text, html }); return { delivered: true }; }
   if (!transporter) {
     // Development fallback only. With SMTP configured nothing is ever logged.
     console.log('\n  ---------------- EMAIL (not sent, SMTP unset) ----------------');
