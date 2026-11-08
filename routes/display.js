@@ -11,14 +11,24 @@ router.get('/', (req, res) => res.redirect('/display/cashier'));
  * day simulation, with the 1:1 alternation), the wait for someone joining
  * now, today's actual average, and a QR code to join from the screen.
  */
+// The QR code never changes for one address: drawn once, not on every load.
+const qrCache = new Map();
+function qrFor(url) {
+  if (!qrCache.has(url)) {
+    qrCache.set(url, require('qrcode').toString(url,
+      { type: 'svg', margin: 0, errorCorrectionLevel: 'M', color: { dark: '#14243a', light: '#ffffff' } }));
+    if (qrCache.size > 10) qrCache.delete(qrCache.keys().next().value);
+  }
+  return qrCache.get(url);
+}
+
 async function predictions(dept, req, queue, settings) {
   const out = { avgWait: await db.todayAverageWait(dept), nextUp: [], join: null, note: null };
-  out.qr = await require('qrcode').toString(`${req.protocol}://${req.get('host')}/queue`,
-    { type: 'svg', margin: 0, errorCorrectionLevel: 'M', color: { dark: '#14243a', light: '#ffffff' } });
+  out.qr = await qrFor(`${req.protocol}://${req.get('host')}/queue`);
   // After closing with people still in line, the staff finish it: no new
   // numbers, but the board keeps the remaining order (the day simulated to
   // midnight, with no new arrivals). Once the line is empty: closed.
-  let simOpts = { settings };
+  let simOpts = null;                                   // null: the normal day, shared
   if (db.isPastClosing(settings)) {
     const left = queue.some(t => ['waiting', 'called', 'serving'].includes(t.ticketStatus));
     if (!left) { out.note = `Closed for today. Book a time for another day.`; return out; }
@@ -28,22 +38,27 @@ async function predictions(dept, req, queue, settings) {
   }
   if (!out.note && db.isBeforeJoinOpens(settings)) { out.note = `Today's line opens at ${db.clock12(db.joinOpensAt(settings))}.`; }
   try {
-    const sim = await engine.simulateDay(dept, simOpts);
+    // Every TV, ticket and staff screen shares one day simulation (8 s) and one
+    // "if you join now" (20 s): a board reloading often no longer re-runs the
+    // whole day each time, which froze the small online server.
+    const [sim, join] = await Promise.all([
+      simOpts ? engine.simulateDay(dept, simOpts) : engine.simulateDayCached(dept),
+      out.note ? null : engine.evaluateJoinCached(dept),
+    ]);
     out.nextUp = queue.filter(t => t.ticketStatus === 'waiting' && sim.result[t.id])
       .map(t => ({ ticketNo: t.ticketNo, lane: t.queueCategory, start: sim.result[t.id].start }))
       .sort((a, b) => a.start - b.start).slice(0, 3)
       .map(x => ({ ...x, at: engine.clock(x.start) }));
-    if (!out.note) out.join = await engine.evaluateJoin(dept);
+    out.join = join;
   } catch (e) { /* the board must always show */ }
   return out;
 }
 
 async function board(dept, req, res, next) {
   try {
-    const [queue, windows, settings] = await Promise.all([
-      db.getQueue(dept), db.getWindows(dept), db.getSettings(),
+    const [queue, windows, settings, announcement] = await Promise.all([
+      db.getQueue(dept), db.getWindows(dept), db.getSettings(), db.latestAnnouncement(dept),
     ]);
-    const announcement = await db.latestAnnouncement(dept);
     res.render('pages/display/board', {
       announcement, predict: await predictions(dept, req, queue, settings),
       title: dept + ' Queue', dept, settings, windows,

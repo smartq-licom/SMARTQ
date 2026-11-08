@@ -24,6 +24,20 @@ if (PROD && !process.env.SESSION_SECRET) {
 // req.ip is the visitor's address (the login rate limit depends on it).
 if (PROD) app.set('trust proxy', 1);
 
+// ── Health check (Render → Settings → Health Check Path: /healthz) ───────────
+// Answers only if the app is responsive AND the database answers within 5 s.
+// If it stops answering, Render restarts the app instead of leaving it frozen.
+app.get('/healthz', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    await Promise.race([
+      require('./database/connection').query('SELECT 1'),
+      new Promise((_, no) => setTimeout(() => no(new Error('database slow')), 5000)),
+    ]);
+    res.type('text').send('ok');
+  } catch (e) { res.status(503).type('text').send('not ok: ' + e.message); }
+});
+
 // ── Middleware ───────────────────────────────────────────────────────────────
 // The boards and ticket pages poll /pulse every ~1.5 s; keep that out of the log.
 app.use(morgan('dev', { skip: req => req.path.endsWith('/pulse') }));
