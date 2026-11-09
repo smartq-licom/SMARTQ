@@ -273,6 +273,34 @@ setInterval(async () => {
   finally { watching = false; }
 }, 30 * 1000);
 
+// ── Watchdog ─────────────────────────────────────────────────────────────────
+// Every 30 s: can the database still answer within 20 s? Three misses in a row
+// (about 90 s stuck) and the app exits on purpose, so the host starts it again
+// fresh instead of leaving it frozen for hours. Once a minute a health line
+// goes to the log (delay, memory, live screens, database connections).
+{
+  const pool = require('./database/connection');
+  let misses = 0, beats = 0, lastTick = Date.now(), maxLag = 0;
+  setInterval(() => { const now = Date.now(); maxLag = Math.max(maxLag, now - lastTick - 1000); lastTick = now; }, 1000).unref();
+  setInterval(async () => {
+    try {
+      await Promise.race([pool.query('SELECT 1'),
+        new Promise((_, no) => setTimeout(() => no(new Error('no answer in 20 s')), 20000))]);
+      misses = 0;
+    } catch (e) {
+      misses++;
+      console.error(`[WATCHDOG] database check failed (${misses}/3): ${e.message}`);
+      if (misses >= 3) { console.error('[WATCHDOG] stuck: restarting'); process.exit(1); }
+    }
+    if (++beats % 2 === 0) {
+      const p = pool.pool || {};
+      const len = q => (q && (q.length ?? q.size)) || 0;
+      console.log(`[HEALTH] delay max ${maxLag} ms | memory ${Math.round(process.memoryUsage().rss / 1048576)} MB | live screens ${live.clientCount()} | db open ${len(p._allConnections)}, free ${len(p._freeConnections)}, waiting ${len(p._connectionQueue)}`);
+      maxLag = 0;
+    }
+  }, 30000).unref();
+}
+
 // ── Errors ───────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).render('pages/error', {
   title: 'Page not found', code: 404,

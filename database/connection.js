@@ -51,6 +51,15 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit:    10,
   queueLimit:         0,
+  // An online database's idle connections can be dropped silently by the
+  // network (overnight). Reusing a dead one waits forever, and once all ten
+  // are dead every page hangs. Keep-alive detects them; idle ones are closed
+  // after a minute and opened fresh when needed.
+  enableKeepAlive:       true,
+  keepAliveInitialDelay: 10000,
+  maxIdle:               10,
+  idleTimeout:           60000,
+  connectTimeout:        10000,
   dateStrings:        ['DATE'],
   charset:            'utf8mb4',
   timezone:           DB_TZ,
