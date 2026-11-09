@@ -15,9 +15,15 @@ function smartqCountdown(root){ (root || document).querySelectorAll('[data-count
 }); }
 function smartqOnce(root){ (root || document).querySelectorAll('form[data-once]').forEach(function(f){
   if (f.dataset.onceBound) return; f.dataset.onceBound = '1';
-  f.addEventListener('submit', function(){
-    var b = f.querySelector('[type=submit]');
-    if (b) { b.disabled = true; b.textContent = 'Please wait...'; }
+  f.addEventListener('submit', function(e){
+    // Checked after every submit handler has run: when the confirm dialog
+    // stopped this submit (to ask first), the button stays usable, so
+    // "Not yet" does not leave it stuck on "Please wait...".
+    setTimeout(function () {
+      if (e.defaultPrevented) return;
+      var b = f.querySelector('[type=submit]');
+      if (b) { b.disabled = true; b.textContent = 'Please wait...'; }
+    }, 0);
   });
 }); }
 smartqCountdown(document);

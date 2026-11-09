@@ -7,4 +7,4 @@ set -euo pipefail
 APP_DIR=/var/www/smartq
 /usr/local/bin/smartq-backup
 sudo -u smartq bash -c "cd $APP_DIR && git pull --ff-only && npm ci --omit=dev && node database/migrate.js && pm2 reload smartq"
-echo "SmartQ updated: $(cd $APP_DIR && git log --oneline -1)"
+echo "SmartQ updated: $(sudo -u smartq git -C $APP_DIR log --oneline -1)"
