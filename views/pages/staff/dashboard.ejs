@@ -39,7 +39,8 @@
   <span class="text-[18px]" aria-hidden="true">&#128200;</span>
   <span><strong><%= nowSlot.label %> is usually <%= nowSlot.level === 'peak' ? 'your busiest hour' : 'a busy hour' %>
     on a <%= peakHours.weekdayName %>.</strong> Around <%= nowSlot.arrivals %> requests come in, and
-    <%= nowSlot.crowding %> clients are typically waiting at once.</span>
+    about <%= nowSlot.present %> clients are in the office at once
+    (<%= nowSlot.waiting %> waiting, <%= nowSlot.serving %> at the windows).</span>
 </div>
 <% } %>
 

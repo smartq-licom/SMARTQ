@@ -38,6 +38,7 @@ const pool = require('../database/connection');
 const q = async (sql, p = []) => (await pool.execute(sql, p))[0];
 
 const LOOKBACK_DAYS = 30;   // how far back to read history
+const MAX_SPAN_MIN  = 600;  // a wait or service longer than a working day is a data artefact
 const MIN_DAYS      = 2;    // fewer same-weekday days than this → combine all days
 const MIN_TICKETS   = 5;    // fewer tickets than this in total → no profile at all
 const CACHE_MS      = 10 * 60 * 1000;   // 10 minutes
@@ -219,8 +220,23 @@ async function hourlyProfile(department = null, opts = {}) {
 
   const buckets = {};
   for (let h = lo; h < hi; h++) {
-    buckets[h] = { hour: h, arrivals: 0, overlaps: 0, waits: [] };
+    buckets[h] = { hour: h, arrivals: 0, waitMin: 0, serveMin: 0, waits: [] };
   }
+
+  // Minutes of [from, to) that fall in each hour of the profile, added to
+  // buckets[h][field]. Same-day only: a ticket left open overnight is a data
+  // artefact, so anything longer than MAX_SPAN_MIN is ignored.
+  const addSpan = (from, to, field) => {
+    if (!from || !to || !(to > from) || (to - from) / 60000 > MAX_SPAN_MIN) return;
+    let t = new Date(from);
+    while (t < to) {
+      const next = new Date(t); next.setMinutes(0, 0, 0); next.setHours(next.getHours() + 1);
+      const end = next < to ? next : to;
+      const b = buckets[t.getHours()];
+      if (b) b[field] += (end - t) / 60000;
+      t = end;
+    }
+  };
 
   for (const r of used) {
     const requested = new Date(r.requested_at);
@@ -239,19 +255,16 @@ async function hourlyProfile(department = null, opts = {}) {
       if (buckets[h] && wait <= 600) buckets[h].waits.push(wait);
     }
 
-    // CONGESTION — the client occupies the lobby from requesting until called
-    // (or until the ticket died). Credit every hour that interval touches, so
-    // a backlog spilling out of 10 AM shows up in 11 AM too.
-    const leftAt = r.called_at ? new Date(r.called_at)
-                 : r.completed_at ? new Date(r.completed_at)
-                 : null;
-    if (leftAt && leftAt > requested) {
-      for (let hh = requested.getHours(); hh <= leftAt.getHours() && hh < hi; hh++) {
-        if (buckets[hh]) buckets[hh].overlaps++;
-      }
-    } else if (buckets[h]) {
-      buckets[h].overlaps++;   // never called: counted in its own hour only
-    }
+    // PRESENT (overlapping time) — a client is in the office from taking a
+    // number until done at the window: WAITING (requested -> called) plus
+    // PROCESSING (called -> completed). Each minute is credited to the hour
+    // it falls in, so someone who waits 9:40-10:10 and is served 10:10-10:25
+    // adds 20 min to 9 AM and 25 min to 10 AM. Tickets that overlap are
+    // counted together: that is how a crowd forms.
+    const calledAt = r.called_at ? new Date(r.called_at) : null;
+    const doneAt   = r.completed_at ? new Date(r.completed_at) : null;
+    addSpan(requested, calledAt || doneAt, 'waitMin');            // never called: waited until cancelled
+    if (calledAt && r.ticket_status === 'completed') addSpan(calledAt, doneAt, 'serveMin');
   }
 
   // ---- per-day averages ----------------------------------------------------
@@ -263,7 +276,13 @@ async function hourlyProfile(department = null, opts = {}) {
     // because "come at lunch" is advice for a closed window.
     isBreak:   b.hour >= breakStart && b.hour < breakEnd,
     arrivals:  +(b.arrivals / sampleDays).toFixed(1),
-    crowding:  +(b.overlaps / sampleDays).toFixed(1),
+    // average number of clients in the office at once during that hour
+    // (minutes present / 60 per day): waiting + being processed
+    waiting:   +(b.waitMin  / 60 / sampleDays).toFixed(1),
+    serving:   +(b.serveMin / 60 / sampleDays).toFixed(1),
+    present:   +((b.waitMin + b.serveMin) / 60 / sampleDays).toFixed(1),
+    crowding:  +((b.waitMin + b.serveMin) / 60 / sampleDays).toFixed(1),   // older name, same figure
+    presentExact: (b.waitMin + b.serveMin) / 60 / sampleDays,       // unrounded, for ranking
     avgWait:   b.waits.length ? Math.round(mean(b.waits)) : null,
     samples:   b.arrivals,
     waitSamples: b.waits.length,
@@ -273,10 +292,17 @@ async function hourlyProfile(department = null, opts = {}) {
   // Graded against the busiest SERVING hour of THIS office rather than an
   // absolute ticket count, so the same scale reads correctly for a cashier
   // handling 90 clients a day and a registrar handling 20.
+  //
+  // The peak is measured by clients PRESENT (waiting + processing, overlapping
+  // time), not by arrivals alone: a slow hour of long transactions is as
+  // crowded as a fast hour with more arrivals. With no timing data yet
+  // (nothing called), arrivals stand in.
   const serving = hours.filter(h => !h.isBreak);
-  const peakArrivals = Math.max(...serving.map(h => h.arrivals), 0);
+  const load = serving.some(h => h.presentExact > 0) ? (h => h.presentExact) : (h => h.arrivals);
+  const peakLoad = Math.max(...serving.map(load), 0);
   hours.forEach(h => {
-    const ratio = peakArrivals > 0 ? h.arrivals / peakArrivals : 0;
+    h.load = load(h);
+    const ratio = peakLoad > 0 ? h.load / peakLoad : 0;
     h.share = Math.min(100, Math.round(ratio * 100));
     h.level = h.isBreak      ? 'break'
             : ratio >= 0.85  ? 'peak'
@@ -285,11 +311,11 @@ async function hourlyProfile(department = null, opts = {}) {
             : 'quiet';
   });
 
-  const withTraffic = serving.filter(h => h.arrivals > 0);
+  const withTraffic = serving.filter(h => h.arrivals > 0 || h.present > 0);
   const busiest  = withTraffic.length
-    ? withTraffic.reduce((a, b) => (b.arrivals > a.arrivals ? b : a)) : null;
+    ? withTraffic.reduce((a, b) => (b.load > a.load ? b : a)) : null;
   const quietest = withTraffic.length
-    ? withTraffic.reduce((a, b) => (b.arrivals < a.arrivals ? b : a)) : null;
+    ? withTraffic.reduce((a, b) => (b.load < a.load ? b : a)) : null;
   const waited = serving.filter(h => h.avgWait !== null);
   const longestWait = waited.length
     ? waited.reduce((a, b) => (b.avgWait > a.avgWait ? b : a)) : null;
