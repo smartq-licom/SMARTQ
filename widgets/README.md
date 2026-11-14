@@ -24,8 +24,7 @@ It returns ticket numbers only, never names. Example:
 - **Testing at school/home:** the phone must be on the same Wi-Fi as the PC
   running `npm start`. Use the PC's LAN IP, which `npm start` prints when it
   starts (e.g. `http://192.168.1.20:3000`). `localhost` does NOT work from a phone.
-- **Online:** use the Render URL, e.g. `https://smartq-licom.onrender.com`.
-  (The free Render plan sleeps when idle, so the first refresh can be slow.)
+- **Online:** use `https://smartq-licom.online`.
 
 Check the address first: open `<server>/display/widget.json` in the phone's
 browser. You should see the JSON above.

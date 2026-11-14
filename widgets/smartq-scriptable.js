@@ -3,7 +3,7 @@
 //
 // SERVER is the live SmartQ site. For a test on the same Wi-Fi as the PC,
 // use the PC's LAN IP instead (e.g. http://192.168.1.20:3000).
-const SERVER = 'https://smartq-licom.onrender.com';
+const SERVER = 'https://smartq-licom.online';
 
 const BRAND = new Color('#2185D5');   // SmartQ blue
 const INK   = Color.dynamic(new Color('#0f172a'), new Color('#f8fafc'));
