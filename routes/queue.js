@@ -135,7 +135,9 @@ async function peakAdvice(settings) {
   return { Cashier, Registrar, dayNames: db.peak.DAY_NAMES };
 }
 
-async function renderForm(req, res, form, formError) {
+// errorStep: the wizard step the message is about (3 = Your details), so the
+// page reopens there instead of guessing.
+async function renderForm(req, res, form, formError, errorStep) {
   const [documents, settings, requirements, mine] = await Promise.all([
     db.getDocuments(), db.getSettings(), db.getRequirementsByDocument(), myTickets(req),
   ]);
@@ -154,7 +156,7 @@ async function renderForm(req, res, form, formError) {
     // per-semester documents (Certificate of Grades): the semesters to choose from
     semOptions: require('../data/semesters').semesterOptions({ academicYear: settings.academicYear }),
     submitToken: form.submitToken || crypto.randomUUID(),
-    form, formError,
+    form, formError, errorStep: errorStep || null,
   });
 }
 
@@ -245,9 +247,9 @@ router.post('/new', proofToMemory, async (req, res, next) => {
     // once staff or the admin approve it (Priority Requests, red dot).
     // A student approved earlier (same type, still remembered) can skip the photo.
     if (b.priorityType) {
-      if (req.uploadError) return renderForm(req, res, b, req.uploadError);
+      if (req.uploadError) return renderForm(req, res, b, req.uploadError, 3);
       if (!req.file && !(await db.rememberedPriority(b))) return renderForm(req, res, b,
-        'Upload a photo of your PWD ID, Senior Citizen ID or proof of pregnancy to ask for the priority lane.');
+        'Upload a photo of your PWD ID, Senior Citizen ID or proof of pregnancy to ask for the priority lane.', 3);
     }
 
     // A visitor who already queued from this phone keeps the same record, so
@@ -278,7 +280,7 @@ router.post('/new', proofToMemory, async (req, res, next) => {
     const who = guestId
       ? { user: await db.getUser(guestId) }
       : await db.findOrCreateWalkIn(b);
-    if (who.error) return renderForm(req, res, b, who.error);
+    if (who.error) return renderForm(req, res, b, who.error, 3);
 
     const r = await db.createRequest(who.user, b, { walkIn: true });
     if (r.error) {

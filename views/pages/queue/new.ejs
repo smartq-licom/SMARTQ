@@ -1484,8 +1484,10 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     if (n === 2) {
       var sch = form.querySelector('input[name=mode][value=schedule]');
       if (sch && sch.checked && !document.getElementById('scheduledDate').value) msg = 'Pick a day on the calendar.';
+      // a time chosen before the page came back is still loading: not missing
+      var pending = booting && document.getElementById('slotBox').dataset.picked;
       if (sch && sch.checked && document.getElementById('scheduledDate').value &&
-          !form.querySelector('input[name=slot]:checked'))
+          !form.querySelector('input[name=slot]:checked') && !pending)
         msg = 'Choose a time for your visit.';
     }
     if (n === 3) {
@@ -1644,12 +1646,17 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
 
   // After the server turned a submission back, reopen the first step that
   // still needs attention (or the review, if every step checks out).
-  var start = 1;
+  var start = 1, booting = true;
   if (<%- JSON.stringify(!!formError) %>) {
     start = LAST;
     for (var k = 1; k < LAST; k++) if (!check(k, true)) { start = k; break; }
+    // the server said which step its message is about (e.g. 3: a student
+    // number under another last name): open that one
+    var errStep = <%- JSON.stringify(typeof errorStep === "number" ? errorStep : null) %>;
+    if (errStep) { start = errStep; loadSlots(); }   // the booked time is ready when they submit
   }
   show(start, true);
+  booting = false;
 })();
 </script>
 <%- include('../../partials/tour', { tourKey: 'new', tourSteps: [
