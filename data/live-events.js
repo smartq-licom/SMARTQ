@@ -14,7 +14,7 @@
  */
 const clients = new Set();
 const CHANGE_MERGE_MS = 250;
-const HEARTBEAT_MS = 25000;        // keeps proxies (Render) from closing an idle stream
+const HEARTBEAT_MS = 25000;        // keeps proxies (nginx) from closing an idle stream
 let timer = null;
 
 function changed() {

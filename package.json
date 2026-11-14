@@ -7,13 +7,7 @@
     "start": "node app.js",
     "db:import": "node database/import-schema.js",
     "db:admin": "node database/create-admin.js",
-    "cloud:import": "node database/import-schema.js --env .env.cloud",
-    "cloud:admin": "node database/create-admin.js --env .env.cloud",
-    "db:migrate": "node database/migrate.js",
-    "cloud:migrate": "node database/migrate.js --env .env.cloud",
-    "demo:history": "node database/demo-history.js create",
-    "demo:clear": "node database/demo-history.js clear",
-    "demo:status": "node database/demo-history.js status"
+    "db:migrate": "node database/migrate.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

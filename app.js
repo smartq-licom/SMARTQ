@@ -11,7 +11,7 @@ const rateLimit = require('express-rate-limit');
 const db      = require('./data/db');
 
 const app  = express();
-// Render (and most hosts) say which port to use through PORT.
+// The host may say which port to use through PORT (the VPS uses 3000).
 const PORT = process.env.PORT || process.env.APP_PORT || 3000;
 const PROD = process.env.NODE_ENV === 'production';
 
@@ -20,13 +20,13 @@ if (PROD && !process.env.SESSION_SECRET) {
   process.exit(1);
 }
 
-// Behind Render's HTTPS proxy: trust it so secure cookies are sent and
+// Behind nginx's HTTPS proxy: trust it so secure cookies are sent and
 // req.ip is the visitor's address (the login rate limit depends on it).
 if (PROD) app.set('trust proxy', 1);
 
-// ── Health check (Render → Settings → Health Check Path: /healthz) ───────────
+// ── Health check (/healthz) ─────────────────────────────────────────────────────
 // Answers only if the app is responsive AND the database answers within 5 s.
-// If it stops answering, Render restarts the app instead of leaving it frozen.
+// Monitoring can use it to tell a frozen app from a running one.
 app.get('/healthz', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {

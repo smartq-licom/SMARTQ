@@ -1,8 +1,8 @@
 'use strict';
 require('dotenv').config();
 
-// SmartQ runs on Philippine time wherever it is hosted. Cloud servers (Render,
-// Aiven) default to UTC, which put every ticket 8 hours early: peak hours came
+// SmartQ runs on Philippine time wherever it is hosted. Cloud servers often
+// default to UTC, which put every ticket 8 hours early: peak hours came
 // out empty and "today" rolled over at 8 AM. APP_TZ / DB_TZ can override.
 process.env.TZ = process.env.APP_TZ || 'Asia/Manila';
 const DB_TZ = process.env.DB_TZ || '+08:00';
@@ -10,11 +10,12 @@ const DB_TZ = process.env.DB_TZ || '+08:00';
 const mysql = require('mysql2/promise');
 const fs    = require('fs');
 
-// Cloud MySQL (Aiven, TiDB Cloud) only accepts encrypted connections.
+// A cloud MySQL host usually only accepts encrypted connections (the VPS's
+// own MariaDB does not need this: DB_SSL=false).
 // DB_SSL=true turns it on; DB_SSL_CA may hold the provider's CA certificate
 // (a path to the .pem file, the full PEM text, or that text with \n in place
 // of line breaks). Without a CA the system's trusted certificates are used,
-// which is enough for TiDB Cloud.
+// which is enough for most providers.
 function readCa() {
   const v = (process.env.DB_SSL_CA || '').trim();
   if (v && !v.includes('BEGIN') && fs.existsSync(v)) return fs.readFileSync(v, 'utf8');

@@ -17,7 +17,7 @@ const q = async (sql, p = []) => (await pool.execute(sql, p))[0];
 const PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const ENABLED = !!(PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 if (ENABLED) {
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://smartq-licom.onrender.com',
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://smartq-licom.online',
                           PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
 }
 

@@ -5,7 +5,7 @@
  * schema.sql ships with no user accounts, so run this once after importing it:
  *
  *   node database/create-admin.js                    (database in .env)
- *   node database/create-admin.js --env .env.cloud   (online database)
+ *   node database/create-admin.js --env <file>       (database in another env file)
  *
  * It asks for a username, name and password. The password must pass the same
  * rules as the rest of the system and is stored only as a bcrypt hash.

@@ -5,7 +5,7 @@
  * Every step is safe to run more than once.
  *
  *   node database/migrate.js                  (database in .env)
- *   node database/migrate.js --env .env.cloud (online database)
+ *   node database/migrate.js --env <file>     (database in another env file)
  *
  * Add new steps to the end of STEPS when schema.sql gains a table or column.
  */

@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Loads database/schema.sql into the MySQL server named in .env, so a cloud
- * database (Aiven, TiDB Cloud) can be set up from your own computer without
+ * Loads database/schema.sql into the MySQL server named in .env, without
  * installing MySQL Workbench:
  *
- *   node database/import-schema.js --env .env.cloud
+ *   node database/import-schema.js
+ *   node database/import-schema.js --env <file>   (database in another env file)
  *
- * --env loads the online database's settings from that file instead of .env,
- * so your local .env never has to be edited.
+ * --env loads the database settings from that file instead of .env.
  *
  * WARNING: schema.sql DROPS and recreates the database. Every ticket, account
  * and setting in it is deleted. You must type the database name to confirm.
@@ -51,7 +50,7 @@ function ssl() {
   const host = process.env.DB_HOST || 'localhost';
   console.log(`\n  This will ERASE and recreate the database "${DB_NAME}" on ${host}.`);
   if (/^(localhost|127\.0\.0\.1|::1)$/.test(host))
-    console.log('  !! That is the database ON THIS COMPUTER. For the online one, add --env .env.cloud');
+    console.log('  !! That is the database on THIS machine.');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise(res => rl.question(`  Type ${DB_NAME} to continue: `, a => res(a.trim())));
   rl.close();

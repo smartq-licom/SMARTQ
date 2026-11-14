@@ -49,64 +49,11 @@ Students and guests register themselves at /register.
 Admin > Student Accounts lists them (view, search, enable/disable).
 Admin > Staff Accounts is where cashier/registrar/admin accounts are created.
 
-## Deploy online (Render + free MySQL)
-Render runs the app. Render has no MySQL, so the database lives on a free
-MySQL host. Nothing in the code has to change between local and online:
-only the environment values differ.
+## Running online
+SmartQ runs on a Hostinger VPS at https://smartq-licom.online: the app, its
+MariaDB database and HTTPS on one server. How it is set up, updated, backed up
+and restored is in deploy/HOSTINGER.md.
 
-### 1. Create the MySQL database (Aiven, free)
-1. Sign up at https://aiven.io > Create service > MySQL > Free plan.
-2. When it is Running, open it and note Host, Port, User (avnadmin) and
-   Password. Click "Download CA cert" and keep the file.
-   (TiDB Cloud Serverless also works: same steps, no CA file needed.)
-
-### 2. Load the tables from your own computer
-1. Save Aiven's CA certificate as `ca.pem` in this folder.
-2. Create a file named `.env.cloud` in this folder with the Aiven values
-   (it is git-ignored, like ca.pem, so it is never uploaded):
-
-       DB_HOST=<aiven host>
-       DB_PORT=<aiven port>
-       DB_USER=avnadmin
-       DB_PASSWORD=<aiven password>
-       DB_NAME=smartq_db
-       DB_SSL=true
-       DB_SSL_CA=ca.pem
-
-3. Run, in this folder:
-
-       npm run cloud:import    (type smartq_db to confirm; creates 17 tables)
-       npm run cloud:admin     (creates the admin you will log in with)
-
-Your normal .env is not touched, so the local copy keeps working.
-
-### 3. Put the code on GitHub
-Push this folder to a GitHub repository. .env is ignored, so no password is
-uploaded. Only commit .env.example.
-
-### 4. Create the Render web service
-1. https://dashboard.render.com > New > Blueprint > pick the repository.
-   render.yaml creates the "smartq" web service and asks for each secret.
-2. Fill in the same DB_* values as .env.cloud, except DB_SSL_CA: paste the
-   whole text of ca.pem there instead of the file name. Also fill in the SMTP_* and GOOGLE_*
-   values from your .env. SESSION_SECRET is generated for you.
-3. GOOGLE_CALLBACK_URL = https://smartq-licom.onrender.com/auth/google/callback
-   and add that exact URL in Google Cloud Console > Credentials > your OAuth
-   client > Authorised redirect URIs.
-4. Deploy. Open https://smartq-licom.onrender.com and log in as admin,
-   then create the cashier and registrar accounts.
-
-### Things to know on Render's free plan
-- The app sleeps after 15 minutes without visitors; the next visit takes
-  about a minute. Open it a few minutes before a demo.
-- Logins are stored in MySQL, so sleeping or redeploying does not log
-  anyone out.
-- Uploaded priority-lane proof files are stored on the server's disk, which
-  Render wipes on every deploy and restart. Re-upload after a deploy, or
-  add a paid persistent disk mounted at /opt/render/project/src/uploads.
-- Free web services may not be allowed to send email over SMTP. If codes do
-  not arrive online, students can still use Continue with Google, or move
-  the service to a paid instance.
 - Google sign-in: while the OAuth consent screen is in "Testing", only the
   Gmail accounts listed as Test users can sign in. Add your testers there,
   or click "Publish app" for everyone.
@@ -146,7 +93,7 @@ claim ticket frees them again. Payments made outside SmartQ (paper receipts)
 are handled by the Registrar at the window. Records Inquiry stays open to all.
 
 Existing databases need the claim_items table:  npm run db:migrate
-(online: npm run cloud:migrate). It is safe to run more than once.
+(on the server, deploy/update.sh runs it). It is safe to run more than once.
 
 Cashier and Registrar staff maintain their own office's document list under
 Documents. Only the admin can change a price.
@@ -241,21 +188,8 @@ Peak hours are READ-ONLY. They never change queue order, the wait estimate, or
 booking limits. Results are cached for 10 minutes, because the counter screens
 reload every 10 seconds and a month-long scan on each refresh would be waste.
 
-### Seeing it before you have history
-A fresh install shows "Not enough history yet" — correctly, since there is
-nothing to profile. To fill it with realistic backdated tickets for a demo:
-
-    node database/seed-peak-demo.js            insert ~4 weeks of history
-    node database/seed-peak-demo.js --clear    remove it again
-
-It builds a Cashier morning rush (9-11 AM), a Registrar afternoon rush (2-4 PM),
-heavier Mondays, a thin lunch hour, and longer waits inside the rush so the
-three measures visibly disagree.
-
-THIS IS FAKE DATA. It is attached to the first student account and counts in
-Reports ticket totals, so clear it before the system goes into real use. Every
-seeded row is marked with a submit_token starting 'demoseed-', and --clear
-deletes only those.
+A fresh install shows "Not enough history yet", correctly, since there is
+nothing to profile yet. It fills in as real tickets are served.
 
 ## Courses
 The course list lives in ONE place: COURSES in data/db.js. It is validated on

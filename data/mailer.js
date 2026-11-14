@@ -12,8 +12,8 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-// Brevo sends over HTTPS (port 443). Free Render blocks the SMTP ports
-// (25/465/587), so online the email goes through Brevo when BREVO_API_KEY is set.
+// Brevo sends over HTTPS (port 443), which works even where a host blocks the
+// SMTP ports (25/465/587). With BREVO_API_KEY set, email goes through Brevo.
 const BREVO_KEY = (process.env.BREVO_API_KEY || '').trim();
 const HAS_SMTP = !!(BREVO_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
 
