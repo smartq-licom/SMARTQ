@@ -184,7 +184,7 @@
         traffic, so a weekday that came up more often is not favoured). %>
     <div class="mt-5">
       <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-        <h4 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Busiest day of the week</h4>
+        <h4 class="text-[12px] font-bold uppercase tracking-wider text-slateSoft/80">Busiest day of the week <span class="normal-case tracking-normal font-semibold">(average requests per day)</span></h4>
         <% if (pk.byWeekday.busiest) { %>
         <span class="text-[12px] text-slateSoft"><strong><%= pk.byWeekday.busiest.name %></strong> &middot; <%= pk.byWeekday.busiest.perDay %> requests per day</span>
         <% } %>
@@ -194,7 +194,7 @@
              var top = pk.byWeekday.busiest && d.day === pk.byWeekday.busiest.day; %>
         <div class="flex-1 flex flex-col justify-end items-center h-full"
              title="<%= d.name %>: <%= d.total %> total over <%= d.days %> day<%= d.days === 1 ? '' : 's' %> (<%= d.perDay %> per day)">
-          <div class="text-[10px] font-bold text-slateSoft/70 mb-0.5"><%= d.total %></div>
+          <div class="text-[10px] font-bold text-slateSoft/70 mb-0.5"><%= d.perDay %></div>
           <div class="w-full rounded-t <%= top ? 'bg-red-500' : d.total ? 'bg-brand' : 'bg-hair' %>"
                style="height: <%= Math.max(d.share, d.total ? 4 : 1) %>%"></div>
         </div>
@@ -205,6 +205,7 @@
         <div class="flex-1 text-center text-[10px] text-slateSoft/70"><%= d.short %></div>
         <% }) %>
       </div>
+      <p class="text-[11px] text-slateSoft/70 mt-2">Requests on that weekday ÷ the number of those days that had requests, so a weekday that came up more often in the period is not favoured. Hover a bar for the total.</p>
     </div>
     <% } %>
 
