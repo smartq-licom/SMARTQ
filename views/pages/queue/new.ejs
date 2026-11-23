@@ -92,6 +92,13 @@
   .claim-tag.ok{ background:rgb(16 185 129 / .14); color:#047857 } .dark .claim-tag.ok{ color:#6EE7B7 }
   .claim-tag.wait{ background:rgb(245 158 11 / .16); color:#b45309 } .dark .claim-tag.wait{ color:#FCD34D }
   @media (max-width:480px){ .claim-box{ margin-left:0 } }
+  .sem-chip span{ white-space:nowrap }
+  /* phone: the year on its own line, the two semesters side by side under it */
+  @media (max-width:520px){
+    .sem-box{ margin:2px 0 12px; padding:12px }
+    .sem-year{ grid-template-columns:1fr 1fr; gap:6px 8px; margin-top:12px }
+    .sem-ay{ grid-column:1 / -1; line-height:1.2; font-size:12px; color:rgb(var(--c-brand-night) / .7) }
+  }
   /* office cards */
   .office-card{ position:relative; display:block; cursor:pointer; border:2px solid var(--line); border-radius:18px; padding:14px 16px; background:var(--card-bg);
                 transition:border-color .25s, background-color .25s, box-shadow .25s, transform .25s cubic-bezier(.34,1.56,.64,1) }
@@ -330,9 +337,9 @@
                    var SHOWN = 3, olderOpen = semYears.slice(SHOWN).some(function (y) {
                      return Object.keys(y.sems).some(function (k) { return semPicked.includes(y.sems[k].value); }); }); %>
                 <div class="sem-box" data-sem-box="<%= sv.id %>" data-price="<%= sv.price %>" hidden>
-                  <div class="flex items-baseline justify-between gap-3">
+                  <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                     <div class="text-[13px] font-bold text-brand-night">Which semesters, and how many copies?</div>
-                    <div class="text-[12px] font-semibold text-brand-night/75"><%= peso(sv.price) %> each</div>
+                    <div class="text-[12px] font-semibold text-brand-night/75 whitespace-nowrap"><%= peso(sv.price) %> each</div>
                   </div>
                   <div class="sem-years mt-2.5">
                     <% semYears.forEach(function (y, i) { var old = i >= SHOWN; %>
