@@ -91,6 +91,7 @@ const findLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, standardHeade
 app.use('/queue/find', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/claimables', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/track', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
+app.use('/queue/open-check', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 app.use('/queue/priority-known', (req, res, next) => (req.method === 'POST' ? findLimiter(req, res, next) : next()));
 // "Email me my queue code": a few sends per network, so it cannot be used to spam
 const emailLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,

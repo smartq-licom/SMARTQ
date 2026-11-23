@@ -78,7 +78,11 @@
   .sem-chip.is-off{ cursor:not-allowed }
   .sem-chip.is-off > span{ flex-direction:column; line-height:1.1; background:transparent; border-style:dashed; color:rgb(var(--c-brand-night) / .45) }
   .sem-chip.is-off small{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em }
-  .sem-copies{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px }
+  .sem-cell{ display:flex; flex-direction:column; gap:6px; min-width:0 }
+  .sem-cell .sem-qty{ display:none; justify-content:center; align-self:center }
+  .sem-cell:has(input[type=checkbox]:checked) .sem-qty{ display:inline-flex }
+  .sem-year{ align-items:start }
+  .sem-ay{ line-height:34px }
   .sem-more{ margin-top:10px; font-size:12px; font-weight:700; color:rgb(var(--c-brand)); text-decoration:underline; text-underline-offset:2px }
   .sem-total{ margin-top:12px; padding-top:10px; border-top:1px solid rgb(var(--c-brand-line)); font-size:12.5px; font-weight:600; color:rgb(var(--c-brand-night) / .6) }
   .sem-total.is-set{ color:rgb(var(--c-brand-night)); font-weight:800 }
@@ -327,7 +331,7 @@
                      return Object.keys(y.sems).some(function (k) { return semPicked.includes(y.sems[k].value); }); }); %>
                 <div class="sem-box" data-sem-box="<%= sv.id %>" data-price="<%= sv.price %>" hidden>
                   <div class="flex items-baseline justify-between gap-3">
-                    <div class="text-[13px] font-bold text-brand-night">Which semesters?</div>
+                    <div class="text-[13px] font-bold text-brand-night">Which semesters, and how many copies?</div>
                     <div class="text-[12px] font-semibold text-brand-night/75"><%= peso(sv.price) %> each</div>
                   </div>
                   <div class="sem-years mt-2.5">
@@ -336,9 +340,17 @@
                       <span class="sem-ay"><%= y.ay %>–<%= y.ay + 1 %></span>
                       <% ['1', '2'].forEach(function (k) { var o = y.sems[k]; %>
                       <% if (o) { %>
-                      <label class="sem-chip"><input type="checkbox" name="sem_<%= sv.id %>" value="<%= o.value %>" <%= semPicked.includes(o.value) ? 'checked' : '' %> onchange="recalc()"><span><%= k === '1' ? '1st' : '2nd' %> Sem</span></label>
+                      <div class="sem-cell">
+                        <label class="sem-chip"><input type="checkbox" name="sem_<%= sv.id %>" value="<%= o.value %>" <%= semPicked.includes(o.value) ? 'checked' : '' %> onchange="recalc()"><span><%= k === '1' ? '1st' : '2nd' %> Sem</span></label>
+                        <div class="stepper sem-qty" data-sem-qty>
+                          <button type="button" aria-label="One copy less" data-sem-step="-1">&minus;</button>
+                          <input type="number" name="semCopy_<%= sv.id %>_<%= o.value %>" value="<%= Math.max(1, parseInt(form['semCopy_' + sv.id + '_' + o.value], 10) || parseInt(form['semCopies_' + sv.id], 10) || 1) %>"
+                                 min="1" max="<%= settings.maxCopies %>" inputmode="numeric" data-sem-copies aria-label="Copies of the <%= o.label %>" oninput="recalc()" onchange="recalc()">
+                          <button type="button" aria-label="One copy more" data-sem-step="1">+</button>
+                        </div>
+                      </div>
                       <% } else { %>
-                      <span class="sem-chip is-off" title="Not started yet"><span><%= k === '1' ? '1st' : '2nd' %> Sem<small>not yet</small></span></span>
+                      <span class="sem-chip is-off" title="This semester has not started yet"><span><%= k === '1' ? '1st' : '2nd' %> Sem<small>unavailable</small></span></span>
                       <% } %>
                       <% }) %>
                     </div>
@@ -347,16 +359,6 @@
                   <% if (semYears.length > SHOWN) { %>
                   <button type="button" class="sem-more" data-sem-more <%= olderOpen ? 'hidden' : '' %>>Show older school years (<%= semYears.length - SHOWN %> more) &#9662;</button>
                   <% } %>
-                  <%# the same number of copies of every chosen semester %>
-                  <div class="sem-copies">
-                    <span class="text-[12.5px] font-semibold text-brand-night">Copies of each</span>
-                    <div class="stepper">
-                      <button type="button" aria-label="One copy less" data-sem-step="-1">&minus;</button>
-                      <input type="number" name="semCopies_<%= sv.id %>" value="<%= Math.max(1, parseInt(form['semCopies_' + sv.id], 10) || 1) %>"
-                             min="1" max="<%= settings.maxCopies %>" inputmode="numeric" data-sem-copies aria-label="Copies of each semester" oninput="recalc()" onchange="recalc()">
-                      <button type="button" aria-label="One copy more" data-sem-step="1">+</button>
-                    </div>
-                  </div>
                   <div class="sem-total" data-sem-total>No semester chosen yet</div>
                 </div>
                 <% } %>
@@ -468,6 +470,8 @@
 
     <!-- STEP 2 of 4: when -->
     <div class="wiz-pane space-y-4" data-pane="2" hidden>
+      <%# one open ticket per office, any date: told here as soon as it is known %>
+      <div data-open-note hidden role="alert" class="rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><span data-open-msg></span> <a data-open-link class="font-bold underline whitespace-nowrap" hidden>Open my ticket &rarr;</a></div>
       <!-- when -->
       <section class="<%= UI.card %> step">
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">When do you need this?</h3></div>
@@ -599,9 +603,9 @@
                 var li = document.createElement('li');
                 li.className = 'text-[12.5px] text-slateSoft';
                 var quiet = r.a.quietest
-                  ? ', usually shorter around <strong>' + r.a.quietest.label + '</strong>'
+                  ? ', off-peak around <strong>' + r.a.quietest.label + '</strong>'
                   : '';
-                li.innerHTML = '<strong>' + r.office + ':</strong> busiest around <strong>'
+                li.innerHTML = '<strong>' + r.office + ':</strong> peak hour around <strong>'
                              + r.a.busiest.label + '</strong>' + quiet + '.';
                 listEl.appendChild(li);
               });
@@ -647,6 +651,8 @@
 
     <!-- STEP 3 of 4: your details -->
     <div class="wiz-pane space-y-4" data-pane="3" hidden>
+      <%# one open ticket per office, any date: told here as soon as it is known %>
+      <div data-open-note hidden role="alert" class="rounded-lg bg-red-50 border-l-4 border-red-600 px-4 py-3 text-[13px] font-medium text-red-900"><span data-open-msg></span> <a data-open-link class="font-bold underline whitespace-nowrap" hidden>Open my ticket &rarr;</a></div>
       <!-- student info -->
       <section class="<%= UI.card %> step">
         <div class="<%= UI.cardHd %>"><h3 class="<%= UI.cardTtl %>">Your information</h3></div>
@@ -1095,11 +1101,11 @@ document.addEventListener('click', function (e) {
   if (err && /is for|purpose/i.test(err.textContent)) { err.textContent = ''; err.classList.add('hidden'); }
   if (sel.value === 'Others') setTimeout(function () { document.getElementById('otherPurpose').focus(); }, 50);
 });
-// "Copies of each": the − / + of a per-semester document
+// Copies of one semester: the − / + under its chip
 document.addEventListener('click', function (e) {
   var st = e.target.closest && e.target.closest('[data-sem-step]');
   if (!st) return;
-  var f = st.closest('.sem-copies').querySelector('[data-sem-copies]');
+  var f = st.closest('[data-sem-qty]').querySelector('[data-sem-copies]');
   f.value = Math.min(+f.max || 99, Math.max(1, (parseInt(f.value, 10) || 1) + Number(st.dataset.semStep)));
   recalc();
 });
@@ -1152,6 +1158,28 @@ function toggleClient(){
     box.querySelector('#lkLast').value = from.lastName || '';
     box.querySelector('[data-claim-go]').click();
   }, 300);
+})();
+// Claim at the Registrar: a Cashier ticket paid on this phone lists its paid
+// documents as soon as the claim is ticked, no typing. "Change details" still
+// searches by student number and last name.
+(function () {
+  var mine = <%- JSON.stringify(typeof phoneClaim !== 'undefined' && !form.claimFrom ? phoneClaim : null).replace(/</g, '\\u003c') %>;
+  if (!mine) return;
+  var done = false;
+  function run() {
+    var box = document.querySelector('.claim-box');
+    if (done || !box || !box.querySelector('[data-claim-list]').hidden) return;
+    done = true;
+    box.querySelector('#lkNo').value = mine.studentNo;
+    box.querySelector('#lkLast').value = mine.lastName;
+    box.querySelector('[data-claim-go]').click();
+  }
+  document.addEventListener('change', function (e) {
+    var cb = e.target.closest && e.target.closest('input[name=documentIds][data-claim="1"]');
+    if (cb && cb.checked) setTimeout(run, 50);
+  });
+  var cb = document.querySelector('input[name=documentIds][data-claim="1"]');
+  if (cb && cb.checked) setTimeout(run, 300);
 })();
 // Remember me on this phone: the details from the last ticket fill the form
 // next time (never on a form the server sent back, which already has them).
@@ -1355,18 +1383,25 @@ function recalc(){
     if (semBox) {
       semBox.hidden = !(b.checked && visible);
       semBox.querySelectorAll('input').forEach(function (c) { c.disabled = semBox.hidden; });
-      var nSem = semBox.querySelectorAll('input[type=checkbox]:checked').length, tot = semBox.querySelector('[data-sem-total]');
-      var ce = semBox.querySelector('[data-sem-copies]'), each = Math.min(+ce.max || 99, Math.max(1, parseInt(ce.value, 10) || 1));
+      var tot = semBox.querySelector('[data-sem-total]'), nSem = 0, nCopies = 0;
+      semBox.querySelectorAll('.sem-cell').forEach(function (cell) {
+        var on = cell.querySelector('input[type=checkbox]'), q = cell.querySelector('[data-sem-copies]');
+        q.disabled = semBox.hidden || !on.checked;              // only a ticked semester sends its copies
+        if (!on.checked) return;
+        nSem++; nCopies += Math.min(+q.max || 99, Math.max(1, parseInt(q.value, 10) || 1));
+      });
       var money = function (n) { return '\u20b1' + (parseFloat(semBox.dataset.price) * n).toLocaleString('en-PH', { minimumFractionDigits: 2 }); };
       tot.textContent = !nSem ? 'No semester chosen yet'
-        : each > 1 ? nSem + ' semester' + (nSem === 1 ? '' : 's') + ' \u00d7 ' + each + ' copies = ' + nSem * each + ' certificates \u00b7 ' + money(nSem * each)
-        : nSem + ' semester' + (nSem === 1 ? '' : 's') + ' selected \u00b7 ' + money(nSem);
+        : nSem + ' semester' + (nSem === 1 ? '' : 's') + ', ' + nCopies + (nCopies === 1 ? ' copy' : ' copies') + ' in all \u00b7 ' + money(nCopies);
       tot.classList.toggle('is-set', nSem > 0);
     }
     if (copies && b.dataset.sem === '1') {
-      var semEach = document.querySelector('input[name="semCopies_' + b.dataset.row + '"]');
-      copies.value = String(Math.max(1, document.querySelectorAll('input[name="sem_' + b.dataset.row + '"]:checked').length) *
-                            Math.max(1, parseInt(semEach && semEach.value, 10) || 1));
+      var n = 0;
+      document.querySelectorAll('input[name="sem_' + b.dataset.row + '"]:checked').forEach(function (c) {
+        var q = c.closest('.sem-cell').querySelector('[data-sem-copies]');
+        n += Math.max(1, parseInt(q && q.value, 10) || 1);
+      });
+      copies.value = String(Math.max(1, n));
     }
     var row = b.closest('.doc-row');
     if (row) row.classList.toggle('is-picked', b.checked && visible);
@@ -1489,6 +1524,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       if (sch && sch.checked && document.getElementById('scheduledDate').value &&
           !form.querySelector('input[name=slot]:checked') && !pending)
         msg = 'Choose a time for your visit.';
+      if (!msg && blocked()) msg = openBlock.msg;
     }
     if (n === 3) {
       var guest = form.querySelector('input[name=clientType][value=guest]').checked;
@@ -1497,6 +1533,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       if (guest && studentOnly.length)
         msg = '"' + text(studentOnly[0].closest('label').querySelector('.block')) +
               '" is for enrolled students only. Choose "I am a student", or go back and remove it.';
+      if (!msg && blocked()) msg = openBlock.msg;
 
     }
     if (!msg) {
@@ -1610,6 +1647,50 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
     document.getElementById('reviewList').innerHTML = out.join('');
   }
 
+  // One open ticket per office, on any date. Asked when step 2 opens or a date
+  // is picked (the tickets on this phone, plus a remembered student number), and
+  // again when the student number or last name is typed (any phone). The
+  // server checks once more on submit.
+  var openBlock = null, openAsk = 0;
+  function officeNow() { var o = form.querySelector('input[name=office]:checked'); return o ? o.value : ''; }
+  function blocked() { return !!(openBlock && openBlock.office === officeNow()); }
+  function paintOpen() {
+    [2, 3].forEach(function (n) {
+      var box = pane(n).querySelector('[data-open-note]'); if (!box) return;
+      box.hidden = !blocked();
+      if (!blocked()) return;
+      box.querySelector('[data-open-msg]').textContent = openBlock.msg;
+      var a = box.querySelector('[data-open-link]');
+      a.hidden = !openBlock.url; if (openBlock.url) a.href = openBlock.url;
+    });
+  }
+  function openCheck(byPhone) {
+    var office = officeNow();
+    if (!office) { openBlock = null; paintOpen(); return; }
+    var no = document.getElementById('studentNo'), ln = form.querySelector('[name=lastName]');
+    var mine = ++openAsk;
+    fetch('/queue/open-check', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ office: office, byPhone: !!byPhone,
+        studentNo: no && !no.disabled ? no.value.trim() : '', lastName: ln ? ln.value.trim() : '' }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (mine !== openAsk) return;                  // an older answer arrived late
+        openBlock = d.open ? { office: office, msg: d.open.message, url: d.open.url } : null;
+        paintOpen();
+      })
+      .catch(function () {});
+  }
+  window.addEventListener('smartq:wizard', function (e) {
+    var n = e.detail && e.detail.pane;
+    if (n === 2) openCheck(true);
+    if (n === 3) openCheck(false);
+  });
+  form.addEventListener('change', function (e) {
+    if (e.target.name === 'office') openCheck(current <= 2);
+    if (e.target.id === 'studentNo' || e.target.name === 'lastName') openCheck(false);
+    if (e.target.id === 'scheduledDate' || e.target.name === 'mode' || e.target.name === 'slot') paintOpen();
+  });
+
   form.addEventListener('click', function (e) {
     if (e.target.closest('[data-next]')) { e.preventDefault(); go(current + 1); }
     if (e.target.closest('[data-back]')) { e.preventDefault(); show(current - 1); }
@@ -1677,7 +1758,7 @@ toggleMode(); toggleOther(); toggleRep(); toggleClient(); toggleProof(); pickOff
       { pane: 2, sel: '.wiz-pane[data-pane="2"] label:has(input[name=mode][value=schedule])', title: 'Or book a time',
         body: 'Pick a day and a 30-minute slot, up to 30 days ahead. Full slots are greyed out. Good when today\u2019s line is long.' },
       { pane: 2, sel: '#peakAdvice', extra: true, title: 'When it is quieter',
-        body: 'SmartQ tells you the busiest and quietest hours from past days, so you can pick a better time.' },
+        body: 'SmartQ tells you the peak and off-peak hours from past days, so you can pick a better time.' },
       { pane: 2, sel: '.wiz-pane:not([hidden]) [data-next]', extra: true, title: 'Choose, then Next',
         body: 'Pick <b>Join now</b> or <b>Book a time</b>, then tap <b>Next</b>.' },
       // step 3: your details

@@ -67,7 +67,7 @@
     <!-- headline findings -->
     <div class="grid grid-cols-2 <%= isCompact ? '' : 'lg:grid-cols-4' %> gap-3 mb-4">
       <div class="rounded-lg bg-red-50 border border-red-200 p-3.5">
-        <div class="text-[10.5px] font-bold uppercase tracking-wider text-red-800/80">Busiest hour</div>
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-red-800/80">Peak hour</div>
         <div class="text-[15px] font-extrabold text-red-900 mt-0.5">
           <%= pk.busiest ? pk.busiest.label : '—' %></div>
         <div class="text-[11px] text-red-800/80">
@@ -75,7 +75,7 @@
               : atOnce(pk.busiest) %></div>
       </div>
       <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3.5">
-        <div class="text-[10.5px] font-bold uppercase tracking-wider text-emerald-800/80">Quietest hour</div>
+        <div class="text-[10.5px] font-bold uppercase tracking-wider text-emerald-800/80">Off-peak hour</div>
         <div class="text-[15px] font-extrabold text-emerald-900 mt-0.5">
           <%= pk.quietest ? pk.quietest.label : '—' %></div>
         <div class="text-[11px] text-emerald-800/80">

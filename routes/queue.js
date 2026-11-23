@@ -155,6 +155,13 @@ async function renderForm(req, res, form, formError, errorStep) {
     peakAdvice: await peakAdvice(settings),
     // per-semester documents (Certificate of Grades): the semesters to choose from
     semOptions: require('../data/semesters').semesterOptions({ academicYear: settings.academicYear }),
+    // Registrar claim: the newest paid Cashier ticket on this phone, so its paid
+    // documents are listed without typing (the search stays for other cases)
+    phoneClaim: (() => {
+      const t = mine.filter(x => x.department === 'Cashier' && x.paymentStatus === 'paid' && x.clientType !== 'guest' && x.studentNo)
+        .sort((x, y) => new Date(y.requestedAt) - new Date(x.requestedAt))[0];
+      return t ? { studentNo: t.studentNo, lastName: t.lastName, ticketNo: t.ticketNo } : null;
+    })(),
     submitToken: form.submitToken || crypto.randomUUID(),
     form, formError, errorStep: errorStep || null,
   });
@@ -354,6 +361,29 @@ router.post('/claimables', express.json({ limit: '4kb' }), async (req, res, next
       ? 'No match. Check the queue code on your Cashier ticket and your last name.'
       : 'No match. Check your student number and last name, exactly as on your Cashier ticket.' });
     res.json({ ok: true, lines, fees: lines.fees || [] });
+  } catch (e) { next(e); }
+});
+
+// The join form, early: does this student already hold an open ticket for the
+// office (one per office, any date)? Checked when a date is picked (tickets on
+// this phone) and when the student number is typed (any phone: number + last
+// name must match). Rate-limited in app.js. The final check stays on submit.
+router.post('/open-check', express.json({ limit: '2kb' }), async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const office = ['Cashier', 'Registrar'].includes(b.office) ? b.office : null;
+    if (!office) return res.json({ open: null });
+    // step 2 (no details yet): the tickets on this phone; step 3: the number typed,
+    // so another student sharing the phone is not blocked by someone else's ticket
+    let open = b.byPhone ? (await myTickets(req)).find(t => ACTIVE(t) && t.department === office) || null : null;
+    if (!open && b.studentNo) open = await db.openTicketFor(b.studentNo, b.lastName, office);
+    if (!open) return res.json({ open: null });
+    const here = savedTokens(req).includes(open.accessToken);
+    res.json({ open: {
+      ticketNo: open.ticketNo,
+      message: db.openTicketMessage(open) + (here ? '' : ' If it is not on this phone, use "Find my ticket" with its queue code.'),
+      url: here ? '/queue/t/' + open.accessToken : null,
+    } });
   } catch (e) { next(e); }
 });
 

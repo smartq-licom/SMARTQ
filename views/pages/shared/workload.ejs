@@ -58,7 +58,7 @@
         <div class="text-[12px] text-slateSoft"><%= t.score === null ? (t.cards.length > 1 ? 'no clients served yet' : 'one window: nothing to balance') : t.score >= 80 ? 'work shared evenly' : t.score >= 50 ? 'somewhat uneven' : 'uneven: one window carries most' %></div>
       </div>
       <div class="rounded-2xl bg-mist px-4 py-3">
-        <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/70">Busiest hour</div>
+        <div class="text-[11px] font-bold uppercase tracking-wider text-slateSoft/70">Peak hour</div>
         <div class="text-[26px] font-extrabold leading-tight"><%= h.peak === null ? '–' : h.hours.find(function (x) { return x.hour === h.peak; }).label %></div>
         <div class="text-[12px] text-slateSoft"><%= h.peak === null ? 'no arrivals yet' : (function (n) { return n + (n === 1 ? ' client' : ' clients') + ' arrived'; })(h.hours.find(function (x) { return x.hour === h.peak; }).arrived) %></div>
       </div>

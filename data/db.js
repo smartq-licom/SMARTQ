@@ -1448,13 +1448,15 @@ async function createRequest(user, b, { walkIn = false } = {}) {
     const want = new Set([].concat(b['sem_' + it.id] || []).map(String));
     const picked = opts.filter(o => want.has(o.value));
     if (!picked.length) return { error: `Choose the semester(s) for your ${it.name}.` };
-    // the same number of copies of every chosen semester, within the Settings limit
-    const each = parseInt(b['semCopies_' + it.id], 10) || 1;
-    if (each < 1 || each > s.maxCopies)
+    // copies per semester (panel revision: e.g. 2 of the 1st Sem, 1 of the 2nd),
+    // each within the Settings limit; semCopies_ is the older "same for each"
+    const fallback = parseInt(b['semCopies_' + it.id], 10) || 1;
+    const counts = picked.map(o => parseInt(b[`semCopy_${it.id}_${o.value}`], 10) || fallback);
+    if (counts.some(n => n < 1 || n > s.maxCopies))
       return { error: `You may request up to ${s.maxCopies} copies of each semester.` };
-    it.copies = picked.length * each;
+    it.copies = counts.reduce((a, n) => a + n, 0);
     it.lineTotal = it.price * it.copies;
-    it.detail = picked.map(o => o.label).join(', ') + (each > 1 ? ` · ${each} copies each` : '');
+    it.detail = picked.map((o, i) => o.label + (counts[i] > 1 ? ` ×${counts[i]}` : '')).join(', ');
   }
 
   let category = 'regular';
@@ -1504,13 +1506,12 @@ async function createRequest(user, b, { walkIn = false } = {}) {
   const sched = await validateSchedule(b.mode, b.scheduledDate, department);
   if (sched.error) return { error: sched.error };
 
-  // one unfinished ticket per office per day, and at most MAX_OPEN_PER_OFFICE
-  // in all (a claim booked for next week does not block today)
-  const open = await getBlockingTransaction(user.id, department, sched.serviceDate);
+  // one unfinished ticket per office, on any date (panel revision): a booking
+  // for next week also blocks a second one, until it is finished or cancelled
+  const open = await getBlockingTransaction(user.id, department);
   if (open) {
     return {
-      error: `You already have a ${department} ticket for ${open.serviceDate === today() ? 'today' : longDate(open.serviceDate)} (${open.ticketNo}). ` +
-             'Finish it before requesting another number for this office on that day.',
+      error: openTicketMessage(open),
       blockedBy: open,
     };
   }
@@ -1737,7 +1738,7 @@ async function createRequest(user, b, { walkIn = false } = {}) {
  */
 async function getBlockingTransaction(userId, department = null, serviceDate = null) {
   // With a date: only a ticket for that same day blocks (or one already at a
-  // window), so a claim booked for next week never stops a visit today.
+  // window). createRequest passes no date: one open ticket per office, any day.
   const rows = await q(
     `SELECT * FROM transactions
      WHERE user_id = ? AND overall_status NOT IN ('completed','cancelled')
@@ -1749,6 +1750,26 @@ async function getBlockingTransaction(userId, department = null, serviceDate = n
   const t = mapTx(rows[0]);
   await attachDocuments([t]);
   return t;
+}
+
+/** The note shown when a student already holds an open ticket for an office. */
+function openTicketMessage(open) {
+  const when = open.serviceDate === today() ? 'today' : longDate(open.serviceDate);
+  return `You already have a ${open.department} ticket for ${when} (${open.ticketNo}). ` +
+         'Finish or cancel it before requesting another number for this office.';
+}
+
+/**
+ * Early check for the request form: does this student number already hold an
+ * open ticket for this office? Only says yes or no with the ticket's number and
+ * day; the last name must match, so a number alone reveals nothing.
+ */
+async function openTicketFor(studentNo, lastName, department) {
+  const no = String(studentNo || '').trim();
+  if (!STUDENT_NO_RE.test(no) || !['Cashier', 'Registrar'].includes(department)) return null;
+  const u = (await q(`SELECT id, last_name FROM users WHERE student_no=? AND role='student' AND deleted_at IS NULL LIMIT 1`, [no]))[0];
+  if (!u || normName(u.last_name) !== normName(lastName)) return null;
+  return getBlockingTransaction(u.id, department);
 }
 
 // ── WALK-IN (QR) CLIENTS: no registration, no login ──────────────────────────
@@ -4089,7 +4110,7 @@ module.exports = {
   getWindows, createWindow, updateWindow,
   getCalendarMonth, getDayBookings, setDayOverride, getDayOverrides,
   validateSchedule, createRequest, longDate,
-  getTransaction, getUserTransactions, getQueue, getBlockingTransaction,
+  getTransaction, getUserTransactions, getQueue, getBlockingTransaction, openTicketFor, openTicketMessage,
   getActiveByDepartment,
   findOrCreateWalkIn, getTransactionByToken, findTicketByCode, moveToRegular, rebookTicket,
   setHold, clearHold, missedTurn, findActiveGuestTicket,

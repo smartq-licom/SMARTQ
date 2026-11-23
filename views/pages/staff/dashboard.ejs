@@ -37,7 +37,7 @@
 <div class="mb-4 flex items-center gap-3 rounded-2xl ring-1 ring-inset px-4 py-3 text-[13px]
      <%= nowSlot.level === 'peak' ? 'bg-red-50 ring-red-200 text-red-900' : 'bg-amber-50 ring-amber-200 text-amber-900' %>">
   <span class="text-[18px]" aria-hidden="true">&#128200;</span>
-  <span><strong><%= nowSlot.label %> is usually <%= nowSlot.level === 'peak' ? 'your busiest hour' : 'a busy hour' %>
+  <span><strong><%= nowSlot.label %> is usually <%= nowSlot.level === 'peak' ? 'your peak hour' : 'a busy hour' %>
     on a <%= peakHours.weekdayName %>.</strong> Around <%= nowSlot.arrivals %> requests come in, and
     about <%= nowSlot.present %> clients are in the office at once
     (<%= nowSlot.waiting %> waiting, <%= nowSlot.serving %> at the windows).</span>
